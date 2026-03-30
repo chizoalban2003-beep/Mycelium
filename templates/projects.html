@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="flex items-start justify-between gap-6">
+    <div class="flex-1">
+      <h1 class="text-lg font-semibold mb-3">Projects</h1>
+      {% if projects|length == 0 %}
+        <div class="text-slate-400">No projects yet.</div>
+      {% else %}
+        <ul class="space-y-2">
+          {% for p in projects %}
+            <li class="bg-slate-900 border border-slate-800 rounded-lg px-4 py-3">
+              <a class="font-medium hover:underline" href="/projects/{{ p.id }}">{{ p.name }}</a>
+              <div class="text-sm text-slate-400">{{ p.description }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <div class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">New project</h2>
+      <form action="/projects" method="post" class="space-y-3">
+        <div>
+          <label class="block text-sm text-slate-300">Name</label>
+          <input name="name" required class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Description</label>
+          <textarea name="description" rows="3" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2"></textarea>
+        </div>
+        <button type="submit" class="w-full rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 font-medium">Create</button>
+      </form>
+    </div>
+  </div>
+{% endblock %}
