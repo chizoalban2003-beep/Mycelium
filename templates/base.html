@@ -9,7 +9,12 @@
   <body class="bg-slate-950 text-slate-100">
     <div class="max-w-5xl mx-auto px-4 py-6">
       <div class="flex items-center justify-between mb-6">
-        <a href="/projects" class="text-xl font-semibold">{{ app_name }}</a>
+        <div class="flex items-center gap-4">
+          <a href="/projects" class="text-xl font-semibold">{{ app_name }}</a>
+          {% if user %}
+            <a href="/predict" class="text-sm text-slate-300 hover:text-white">Predict</a>
+          {% endif %}
+        </div>
         {% if user %}
           <form action="/logout" method="post">
             <button class="text-sm text-slate-300 hover:text-white" type="submit">Logout</button>

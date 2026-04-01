@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import io
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
+import pandas as pd
+
 from mycelium_app.db import get_session
 from mycelium_app.models import Project, ProjectMember, ProjectRole, TreeNode, User
+from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, run_physics_prediction
 from mycelium_app.security import create_access_token
 from mycelium_app.security import decode_token
 from mycelium_app.settings import settings
@@ -182,5 +188,119 @@ def project_game_page(
             "project": project,
             "member": member,
             "app_name": settings.app_name,
+        },
+    )
+
+
+@router.get("/predict", response_class=HTMLResponse)
+def predict_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        "predict.html",
+        {
+            "request": request,
+            "user": current_user,
+            "app_name": settings.app_name,
+            "result": None,
+            "error": None,
+            "columns": None,
+            "target_col": "",
+            "plane": PhysicsPlane.solid.value,
+            "top_k": 30,
+        },
+    )
+
+
+@router.post("/predict", response_class=HTMLResponse)
+async def predict_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    file: UploadFile = File(...),
+    target_col: str = Form(""),
+    plane: str = Form(PhysicsPlane.solid.value),
+    top_k: int = Form(30),
+    max_rows: int = Form(5000),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    error: str | None = None
+    result = None
+    columns = None
+
+    try:
+        plane_enum = PhysicsPlane(plane)
+    except Exception:
+        plane_enum = PhysicsPlane.solid
+
+    try:
+        raw = await file.read()
+        if not raw:
+            raise PredictorError("Empty upload")
+        df = pd.read_csv(io.BytesIO(raw), nrows=max(1, min(int(max_rows), 200_000)))
+        columns = list(df.columns)
+        if not target_col:
+            raise PredictorError(
+                "Please enter a target column name and submit again. "
+                f"Detected columns: {columns}"
+            )
+        top_k = max(1, min(int(top_k), 200))
+
+        pred = run_physics_prediction(
+            df,
+            target_col=target_col,
+            plane=plane_enum,
+            top_k_weights=top_k,
+        )
+
+        result = {
+            "target": pred.target,
+            "target_kind": pred.target_kind,
+            "plane": pred.plane.value,
+            "weights": [
+                {
+                    "feature": w.feature,
+                    "weight": round(float(w.weight), 6),
+                    "method": w.method,
+                    "kind": w.feature_kind,
+                    "signed": w.signed,
+                }
+                for w in pred.weights
+            ],
+            "metrics": {
+                "target_kind": pred.metrics.target_kind,
+                "n_rows": pred.metrics.n_rows,
+                "n_features_used": pred.metrics.n_features_used,
+                "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
+                "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
+                "accuracy": None if pred.metrics.accuracy is None else round(float(pred.metrics.accuracy), 6),
+            },
+            "preview": pred.preview_rows,
+        }
+
+    except PredictorError as e:
+        error = str(e)
+    except Exception as e:
+        # Keep the UI helpful without leaking stack traces into HTML.
+        error = f"Failed to run predictor: {type(e).__name__}: {e}"
+
+    return templates.TemplateResponse(
+        "predict.html",
+        {
+            "request": request,
+            "user": current_user,
+            "app_name": settings.app_name,
+            "result": result,
+            "error": error,
+            "columns": columns,
+            "target_col": target_col,
+            "plane": plane_enum.value,
+            "top_k": top_k,
         },
     )

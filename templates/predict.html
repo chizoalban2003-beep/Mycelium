@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="space-y-6">
+    <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <h1 class="text-lg font-semibold">Physics Predictor (MVP)</h1>
+      <div class="text-sm text-slate-400 mt-1">
+        Upload a CSV, pick any column as the target, and Mycelium will compute correlation/association “weights” that act like forces in a race.
+      </div>
+
+      <form action="/predict" method="post" enctype="multipart/form-data" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div class="md:col-span-2">
+          <label class="block text-sm text-slate-300">CSV file</label>
+          <input type="file" name="file" required class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Target column</label>
+          <input name="target_col" value="{{ target_col }}" placeholder="e.g. price" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Plane</label>
+          <select name="plane" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2">
+            <option value="solid" {% if plane == "solid" %}selected{% endif %}>solid (negatives stumble)</option>
+            <option value="liquid" {% if plane == "liquid" %}selected{% endif %}>liquid (viscosity)</option>
+            <option value="gas" {% if plane == "gas" %}selected{% endif %}>gas (negatives soften)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Top-K weights</label>
+          <input name="top_k" type="number" min="1" max="200" value="{{ top_k }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Max rows</label>
+          <input name="max_rows" type="number" min="10" max="200000" value="5000" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <div class="md:col-span-4">
+          <button type="submit" class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-4 py-2 font-medium">Run</button>
+        </div>
+      </form>
+
+      {% if columns %}
+        <div class="mt-4 text-sm">
+          <div class="text-slate-400">Detected columns:</div>
+          <div class="mt-1 text-slate-200 break-words">{{ columns|join(", ") }}</div>
+        </div>
+      {% endif %}
+
+      {% if error %}
+        <div class="mt-4 bg-rose-950/60 border border-rose-900 rounded-lg p-3 text-rose-200 text-sm">
+          {{ error }}
+        </div>
+      {% endif %}
+    </div>
+
+    {% if result %}
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h2 class="font-semibold">Result</h2>
+          <div class="mt-2 text-sm text-slate-300 space-y-1">
+            <div><span class="text-slate-400">Target:</span> {{ result.target }}</div>
+            <div><span class="text-slate-400">Target kind:</span> {{ result.target_kind }}</div>
+            <div><span class="text-slate-400">Plane:</span> {{ result.plane }}</div>
+            <div><span class="text-slate-400">Rows:</span> {{ result.metrics.n_rows }}</div>
+            <div><span class="text-slate-400">Features used:</span> {{ result.metrics.n_features_used }}</div>
+            {% if result.metrics.accuracy is not none %}
+              <div><span class="text-slate-400">Accuracy:</span> {{ result.metrics.accuracy }}</div>
+            {% endif %}
+            {% if result.metrics.mae is not none %}
+              <div><span class="text-slate-400">MAE:</span> {{ result.metrics.mae }}{% if result.target_kind == 'datetime' %} seconds{% endif %}</div>
+            {% endif %}
+            {% if result.metrics.rmse is not none %}
+              <div><span class="text-slate-400">RMSE:</span> {{ result.metrics.rmse }}{% if result.target_kind == 'datetime' %} seconds{% endif %}</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h2 class="font-semibold mb-3">Top weights (feature → target)</h2>
+          <div class="overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-slate-400">
+                <tr>
+                  <th class="text-left py-2 pr-3">Feature</th>
+                  <th class="text-left py-2 pr-3">Weight</th>
+                  <th class="text-left py-2 pr-3">Method</th>
+                  <th class="text-left py-2 pr-3">Kind</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for w in result.weights %}
+                  <tr class="border-t border-slate-800">
+                    <td class="py-2 pr-3 text-slate-200">{{ w.feature }}</td>
+                    <td class="py-2 pr-3 {% if w.weight < 0 %}text-rose-300{% else %}text-emerald-300{% endif %}">
+                      {{ w.weight }}
+                    </td>
+                    <td class="py-2 pr-3 text-slate-300">{{ w.method }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ w.kind }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="text-xs text-slate-500 mt-2">
+            Signed weights come from Pearson/point-biserial; others are magnitude-only (non-negative).
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <h2 class="font-semibold mb-3">Preview</h2>
+        <div class="overflow-auto">
+          <table class="min-w-full text-sm">
+            <thead class="text-slate-400">
+              <tr>
+                <th class="text-left py-2 pr-3">Row</th>
+                <th class="text-left py-2 pr-3">Actual</th>
+                <th class="text-left py-2 pr-3">Predicted</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in result.preview %}
+                <tr class="border-t border-slate-800">
+                  <td class="py-2 pr-3 text-slate-300">{{ r.row }}</td>
+                  <td class="py-2 pr-3 text-slate-200">{{ r.actual }}</td>
+                  <td class="py-2 pr-3 text-slate-200">{{ r.predicted }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+{% endblock %}
