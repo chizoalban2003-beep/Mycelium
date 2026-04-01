@@ -30,6 +30,20 @@
           <input name="top_k" type="number" min="1" max="200" value="{{ top_k }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
         </div>
         <div>
+          <label class="block text-sm text-slate-300">Train ratio</label>
+          <input id="train_ratio" name="train_ratio" type="number" min="0.05" max="1.0" step="0.01" value="{{ train_ratio or 0.8 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+          <div class="mt-1 text-xs text-slate-500">Default 0.80 (test is the remainder). Use 1.00 for no split.</div>
+          <label class="mt-2 flex items-center gap-2 text-xs text-slate-300">
+            <input id="no_split" type="checkbox" name="no_split" {% if no_split %}checked{% endif %} />
+            No split (train=test)
+          </label>
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Random seed</label>
+          <input name="random_seed" type="number" value="{{ random_seed or 42 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+          <div class="mt-1 text-xs text-slate-500">Same seed = same split</div>
+        </div>
+        <div>
           <label class="block text-sm text-slate-300">Max rows</label>
           <input name="max_rows" type="number" min="10" max="200000" value="5000" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
         </div>
@@ -61,6 +75,10 @@
             <div><span class="text-slate-400">Target kind:</span> {{ result.target_kind }}</div>
             <div><span class="text-slate-400">Plane:</span> {{ result.plane }}</div>
             <div><span class="text-slate-400">Rows:</span> {{ result.metrics.n_rows }}</div>
+            {% if result.metrics.n_train is not none %}
+              <div><span class="text-slate-400">Train/Test:</span> {{ result.metrics.n_train }} / {{ result.metrics.n_test }} ({{ result.metrics.train_fraction }})</div>
+              <div><span class="text-slate-400">Seed:</span> {{ result.metrics.random_seed }}</div>
+            {% endif %}
             <div><span class="text-slate-400">Features used:</span> {{ result.metrics.n_features_used }}</div>
             {% if result.metrics.accuracy is not none %}
               <div><span class="text-slate-400">Accuracy:</span> {{ result.metrics.accuracy }}</div>
@@ -131,4 +149,28 @@
       </div>
     {% endif %}
   </div>
+
+  <script>
+    (function () {
+      const noSplit = document.getElementById('no_split');
+      const trainRatio = document.getElementById('train_ratio');
+      if (!noSplit || !trainRatio) return;
+
+      function sync() {
+        if (noSplit.checked) {
+          trainRatio.value = '1.00';
+          trainRatio.disabled = true;
+          trainRatio.classList.add('opacity-60');
+        } else {
+          trainRatio.disabled = false;
+          trainRatio.classList.remove('opacity-60');
+          if (!trainRatio.value) trainRatio.value = '0.80';
+          if (parseFloat(trainRatio.value) >= 0.999) trainRatio.value = '0.80';
+        }
+      }
+
+      noSplit.addEventListener('change', sync);
+      sync();
+    })();
+  </script>
 {% endblock %}

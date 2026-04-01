@@ -212,6 +212,9 @@ def predict_page(
             "target_col": "",
             "plane": PhysicsPlane.solid.value,
             "top_k": 30,
+            "train_ratio": 0.8,
+            "random_seed": 42,
+            "no_split": False,
         },
     )
 
@@ -224,6 +227,9 @@ async def predict_action(
     target_col: str = Form(""),
     plane: str = Form(PhysicsPlane.solid.value),
     top_k: int = Form(30),
+    train_ratio: float = Form(0.8),
+    random_seed: int = Form(42),
+    no_split: str | None = Form(None),
     max_rows: int = Form(5000),
 ):
     current_user = _get_web_user(request, session)
@@ -252,10 +258,24 @@ async def predict_action(
             )
         top_k = max(1, min(int(top_k), 200))
 
+        # Split controls
+        no_split_enabled = bool(no_split)
+        if no_split_enabled:
+            train_ratio = 1.0
+        else:
+            # Friendly clamping before predictor validation
+            try:
+                train_ratio = float(train_ratio)
+            except Exception:
+                train_ratio = 0.8
+            train_ratio = max(0.05, min(0.95, train_ratio))
+
         pred = run_physics_prediction(
             df,
             target_col=target_col,
             plane=plane_enum,
+            train_fraction=float(train_ratio),
+            random_seed=int(random_seed),
             top_k_weights=top_k,
         )
 
@@ -276,6 +296,10 @@ async def predict_action(
             "metrics": {
                 "target_kind": pred.metrics.target_kind,
                 "n_rows": pred.metrics.n_rows,
+                "n_train": pred.metrics.n_train,
+                "n_test": pred.metrics.n_test,
+                "train_fraction": round(float(pred.metrics.train_fraction), 4),
+                "random_seed": int(pred.metrics.random_seed),
                 "n_features_used": pred.metrics.n_features_used,
                 "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
                 "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
@@ -302,5 +326,8 @@ async def predict_action(
             "target_col": target_col,
             "plane": plane_enum.value,
             "top_k": top_k,
+            "train_ratio": train_ratio,
+            "random_seed": random_seed,
+            "no_split": bool(no_split),
         },
     )
