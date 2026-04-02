@@ -129,6 +129,15 @@
               <div><span class="text-slate-400">Seed:</span> {{ result.metrics.random_seed }}</div>
             {% endif %}
             <div><span class="text-slate-400">Features used:</span> {{ result.metrics.n_features_used }}</div>
+            {% if result.metrics.buffer_ionization is not none %}
+              <div>
+                <span class="text-slate-400">Active buffer:</span>
+                {{ result.metrics.buffer_ionization }}
+                {% if result.metrics.buffer_normality_p is not none %}
+                  (Shapiro p={{ result.metrics.buffer_normality_p }})
+                {% endif %}
+              </div>
+            {% endif %}
             {% if result.metrics.accuracy is not none %}
               <div><span class="text-slate-400">Accuracy:</span> {{ result.metrics.accuracy }}</div>
             {% endif %}
@@ -150,6 +159,10 @@
                   <th class="text-left py-2 pr-3">Feature</th>
                   <th class="text-left py-2 pr-3">Velocity</th>
                   <th class="text-left py-2 pr-3">Charge</th>
+                  <th class="text-left py-2 pr-3">Mass</th>
+                  <th class="text-left py-2 pr-3">p-value</th>
+                  <th class="text-left py-2 pr-3">Ionization</th>
+                  <th class="text-left py-2 pr-3">Complex</th>
                   <th class="text-left py-2 pr-3">Method</th>
                   <th class="text-left py-2 pr-3">State</th>
                 </tr>
@@ -162,6 +175,23 @@
                       {{ m.terminal_velocity }}
                     </td>
                     <td class="py-2 pr-3 text-slate-300">{{ m.charge }}</td>
+                    <td class="py-2 pr-3 {% if m.stable %}text-slate-200{% else %}text-amber-200{% endif %}">
+                      {{ m.mass }}
+                    </td>
+                    <td class="py-2 pr-3 text-slate-300">{{ m.p_value }}</td>
+                    <td class="py-2 pr-3 text-slate-300">
+                      {{ m.ionization }}
+                      {% if m.normality_p is not none %}
+                        <span class="text-xs text-slate-500">(p={{ m.normality_p }})</span>
+                      {% endif %}
+                    </td>
+                    <td class="py-2 pr-3 text-slate-300">
+                      {% if m.complex_id is not none %}
+                        #{{ m.complex_id }}{% if m.complex_size is not none %} ({{ m.complex_size }}){% endif %}
+                      {% else %}
+                        -
+                      {% endif %}
+                    </td>
                     <td class="py-2 pr-3 text-slate-300">{{ m.method }}</td>
                     <td class="py-2 pr-3 text-slate-300">{{ m.state }}</td>
                   </tr>
@@ -170,7 +200,7 @@
             </table>
           </div>
           <div class="text-xs text-slate-500 mt-2">
-            Velocity is computed as (charge * density) / (entropy + variance), scaled by plane mobility.
+            Velocity is computed as (charge * density) / viscosity, scaled by plane mobility. Mass is derived from significance (-log10 p).
           </div>
         </div>
       </div>
@@ -182,6 +212,11 @@
             <thead class="text-slate-400">
               <tr>
                 <th class="text-left py-2 pr-3">Feature</th>
+                <th class="text-left py-2 pr-3">Stable</th>
+                <th class="text-left py-2 pr-3">Mass</th>
+                <th class="text-left py-2 pr-3">p-value</th>
+                <th class="text-left py-2 pr-3">Ionization</th>
+                <th class="text-left py-2 pr-3">Complex</th>
                 <th class="text-left py-2 pr-3">Direction</th>
                 <th class="text-left py-2 pr-3">State</th>
                 <th class="text-left py-2 pr-3">Entropy</th>
@@ -196,6 +231,19 @@
               {% for m in result.migration_map[:top_k] %}
                 <tr class="border-t border-slate-800">
                   <td class="py-2 pr-3 text-slate-200">{{ m.feature }}</td>
+                  <td class="py-2 pr-3 {% if m.stable %}text-emerald-200{% else %}text-amber-200{% endif %}">
+                    {% if m.stable %}yes{% else %}no{% endif %}
+                  </td>
+                  <td class="py-2 pr-3 text-slate-300">{{ m.mass }}</td>
+                  <td class="py-2 pr-3 text-slate-300">{{ m.p_value }}</td>
+                  <td class="py-2 pr-3 text-slate-300">{{ m.ionization }}</td>
+                  <td class="py-2 pr-3 text-slate-300">
+                    {% if m.complex_id is not none %}
+                      #{{ m.complex_id }}{% if m.complex_size is not none %} ({{ m.complex_size }}){% endif %}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
                   <td class="py-2 pr-3 text-slate-300">{{ m.direction }}</td>
                   <td class="py-2 pr-3 text-slate-300">{{ m.state }}</td>
                   <td class="py-2 pr-3 text-slate-300">{{ m.entropy }}</td>

@@ -87,6 +87,13 @@ async def electrophoresis_predict(
                     "kind": m.feature_kind,
                     "method": m.method,
                     "charge": round(float(m.charge), 6),
+                    "ionization": m.ionization,
+                    "normality_p": None if m.normality_p is None else round(float(m.normality_p), 8),
+                    "p_value": None if m.p_value is None else round(float(m.p_value), 8),
+                    "mass": round(float(m.mass), 6),
+                    "stable": bool(m.stable),
+                    "complex_id": m.complex_id,
+                    "complex_size": m.complex_size,
                     "entropy": round(float(m.entropy), 6),
                     "variance": round(float(m.variance), 6),
                     "standard_error": round(float(m.standard_error), 6),
@@ -106,6 +113,7 @@ async def electrophoresis_predict(
                     "feature_b": b.feature_b,
                     "affinity": round(float(b.affinity), 6),
                     "bonding_factor": round(float(b.bonding_factor), 6),
+                    "bond_type": getattr(b, "bond_type", "affinity"),
                 }
                 for b in pred.bonding_map
             ],
@@ -141,6 +149,10 @@ async def electrophoresis_predict(
                 "train_fraction": round(float(pred.metrics.train_fraction), 4),
                 "random_seed": int(pred.metrics.random_seed),
                 "n_features_used": pred.metrics.n_features_used,
+                "buffer_ionization": pred.metrics.buffer_ionization,
+                "buffer_normality_p": None
+                if pred.metrics.buffer_normality_p is None
+                else round(float(pred.metrics.buffer_normality_p), 8),
                 "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
                 "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
                 "baseline_mae": None

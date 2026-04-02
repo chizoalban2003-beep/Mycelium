@@ -73,8 +73,16 @@ Dataset:
 - `tmp_eval/job_salary_prediction_dataset.csv`
 - Columns include: job_title, experience_years, education_level, skills_count, industry, company_size, location, remote_work, certifications, salary
 
-Run the benchmark (50k rows):
+### Regression (predict `salary`)
+
+Compare Mycelium electrophoresis vs Decision Tree vs Random Forest vs Gradient Boosting vs Neural Net (MLP):
+
 - `./.venv/bin/python scripts/benchmark_salary_models.py --nrows 50000 --target salary --train-fraction 0.8 --seed 42`
+
+Optional:
+- Disable baselines if you only want some models:
+  - `--no-tree`
+  - `--no-mlp`
 
 Latest observed (after regression boosting + tuned defaults):
 
@@ -87,6 +95,16 @@ Latest observed (after regression boosting + tuned defaults):
 Notes:
 - These numbers are for `--nrows 50000`, `--seed 42`, and `--train-fraction 0.8`.
 - Runtime will vary by machine; metrics should be close if the split/seed are the same.
+
+### Classification (predict `remote_work`)
+
+Compare Mycelium electrophoresis vs Decision Tree vs Random Forest vs Gradient Boosting vs Neural Net (MLP), and print a full `classification_report` on the test split:
+
+- `./.venv/bin/python scripts/benchmark_salary_classifiers.py --nrows 50000 --target remote_work --train-fraction 0.8 --seed 42 --report`
+
+Add confusion matrices (raw + normalized):
+
+- `./.venv/bin/python scripts/benchmark_salary_classifiers.py --nrows 50000 --target remote_work --train-fraction 0.8 --seed 42 --report --confusion`
 
 ## 6) Key algorithm milestones implemented
 

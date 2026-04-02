@@ -9,6 +9,11 @@ import math
 import numpy as np
 import pandas as pd
 
+try:
+    from scipy import stats as _sp_stats  # type: ignore
+except Exception:  # pragma: no cover
+    _sp_stats = None
+
 
 TargetKind = Literal["numeric", "categorical", "datetime"]
 FeatureKind = Literal["numeric", "categorical", "datetime", "bool"]
@@ -35,6 +40,13 @@ class MigrationInfo:
     feature_kind: FeatureKind
     method: str
     charge: float
+    ionization: Literal["parametric", "nonparametric"]
+    normality_p: float | None
+    p_value: float | None
+    mass: float
+    stable: bool
+    complex_id: int | None
+    complex_size: int | None
     entropy: float
     variance: float
     standard_error: float
@@ -64,6 +76,8 @@ class PredictionMetrics:
     baseline_rmse: float | None = None
     best_cycle: int | None = None
     best_lift: float | None = None
+    buffer_ionization: Literal["parametric", "nonparametric"] | None = None
+    buffer_normality_p: float | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +86,7 @@ class BondInfo:
     feature_b: str
     affinity: float
     bonding_factor: float
+    bond_type: str = "affinity"
 
 
 @dataclass(frozen=True)
@@ -104,6 +119,9 @@ class PredictionResult:
     equilibrium_zones: list[EquilibriumZone]
     metrics: PredictionMetrics
     preview_rows: list[dict[str, Any]]
+    test_row_indices: list[int] | None = None
+    test_actual: list[Any] | None = None
+    test_predicted: list[Any] | None = None
 
 
 class PredictorError(ValueError):
@@ -127,6 +145,65 @@ def _plane_mobility(plane: PhysicsPlane) -> float:
         PhysicsPlane.liquid: 1.0,
         PhysicsPlane.gas: 1.15,
     }[plane]
+
+
+def _plane_base_viscosity(plane: PhysicsPlane) -> float:
+    # Baseline resistance of the medium (solid > liquid > gas).
+    return {
+        PhysicsPlane.solid: 1.25,
+        PhysicsPlane.liquid: 1.0,
+        PhysicsPlane.gas: 0.85,
+    }[plane]
+
+
+def _calculate_viscosity_field(
+    *,
+    plane: PhysicsPlane,
+    entropy: float,
+    variance: float,
+    correlation_strength: float,
+    mass: float,
+    ionization: Literal["parametric", "nonparametric"],
+    unstable: bool,
+    complex_drag: float = 1.0,
+) -> float:
+    """Target-induced viscosity field.
+
+    - High correlation + significant p (high mass) -> thinning (lower viscosity).
+    - Low correlation or low significance -> thermal turbulence (higher viscosity).
+    - Nonparametric compounds see additional viscous drag.
+    - Complex anchoring can drag a whole complex into high-entropy zones.
+    """
+
+    plane_eta = _plane_base_viscosity(plane)
+    entropy0 = float(np.clip(float(entropy), 0.0, 1.0))
+    variance0 = float(np.clip(float(variance), 0.0, 1.0))
+
+    # Strength should live in [0, 1] for all association methods.
+    strength = float(np.clip(abs(float(correlation_strength)), 0.0, 1.0))
+    mass_norm = float(np.clip(float(mass) / 6.0, 0.0, 1.0))
+
+    # Base viscosity of the medium (plane) + local entropy/variance contribution.
+    base_eta = plane_eta * max(1e-6, 0.25 + (entropy0 + variance0))
+
+    # Thermal turbulence: low strength and/or low significance increases viscosity.
+    turbulence = float(np.clip(0.70 * (1.0 - strength) + 0.30 * (1.0 - mass_norm), 0.0, 1.0))
+
+    # Statistical thinning: high strength with high mass reduces viscosity.
+    thinning = float(np.clip(strength * mass_norm, 0.0, 1.0))
+
+    # Translate factors into viscosity space; clamp to keep physics stable.
+    eta = base_eta * (1.0 + 0.60 * entropy0) * (1.0 + 0.90 * turbulence)
+    eta = eta * float(max(0.25, float(complex_drag)))
+    eta = eta - (base_eta * 0.85 * thinning)
+    eta = max(1e-6, float(eta))
+
+    if ionization == "nonparametric":
+        eta *= 1.35
+    if unstable:
+        eta *= 1.25
+
+    return float(max(1e-6, eta))
 
 
 def _safe_float(x: Any) -> float | None:
@@ -417,6 +494,403 @@ def _migration_state(terminal_velocity: float, viscosity: float) -> Literal["fre
     return "free"
 
 
+def _require_scipy() -> None:
+    if _sp_stats is None:
+        raise PredictorError(
+            "SciPy is required for the bio-stochastic electrophoresis engine (Shapiro-Wilk, Kruskal, chi-square, etc). "
+            "Install it with: pip install -r requirements/base.txt"
+        )
+
+
+def _shapiro_p(values: np.ndarray, *, max_n: int = 5000, seed: int = 0) -> float | None:
+    if _sp_stats is None:
+        return None
+    v = values[np.isfinite(values)].astype("float64")
+    if v.size < 8:
+        return None
+    if v.size > max_n:
+        rng = np.random.default_rng(int(seed))
+        v = rng.choice(v, size=int(max_n), replace=False)
+    # SciPy shapiro returns (stat, p)
+    try:
+        return float(_sp_stats.shapiro(v).pvalue)
+    except Exception:
+        return None
+
+
+def _ionization_from_p(normality_p: float | None, *, alpha: float = 0.05) -> Literal["parametric", "nonparametric"]:
+    if normality_p is None:
+        return "nonparametric"
+    return "parametric" if float(normality_p) > float(alpha) else "nonparametric"
+
+
+def _mass_from_p(p_value: float | None) -> tuple[float, bool]:
+    """Convert p-value to a stable 'mass' scalar.
+
+    Larger mass => more stable/impactful compound.
+    """
+
+    if p_value is None or not math.isfinite(float(p_value)):
+        return 0.0, False
+    p = float(max(1e-300, min(1.0, float(p_value))))
+    mass = float(np.clip(-math.log10(p), 0.0, 12.0))
+    stable = p <= 0.05
+    return mass, stable
+
+
+def _safe_pearsonr(x: np.ndarray, y: np.ndarray) -> tuple[float, float | None]:
+    if _sp_stats is None:
+        return _pearson_corr(x, y), None
+    mask = np.isfinite(x) & np.isfinite(y)
+    if int(mask.sum()) < 3:
+        return 0.0, None
+    try:
+        res = _sp_stats.pearsonr(x[mask], y[mask])
+        return float(res.statistic), float(res.pvalue)
+    except Exception:
+        return _pearson_corr(x, y), None
+
+
+def _safe_ttest_ind(a: np.ndarray, b: np.ndarray) -> float | None:
+    if _sp_stats is None:
+        return None
+    a0 = a[np.isfinite(a)]
+    b0 = b[np.isfinite(b)]
+    if a0.size < 3 or b0.size < 3:
+        return None
+    try:
+        return float(_sp_stats.ttest_ind(a0, b0, equal_var=False, nan_policy="omit").pvalue)
+    except Exception:
+        return None
+
+
+def _safe_mannwhitneyu(a: np.ndarray, b: np.ndarray) -> float | None:
+    if _sp_stats is None:
+        return None
+    a0 = a[np.isfinite(a)]
+    b0 = b[np.isfinite(b)]
+    if a0.size < 3 or b0.size < 3:
+        return None
+    try:
+        return float(_sp_stats.mannwhitneyu(a0, b0, alternative="two-sided").pvalue)
+    except Exception:
+        return None
+
+
+def _safe_kruskal(groups: list[np.ndarray]) -> float | None:
+    if _sp_stats is None:
+        return None
+    cleaned: list[np.ndarray] = []
+    for g in groups:
+        g0 = g[np.isfinite(g)]
+        if g0.size >= 3:
+            cleaned.append(g0)
+    if len(cleaned) < 2:
+        return None
+    try:
+        return float(_sp_stats.kruskal(*cleaned).pvalue)
+    except Exception:
+        return None
+
+
+def _safe_anova(groups: list[np.ndarray]) -> float | None:
+    if _sp_stats is None:
+        return None
+    cleaned: list[np.ndarray] = []
+    for g in groups:
+        g0 = g[np.isfinite(g)]
+        if g0.size >= 3:
+            cleaned.append(g0)
+    if len(cleaned) < 2:
+        return None
+    try:
+        return float(_sp_stats.f_oneway(*cleaned).pvalue)
+    except Exception:
+        return None
+
+
+def _safe_chi2_p(x_cat: np.ndarray, y_cat: np.ndarray) -> float | None:
+    if _sp_stats is None:
+        return None
+    try:
+        df = pd.DataFrame({"x": x_cat, "y": y_cat}).dropna()
+        if df.shape[0] < 5:
+            return None
+        ct = pd.crosstab(df["x"], df["y"])
+        if ct.shape[0] < 2 or ct.shape[1] < 2:
+            return None
+        _, p, _, _ = _sp_stats.chi2_contingency(ct.to_numpy(dtype="float64"), correction=False)
+        return float(p)
+    except Exception:
+        return None
+
+
+def _rank_biserial_from_u(u: float, n1: int, n2: int, *, direction: float) -> float:
+    # r_rb in [-1, 1]; direction should be +/-1 based on median difference.
+    denom = max(1.0, float(n1) * float(n2))
+    r = 1.0 - (2.0 * float(u) / denom)
+    r = float(np.clip(r, -1.0, 1.0))
+    return float(r * float(np.sign(direction) if direction != 0 else 1.0))
+
+
+def _compute_compound_association(
+    feature: pd.Series,
+    target: pd.Series,
+    feature_kind: FeatureKind,
+    target_kind: TargetKind,
+    *,
+    train_mask: np.ndarray,
+    random_seed: int,
+) -> tuple[float, str, bool, Literal["parametric", "nonparametric"], float | None, float | None, float, bool]:
+    """Bio-stochastic association.
+
+    Returns: (charge, method, signed, ionization, normality_p, p_value, mass, stable)
+    """
+
+    # Normality is defined for numeric-like features (compound ionization).
+    normality_p: float | None = None
+    if feature_kind in ("numeric", "datetime", "bool"):
+        normality_p = _shapiro_p(_to_float_array(feature[train_mask], kind=feature_kind), seed=random_seed)
+    ionization = _ionization_from_p(normality_p)
+
+    # Default: use existing association as charge.
+    charge, method, signed = _compute_association(feature[train_mask], target[train_mask], feature_kind, target_kind)
+    p_value: float | None = None
+
+    if target_kind in ("numeric", "datetime"):
+        y = _to_float_array(target, kind=target_kind)
+        if feature_kind in ("numeric", "datetime", "bool"):
+            x = _to_float_array(feature, kind=feature_kind)
+            r, p = _safe_pearsonr(x[train_mask], y[train_mask])
+            charge, method, signed = float(r), "pearson", True
+            p_value = p
+        else:
+            # Categorical feature vs numeric target: ANOVA (parametric) or Kruskal-Wallis (nonparam).
+            x_cat = feature.astype("string").fillna("__MISSING__")
+            groups = []
+            for cat in pd.unique(x_cat[train_mask]):
+                idx = (x_cat == cat).to_numpy() & train_mask
+                groups.append(y[idx])
+            p_value = _safe_anova(groups) if ionization == "parametric" else _safe_kruskal(groups)
+            # Direction isn't interpretable; keep eta.
+            charge, method, signed = _correlation_ratio(_to_category_array(x_cat[train_mask]), y[train_mask]), "eta", False
+
+    else:
+        # Target is categorical.
+        y_cat = target.astype("string").fillna("__MISSING__")
+        if feature_kind in ("numeric", "datetime", "bool"):
+            x = _to_float_array(feature, kind=feature_kind)
+            if _is_binary_categorical(y_cat[train_mask]):
+                labels = pd.unique(y_cat[train_mask].dropna())
+                positive = str(labels[0])
+                pos_mask = (y_cat.astype("string") == positive).to_numpy() & train_mask
+                neg_mask = (~pos_mask) & train_mask
+
+                x_pos = x[pos_mask]
+                x_neg = x[neg_mask]
+
+                if ionization == "parametric":
+                    p_value = _safe_ttest_ind(x_pos, x_neg)
+                    y01 = (y_cat.astype("string") == positive).astype("float64").to_numpy(dtype="float64")
+                    r, p = _safe_pearsonr(x, y01)
+                    charge, method, signed = float(r), "point_biserial", True
+                    p_value = p_value if p_value is not None else p
+                else:
+                    if _sp_stats is not None:
+                        try:
+                            res = _sp_stats.mannwhitneyu(
+                                x_pos[np.isfinite(x_pos)],
+                                x_neg[np.isfinite(x_neg)],
+                                alternative="two-sided",
+                            )
+                            p_value = float(res.pvalue)
+                            direction = float(np.nanmedian(x_pos) - np.nanmedian(x_neg))
+                            charge = _rank_biserial_from_u(float(res.statistic), int(np.isfinite(x_pos).sum()), int(np.isfinite(x_neg).sum()), direction=direction)
+                            method, signed = "mwu_rank_biserial", True
+                        except Exception:
+                            p_value = _safe_mannwhitneyu(x_pos, x_neg)
+                            charge, method, signed = _pearson_corr(x, (y_cat.astype("string") == positive).astype("float64").to_numpy(dtype="float64")), "point_biserial", True
+                    else:
+                        p_value = _safe_mannwhitneyu(x_pos, x_neg)
+                        charge, method, signed = _pearson_corr(x, (y_cat.astype("string") == positive).astype("float64").to_numpy(dtype="float64")), "point_biserial", True
+            else:
+                # Multi-class target: ANOVA or Kruskal across target classes.
+                groups = []
+                for cls in pd.unique(y_cat[train_mask]):
+                    idx = (y_cat == cls).to_numpy() & train_mask
+                    groups.append(x[idx])
+                p_value = _safe_anova(groups) if ionization == "parametric" else _safe_kruskal(groups)
+                charge, method, signed = _correlation_ratio(_to_category_array(y_cat[train_mask]), x[train_mask]), "eta", False
+        else:
+            # Categorical feature vs categorical target: chi-square p-value, cramers-v charge.
+            x_cat = _to_category_array(feature[train_mask])
+            y_arr = _to_category_array(y_cat[train_mask])
+            p_value = _safe_chi2_p(x_cat, y_arr)
+            charge, method, signed = _cramers_v(x_cat, y_arr), "cramers_v", False
+
+    mass, stable = _mass_from_p(p_value)
+    return float(charge), str(method), bool(signed), ionization, normality_p, p_value, float(mass), bool(stable)
+
+
+def _collinearity_complexes(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    feature_kinds: dict[str, FeatureKind],
+    *,
+    train_mask: np.ndarray,
+    threshold: float = 0.9,
+) -> tuple[dict[str, int], dict[int, list[str]], list[BondInfo]]:
+    """Detect multicollinearity complexes among numeric-like features."""
+
+    numeric_feats = [c for c in feature_cols if feature_kinds.get(c) in ("numeric", "datetime", "bool")]
+    if len(numeric_feats) < 2:
+        return {}, {}, []
+
+    # Build adjacency based on absolute Pearson correlation on train.
+    arrays: dict[str, np.ndarray] = {c: _to_float_array(df[c], kind=feature_kinds[c]) for c in numeric_feats}
+    edges: list[tuple[str, str, float]] = []
+    for i in range(len(numeric_feats)):
+        a = numeric_feats[i]
+        for j in range(i + 1, len(numeric_feats)):
+            b = numeric_feats[j]
+            corr = abs(_pearson_corr(arrays[a][train_mask], arrays[b][train_mask]))
+            if math.isfinite(corr) and corr >= float(threshold):
+                edges.append((a, b, float(corr)))
+
+    if not edges:
+        return {}, {}, []
+
+    graph: dict[str, set[str]] = {c: set() for c in numeric_feats}
+    for a, b, _ in edges:
+        graph[a].add(b)
+        graph[b].add(a)
+
+    complex_by_feature: dict[str, int] = {}
+    members_by_complex: dict[int, list[str]] = {}
+    complex_id = 1
+    for node in numeric_feats:
+        if node in complex_by_feature:
+            continue
+        if not graph[node]:
+            continue
+        stack = [node]
+        comp: list[str] = []
+        while stack:
+            cur = stack.pop()
+            if cur in complex_by_feature:
+                continue
+            complex_by_feature[cur] = complex_id
+            comp.append(cur)
+            for nxt in graph.get(cur, set()):
+                if nxt not in complex_by_feature:
+                    stack.append(nxt)
+        if len(comp) >= 2:
+            members_by_complex[complex_id] = sorted(comp)
+            complex_id += 1
+        else:
+            # singletons not complexes
+            complex_by_feature.pop(node, None)
+
+    col_bonds: list[BondInfo] = []
+    for a, b, corr in edges:
+        col_bonds.append(
+            BondInfo(
+                feature_a=a,
+                feature_b=b,
+                affinity=float(corr),
+                bonding_factor=float(1.0 + corr),
+                bond_type="collinearity",
+            )
+        )
+    return complex_by_feature, members_by_complex, col_bonds
+
+
+def _fractionate_kw_zones(
+    df: pd.DataFrame,
+    *,
+    feature_cols_used: list[str],
+    feature_kinds: dict[str, FeatureKind],
+    pI_map: dict[str, float],
+    target_series: pd.Series,
+    target_kind: TargetKind,
+    train_mask: np.ndarray,
+    start_zone_id: int = 100,
+    max_classes: int = 6,
+    max_levels: int = 8,
+) -> list[EquilibriumZone]:
+    """Fractionation sub-zoning using Kruskal-Wallis.
+
+    - For categorical targets (>=3 classes): numeric-like features are shattered into per-class sub-zones.
+    - For numeric targets: categorical features (>=3 levels) are shattered into per-level sub-zones.
+    """
+
+    zones: list[EquilibriumZone] = []
+    zid = int(start_zone_id)
+    try:
+        if target_kind == "categorical":
+            y_cat = target_series.astype("string").fillna("__MISSING__")
+            classes = list(pd.Series(y_cat[train_mask]).value_counts().index)
+            if len(classes) < 3:
+                return []
+            classes = classes[: max_classes]
+            for col in feature_cols_used:
+                fk = feature_kinds.get(col)
+                if fk not in ("numeric", "datetime", "bool"):
+                    continue
+                x = _to_float_array(df[col], kind=fk)
+                groups = []
+                for cls in classes:
+                    idx = (y_cat == str(cls)).to_numpy() & train_mask
+                    groups.append(x[idx])
+                p_kw = _safe_kruskal(groups)
+                if p_kw is None or float(p_kw) > 0.05:
+                    continue
+                feats = [f"{col}::{cls}" for cls in classes]
+                zones.append(
+                    EquilibriumZone(
+                        zone_id=int(zid),
+                        features=feats,
+                        avg_pI=float(pI_map.get(col, 0.5)),
+                        avg_momentum=0.0,
+                        strength=float(min(1.0, (-math.log10(max(1e-300, float(p_kw)))) / 6.0)),
+                    )
+                )
+                zid += 1
+        else:
+            y_num = _to_float_array(target_series, kind=target_kind)
+            for col in feature_cols_used:
+                fk = feature_kinds.get(col)
+                if fk != "categorical":
+                    continue
+                x_cat = df[col].astype("string").fillna("__MISSING__")
+                levels = list(pd.Series(x_cat[train_mask]).value_counts().index)
+                if len(levels) < 3:
+                    continue
+                levels = levels[: max_levels]
+                groups = []
+                for lv in levels:
+                    idx = (x_cat == str(lv)).to_numpy() & train_mask
+                    groups.append(y_num[idx])
+                p_kw = _safe_kruskal(groups)
+                if p_kw is None or float(p_kw) > 0.05:
+                    continue
+                feats = [f"{col}::{lv}" for lv in levels]
+                zones.append(
+                    EquilibriumZone(
+                        zone_id=int(zid),
+                        features=feats,
+                        avg_pI=float(pI_map.get(col, 0.5)),
+                        avg_momentum=0.0,
+                        strength=float(min(1.0, (-math.log10(max(1e-300, float(p_kw)))) / 6.0)),
+                    )
+                )
+                zid += 1
+    except Exception:
+        return []
+
+    return zones
+
+
 def _softmax(logits: np.ndarray) -> np.ndarray:
     x = logits - np.max(logits, axis=1, keepdims=True)
     ex = np.exp(np.clip(x, -60, 60))
@@ -705,7 +1179,9 @@ def run_physics_prediction(
     stage2_voltage_multiplier: float = 2.0,
     inhibition_strength: float = 0.7,
     scavenger_cycles: int = 1,
+    return_predictions: bool = False,
 ) -> PredictionResult:
+    _require_scipy()
     if target_col not in df.columns:
         raise PredictorError(f"Target column '{target_col}' not found. Columns: {list(df.columns)}")
 
@@ -717,12 +1193,34 @@ def run_physics_prediction(
     target_series = df[target_col]
     target_kind = infer_target_kind(target_series)
 
+    # Active Buffer ionization (numeric-like targets only).
+    buffer_normality_p: float | None = None
+    buffer_ionization: Literal["parametric", "nonparametric"] | None = None
+    if target_kind in ("numeric", "datetime"):
+        buffer_normality_p = _shapiro_p(
+            _to_float_array(target_series[train_mask], kind=target_kind),
+            seed=int(random_seed) + 9101,
+        )
+        buffer_ionization = _ionization_from_p(buffer_normality_p)
+
     feature_cols = _select_feature_columns(df, target_col)
     if not feature_cols:
         raise PredictorError("No features available (dataset only contains the target column)")
 
     feature_kinds: dict[str, FeatureKind] = {c: infer_feature_kind(df[c]) for c in feature_cols}
     bonds = _build_bonding_map(df[feature_cols][train_mask], feature_cols, feature_kinds, top_pairs=top_bond_pairs)
+
+    # Coupling (collinearity) bonds (added on top of general affinity bonds).
+    complex_by_feature, members_by_complex, col_bonds = _collinearity_complexes(
+        df,
+        feature_cols,
+        feature_kinds,
+        train_mask=train_mask,
+        threshold=0.9,
+    )
+    if col_bonds:
+        bonds = list(bonds) + list(col_bonds)
+
     bond_factors = _bonding_factors(feature_cols, bonds)
 
     pI_map: dict[str, float] = {}
@@ -737,13 +1235,32 @@ def run_physics_prediction(
     migration_map: list[MigrationInfo] = []
     plane_mobility = _plane_mobility(plane)
     neg_mult = _plane_negative_multiplier(plane)
+    unstable_features: set[str] = set()
+
+    # Pass 1: compute per-feature bio-stochastic stats on TRAIN (so complexes can interact).
+    compound_stats: dict[str, dict[str, Any]] = {}
     for col in feature_cols:
         feat = df[col]
         fk = feature_kinds[col]
-        w, method, signed = _compute_association(feat[train_mask], target_series[train_mask], fk, target_kind)
+        (
+            w,
+            method,
+            signed,
+            ionization,
+            normality_p,
+            p_value,
+            mass,
+            stable,
+        ) = _compute_compound_association(
+            feat,
+            target_series,
+            fk,
+            target_kind,
+            train_mask=train_mask,
+            random_seed=int(random_seed) + 7,
+        )
         if not math.isfinite(w):
             w = 0.0
-        weights.append(WeightInfo(feature=col, weight=float(w), method=method, feature_kind=fk, signed=signed))
 
         if fk in ("numeric", "datetime", "bool"):
             entropy, variance, stderr = _numeric_entropy_and_variance(_to_float_array(feat[train_mask], kind=fk))
@@ -752,14 +1269,116 @@ def run_physics_prediction(
 
         kl = _kl_for_feature(feat[train_mask], fk, global_numeric_ref, global_categorical_ref)
         certainty = 1.0 / (1.0 + max(0.0, float(stderr)))
-        density = (1.0 + max(0.0, kl)) * certainty
-        viscosity = max(1e-6, entropy + variance)
+        density_base = (1.0 + max(0.0, float(kl))) * float(certainty)
+
+        if not bool(stable):
+            unstable_features.add(col)
+
+        # Correlation/effect-size strength drives the target-gradient field.
+        strength = float(np.clip(abs(float(w)), 0.0, 1.0))
+
+        cid = complex_by_feature.get(col)
+        csize: int | None = None
+        if cid is not None:
+            csize = len(members_by_complex.get(int(cid), []))
+
+        compound_stats[col] = {
+            "w": float(w),
+            "method": str(method),
+            "signed": bool(signed),
+            "ionization": ionization,
+            "normality_p": normality_p,
+            "p_value": p_value,
+            "mass": float(mass),
+            "stable": bool(stable),
+            "strength": float(strength),
+            "entropy": float(entropy),
+            "variance": float(variance),
+            "stderr": float(stderr),
+            "kl": float(kl),
+            "density_base": float(density_base),
+            "complex_id": None if cid is None else int(cid),
+            "complex_size": None if csize is None else int(csize),
+        }
+
+    # Complex anchoring: a low-strength or unstable member can drag an entire complex.
+    complex_drag_by_id: dict[int, float] = {}
+    for cid, members in members_by_complex.items():
+        if not members:
+            continue
+        strengths = [float(compound_stats[m]["strength"]) for m in members if m in compound_stats]
+        if not strengths:
+            continue
+        avg_strength = float(np.mean(strengths))
+        unstable_ratio = float(
+            np.mean([1.0 if (m in unstable_features) else 0.0 for m in members if m in compound_stats])
+        )
+        has_anchor = any((compound_stats[m]["strength"] < 0.20) or (m in unstable_features) for m in members if m in compound_stats)
+        if not has_anchor:
+            complex_drag_by_id[int(cid)] = 1.0
+        else:
+            drag = 1.0 + 0.55 * float(max(0.0, 1.0 - avg_strength)) + 0.35 * float(np.clip(unstable_ratio, 0.0, 1.0))
+            complex_drag_by_id[int(cid)] = float(np.clip(drag, 1.0, 2.25))
+
+    # Pass 2: compute migration fields with target-gradient + complex interaction.
+    for col in feature_cols:
+        fk = feature_kinds[col]
+        s = compound_stats[col]
+        w = float(s["w"])
+        method = str(s["method"])
+        signed = bool(s["signed"])
+        ionization = s["ionization"]
+        normality_p = s["normality_p"]
+        p_value = s["p_value"]
+        mass_raw = float(s["mass"])
+        stable = bool(s["stable"])
+        strength = float(s["strength"])
+        entropy = float(s["entropy"])
+        variance = float(s["variance"])
+        stderr = float(s["stderr"])
+        kl = float(s["kl"])
+        density = float(s["density_base"])
+        cid = s["complex_id"]
+        csize: int | None = s["complex_size"]
+
+        # Complex-aware molecular weight: internal coupling and dimensionality add inertia.
+        complex_scale = 1.0
+        if csize is not None and int(csize) >= 2:
+            complex_scale = 1.0 + 0.18 * float(min(6, int(csize)) - 1)
+        mass = float(mass_raw * complex_scale)
+
+        # Density flux: significant compounds (high mass) carry more certainty weight.
+        mass_norm = float(np.clip(float(mass) / 6.0, 0.0, 1.0))
+        density *= 1.0 + 0.55 * mass_norm
+
+        # Coupling gives a mild density lift (transport coupling).
+        if csize is not None and int(csize) >= 2:
+            density *= 1.0 + 0.10 * float(min(6, int(csize)) - 1)
+
         bond_factor = bond_factors.get(col, 1.0)
+
+        complex_drag = 1.0
+        if cid is not None:
+            complex_drag = float(complex_drag_by_id.get(int(cid), 1.0))
+
+        viscosity = _calculate_viscosity_field(
+            plane=plane,
+            entropy=entropy,
+            variance=variance,
+            correlation_strength=strength,
+            mass=mass,
+            ionization=ionization,
+            unstable=(col in unstable_features),
+            complex_drag=complex_drag,
+        )
+
+        # F = m a analog: heavier complexes accelerate less.
+        inertia = float(1.0 + 0.90 * mass_norm)
 
         charge = float(w)
         if charge < 0:
             charge *= neg_mult
-        terminal_velocity = plane_mobility * (charge * density * bond_factor) / viscosity
+        terminal_velocity = plane_mobility * (charge * density * bond_factor) / (viscosity * inertia)
 
         if terminal_velocity > 1e-10:
             direction: Literal["pulled", "repelled", "neutral"] = "pulled"
@@ -768,12 +1387,24 @@ def run_physics_prediction(
         else:
             direction = "neutral"
 
+        state = _migration_state(terminal_velocity, viscosity)
+        if col in unstable_features and state == "free":
+            state = "dampened"
+
+        weights.append(WeightInfo(feature=col, weight=float(w), method=method, feature_kind=fk, signed=bool(signed)))
         migration_map.append(
             MigrationInfo(
                 feature=col,
                 feature_kind=fk,
                 method=method,
-                charge=float(w),
+                charge=float(charge),
+                ionization=ionization,
+                normality_p=normality_p,
+                p_value=p_value,
+                mass=float(mass),
+                stable=bool(stable),
+                complex_id=None if cid is None else int(cid),
+                complex_size=None if csize is None else int(csize),
                 entropy=float(entropy),
                 variance=float(variance),
                 standard_error=float(stderr),
@@ -783,7 +1414,7 @@ def run_physics_prediction(
                 terminal_velocity=float(terminal_velocity),
                 arrival_speed=float(abs(terminal_velocity)),
                 direction=direction,
-                state=_migration_state(terminal_velocity, viscosity),
+                state=state,
             )
         )
 
@@ -1035,7 +1666,7 @@ def run_physics_prediction(
                 feats_list = [str(x) for x in feats]
                 shattered_zones.append(
                     EquilibriumZone(
-                        zone_id=100 + k,
+                        zone_id=200 + k,
                         features=feats_list,
                         avg_pI=float(np.mean([pI_map.get(f, 0.5) for f in feats_list])),
                         avg_momentum=0.0,
@@ -1046,6 +1677,9 @@ def run_physics_prediction(
             # Scavenger pass: recycle the weakest third of Zone 1.
             waste_features = sorted(zone1_features, key=lambda f: abs(float(weights_by_feature[f].weight)))
             waste_features = waste_features[: max(1, len(waste_features) // 3)]
+            for f in sorted(unstable_features):
+                if f in zone1_features and f not in waste_features:
+                    waste_features.append(f)
             if int(scavenger_cycles) > 0 and waste_features:
                 lr3 = float(cycle_learning_rate) * 0.25
                 rng_scav = np.random.default_rng(int(random_seed) + 51017)
@@ -1128,6 +1762,23 @@ def run_physics_prediction(
                 pred_disp = None if not math.isfinite(predicted) else float(predicted)
             preview.append({"row": i, "actual": actual_disp, "predicted": pred_disp})
 
+        test_row_indices = None
+        test_actual = None
+        test_predicted = None
+        if return_predictions:
+            idx_list = [int(i) for i in test_indices.tolist()]
+            test_row_indices = idx_list
+            if target_kind == "datetime":
+                test_actual = [
+                    None if not math.isfinite(float(y[i])) else pd.to_datetime(int(y[i])).isoformat() for i in idx_list
+                ]
+                test_predicted = [
+                    None if not math.isfinite(float(pred[i])) else pd.to_datetime(int(pred[i])).isoformat() for i in idx_list
+                ]
+            else:
+                test_actual = [None if not math.isfinite(float(y[i])) else float(y[i]) for i in idx_list]
+                test_predicted = [None if not math.isfinite(float(pred[i])) else float(pred[i]) for i in idx_list]
+
         metrics = PredictionMetrics(
             target_kind=target_kind,
             n_rows=int(df.shape[0]),
@@ -1142,6 +1793,8 @@ def run_physics_prediction(
             baseline_rmse=float(baseline_rmse),
             best_cycle=best_cycle,
             best_lift=best_lift,
+            buffer_ionization=buffer_ionization,
+            buffer_normality_p=buffer_normality_p,
         )
 
         equilibrium_zones: list[EquilibriumZone] = []
@@ -1162,6 +1815,19 @@ def run_physics_prediction(
         if shattered_zones:
             equilibrium_zones.extend(shattered_zones)
 
+        equilibrium_zones.extend(
+            _fractionate_kw_zones(
+                df,
+                feature_cols_used=feature_cols_used,
+                feature_kinds=feature_kinds,
+                pI_map=pI_map,
+                target_series=target_series,
+                target_kind=target_kind,
+                train_mask=train_mask,
+                start_zone_id=100,
+            )
+        )
+
         return PredictionResult(
             target=target_col,
             target_kind=target_kind,
@@ -1173,6 +1839,9 @@ def run_physics_prediction(
             iteration_gains=iteration_gains,
             metrics=metrics,
             preview_rows=preview,
+            test_row_indices=test_row_indices,
+            test_actual=test_actual,
+            test_predicted=test_predicted,
         )
 
     # Categorical target: one-vs-rest scoring for up to max_classes classes.
@@ -1451,7 +2120,7 @@ def run_physics_prediction(
             feats_list = [str(x) for x in feats]
             shattered_zones.append(
                 EquilibriumZone(
-                    zone_id=100 + k,
+                    zone_id=200 + k,
                     features=feats_list,
                     avg_pI=float(np.mean([pI_map.get(f, 0.5) for f in feats_list])),
                     avg_momentum=float(0.0),
@@ -1462,6 +2131,9 @@ def run_physics_prediction(
         # Residual recycling: send the "waste" (lowest-signal third) back for a scavenger pass.
         waste_features = sorted(zone1_features, key=lambda f: abs(float(feature_info[f].weight)))
         waste_features = waste_features[: max(1, len(waste_features) // 3)]
+        for f in sorted(unstable_features):
+            if f in zone1_features and f not in waste_features:
+                waste_features.append(f)
         if scavenger_cycles > 0 and waste_features:
             rng2 = np.random.default_rng(int(random_seed) + 50021)
             lr3 = float(cycle_learning_rate) * 0.25
@@ -1554,6 +2226,16 @@ def run_physics_prediction(
         i = int(idx)
         preview.append({"row": i, "actual": str(y_cat.iloc[i]), "predicted": str(pred_labels[i])})
 
+    test_row_indices = None
+    test_actual = None
+    test_predicted = None
+    if return_predictions:
+        idx_list = [int(i) for i in test_indices.tolist()]
+        test_row_indices = idx_list
+        # Ensure plain Python strings for JSON/metrics tooling.
+        test_actual = [str(x) for x in y_cat.iloc[idx_list].to_list()]
+        test_predicted = [str(x) for x in pred_all[test_mask].tolist()]
+
     metrics = PredictionMetrics(
         target_kind=target_kind,
         n_rows=int(df.shape[0]),
@@ -1566,6 +2248,8 @@ def run_physics_prediction(
         baseline_accuracy=baseline_accuracy,
         best_cycle=None if best_iter is None else int(best_iter.cycle),
         best_lift=None if best_iter is None else float(best_iter.lift_over_baseline),
+        buffer_ionization=buffer_ionization,
+        buffer_normality_p=buffer_normality_p,
     )
 
     # Output equilibrium zones = Stage 1 zones + (optional) Stage 2 shattered zones.
@@ -1590,6 +2274,19 @@ def run_physics_prediction(
     if _cascade_shattered_zones:
         equilibrium_zones.extend(_cascade_shattered_zones)
 
+    equilibrium_zones.extend(
+        _fractionate_kw_zones(
+            df,
+            feature_cols_used=feature_cols_used,
+            feature_kinds=feature_kinds,
+            pI_map=pI_map,
+            target_series=target_series,
+            target_kind=target_kind,
+            train_mask=train_mask,
+            start_zone_id=100,
+        )
+    )
+
     return PredictionResult(
         target=target_col,
         target_kind=target_kind,
@@ -1601,4 +2298,7 @@ def run_physics_prediction(
         iteration_gains=iteration_gains,
         metrics=metrics,
         preview_rows=preview,
+        test_row_indices=test_row_indices,
+        test_actual=test_actual,
+        test_predicted=test_predicted,
     )
