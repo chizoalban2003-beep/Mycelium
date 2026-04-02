@@ -25,7 +25,7 @@ async def electrophoresis_predict(
     no_split: bool = Form(False),
     cascade_enabled: bool = Form(True),
     competitive_inhibition: bool = Form(True),
-    thermal_noise: bool = Form(True),
+    thermal_noise: bool = Form(False),
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -112,8 +112,14 @@ async def electrophoresis_predict(
             "iteration_gains": [
                 {
                     "cycle": int(it.cycle),
-                    "test_accuracy": round(float(it.test_accuracy), 6),
-                    "lift_over_baseline": round(float(it.lift_over_baseline), 6),
+                    "test_accuracy": None
+                    if it.test_accuracy is None
+                    else round(float(it.test_accuracy), 6),
+                    "test_mae": None if it.test_mae is None else round(float(it.test_mae), 6),
+                    "test_rmse": None if it.test_rmse is None else round(float(it.test_rmse), 6),
+                    "lift_over_baseline": None
+                    if it.lift_over_baseline is None
+                    else round(float(it.lift_over_baseline), 6),
                 }
                 for it in pred.iteration_gains
             ],
@@ -137,6 +143,12 @@ async def electrophoresis_predict(
                 "n_features_used": pred.metrics.n_features_used,
                 "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
                 "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
+                "baseline_mae": None
+                if pred.metrics.baseline_mae is None
+                else round(float(pred.metrics.baseline_mae), 6),
+                "baseline_rmse": None
+                if pred.metrics.baseline_rmse is None
+                else round(float(pred.metrics.baseline_rmse), 6),
                 "accuracy": None if pred.metrics.accuracy is None else round(float(pred.metrics.accuracy), 6),
                 "baseline_accuracy": None
                 if pred.metrics.baseline_accuracy is None

@@ -215,6 +215,14 @@ def predict_page(
             "train_ratio": 0.8,
             "random_seed": 42,
             "no_split": False,
+            "n_cycles": 30,
+            "cycle_learning_rate": 0.18,
+            "cascade_enabled": True,
+            "competitive_inhibition": True,
+            "thermal_noise": False,
+            "stage2_cycles": 2,
+            "inhibition_strength": 0.7,
+            "scavenger_cycles": 1,
         },
     )
 
@@ -231,6 +239,14 @@ async def predict_action(
     random_seed: int = Form(42),
     no_split: str | None = Form(None),
     max_rows: int = Form(5000),
+    n_cycles: int = Form(30),
+    cycle_learning_rate: float = Form(0.18),
+    cascade_enabled: str | None = Form(None),
+    competitive_inhibition: str | None = Form(None),
+    thermal_noise: str | None = Form(None),
+    stage2_cycles: int = Form(2),
+    inhibition_strength: float = Form(0.7),
+    scavenger_cycles: int = Form(1),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -270,6 +286,41 @@ async def predict_action(
                 train_ratio = 0.8
             train_ratio = max(0.05, min(0.95, train_ratio))
 
+        # Advanced electrophoresis controls (safe parsing + clamping)
+        try:
+            n_cycles = int(n_cycles)
+        except Exception:
+            n_cycles = 30
+        n_cycles = max(1, min(200, n_cycles))
+
+        try:
+            cycle_learning_rate = float(cycle_learning_rate)
+        except Exception:
+            cycle_learning_rate = 0.18
+        cycle_learning_rate = max(0.01, min(1.0, cycle_learning_rate))
+
+        try:
+            stage2_cycles = int(stage2_cycles)
+        except Exception:
+            stage2_cycles = 2
+        stage2_cycles = max(0, min(50, stage2_cycles))
+
+        try:
+            inhibition_strength = float(inhibition_strength)
+        except Exception:
+            inhibition_strength = 0.7
+        inhibition_strength = max(0.0, min(2.0, inhibition_strength))
+
+        try:
+            scavenger_cycles = int(scavenger_cycles)
+        except Exception:
+            scavenger_cycles = 1
+        scavenger_cycles = max(0, min(10, scavenger_cycles))
+
+        cascade_enabled_bool = bool(cascade_enabled)
+        competitive_inhibition_bool = bool(competitive_inhibition)
+        thermal_noise_bool = bool(thermal_noise)
+
         pred = run_physics_prediction(
             df,
             target_col=target_col,
@@ -277,6 +328,14 @@ async def predict_action(
             train_fraction=float(train_ratio),
             random_seed=int(random_seed),
             top_k_weights=top_k,
+            n_cycles=n_cycles,
+            cycle_learning_rate=cycle_learning_rate,
+            cascade_enabled=cascade_enabled_bool,
+            competitive_inhibition=competitive_inhibition_bool,
+            thermal_noise=thermal_noise_bool,
+            stage2_cycles=stage2_cycles,
+            inhibition_strength=inhibition_strength,
+            scavenger_cycles=scavenger_cycles,
         )
 
         result = {
@@ -324,8 +383,14 @@ async def predict_action(
             "iteration_gains": [
                 {
                     "cycle": int(it.cycle),
-                    "test_accuracy": round(float(it.test_accuracy), 6),
-                    "lift_over_baseline": round(float(it.lift_over_baseline), 6),
+                    "test_accuracy": None
+                    if it.test_accuracy is None
+                    else round(float(it.test_accuracy), 6),
+                    "test_mae": None if it.test_mae is None else round(float(it.test_mae), 6),
+                    "test_rmse": None if it.test_rmse is None else round(float(it.test_rmse), 6),
+                    "lift_over_baseline": None
+                    if it.lift_over_baseline is None
+                    else round(float(it.lift_over_baseline), 6),
                 }
                 for it in pred.iteration_gains
             ],
@@ -349,6 +414,12 @@ async def predict_action(
                 "n_features_used": pred.metrics.n_features_used,
                 "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
                 "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
+                "baseline_mae": None
+                if pred.metrics.baseline_mae is None
+                else round(float(pred.metrics.baseline_mae), 6),
+                "baseline_rmse": None
+                if pred.metrics.baseline_rmse is None
+                else round(float(pred.metrics.baseline_rmse), 6),
                 "accuracy": None if pred.metrics.accuracy is None else round(float(pred.metrics.accuracy), 6),
                 "baseline_accuracy": None
                 if pred.metrics.baseline_accuracy is None
@@ -380,5 +451,13 @@ async def predict_action(
             "train_ratio": train_ratio,
             "random_seed": random_seed,
             "no_split": bool(no_split),
+            "n_cycles": n_cycles,
+            "cycle_learning_rate": cycle_learning_rate,
+            "cascade_enabled": cascade_enabled_bool,
+            "competitive_inhibition": competitive_inhibition_bool,
+            "thermal_noise": thermal_noise_bool,
+            "stage2_cycles": stage2_cycles,
+            "inhibition_strength": inhibition_strength,
+            "scavenger_cycles": scavenger_cycles,
         },
     )
