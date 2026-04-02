@@ -78,6 +78,11 @@ class PredictionMetrics:
     best_lift: float | None = None
     buffer_ionization: Literal["parametric", "nonparametric"] | None = None
     buffer_normality_p: float | None = None
+    gel_band_sharpness: float | None = None
+    gel_smearing: float | None = None
+    gel_ghost_band_rate: float | None = None
+    gel_confidence_mean: float | None = None
+    gel_confidence_std: float | None = None
 
 
 @dataclass(frozen=True)
@@ -1155,6 +1160,66 @@ def _numeric_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float, flo
     return mae, rmse
 
 
+def _normalized_entropy(probs: np.ndarray) -> np.ndarray:
+    if probs.size == 0:
+        return np.zeros((0,), dtype="float64")
+    k = int(probs.shape[1]) if probs.ndim == 2 else 1
+    if k <= 1:
+        return np.zeros((int(probs.shape[0]),), dtype="float64")
+    p = np.clip(probs.astype("float64"), 1e-12, 1.0)
+    h = -np.sum(p * np.log(p), axis=1)
+    return (h / max(1e-12, float(np.log(float(k))))).astype("float64")
+
+
+def _gel_health_regression(y_true: np.ndarray, y_pred: np.ndarray) -> tuple[float | None, float | None, float | None]:
+    mask = np.isfinite(y_true) & np.isfinite(y_pred)
+    if int(mask.sum()) < 8:
+        return None, None, None
+    yt = y_true[mask]
+    yp = y_pred[mask]
+    resid = yp - yt
+    rmse = float(math.sqrt(float(np.mean(resid**2))))
+    scale = float(np.nanstd(yt))
+    rmse_norm = rmse / max(1e-9, scale)
+    band_sharpness = float(np.clip(1.0 / (1.0 + rmse_norm), 0.0, 1.0))
+    smearing = float(np.clip(rmse_norm, 0.0, 1.0))
+
+    med = float(np.nanmedian(resid))
+    mad = float(np.nanmedian(np.abs(resid - med)))
+    thr = 3.5 * max(1e-9, mad)
+    ghost_rate = float(np.mean((np.abs(resid - med) > thr).astype("float64")))
+    return band_sharpness, smearing, float(np.clip(ghost_rate, 0.0, 1.0))
+
+
+def _gel_health_classification(
+    probs: np.ndarray,
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    *,
+    high_conf_threshold: float = 0.75,
+) -> tuple[float | None, float | None, float | None, float | None, float | None]:
+    if probs.size == 0 or probs.ndim != 2:
+        return None, None, None, None, None
+    if y_true.size == 0 or y_pred.size == 0:
+        return None, None, None, None, None
+    n = int(min(len(probs), len(y_true), len(y_pred)))
+    if n < 8:
+        return None, None, None, None, None
+    p0 = probs[:n]
+    yt = y_true[:n]
+    yp = y_pred[:n]
+    conf = np.max(p0, axis=1)
+    conf_mean = float(np.mean(conf))
+    conf_std = float(np.std(conf))
+    entropy_mean = float(np.mean(_normalized_entropy(p0)))
+
+    band_sharpness = float(np.clip(conf_mean - conf_std, 0.0, 1.0))
+    smearing = float(np.clip(entropy_mean, 0.0, 1.0))
+    wrong = (yt != yp)
+    ghost_rate = float(np.mean(((conf >= float(high_conf_threshold)) & wrong).astype("float64")))
+    return band_sharpness, smearing, float(np.clip(ghost_rate, 0.0, 1.0)), conf_mean, conf_std
+
+
 def run_physics_prediction(
     df: pd.DataFrame,
     *,
@@ -1525,7 +1590,7 @@ def run_physics_prediction(
                 bond_factor = bond_factors.get(col, 1.0)
                 certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                 density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
-                eta_base = max(1e-6, medium.entropy + medium.variance)
+                eta_base = max(1e-6, medium.viscosity)
                 eta_dynamic = max(1e-6, eta_base / (1.0 + shear_alpha * abs(charge) * bond_factor))
 
                 inhibition = 0.0
@@ -1615,7 +1680,7 @@ def run_physics_prediction(
                     bond_factor = bond_factors.get(col, 1.0)
                     certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                     density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
-                    eta_base = max(1e-6, medium.entropy + medium.variance)
+                    eta_base = max(1e-6, medium.viscosity)
                     eta_dynamic = max(1e-6, eta_base / (1.0 + shear_alpha * abs(charge) * bond_factor))
 
                     inhibition = 0.0
@@ -1702,7 +1767,7 @@ def run_physics_prediction(
                         bond_factor = bond_factors.get(col, 1.0)
                         certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                         density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
-                        eta_base = max(1e-6, medium.entropy + medium.variance)
+                        eta_base = max(1e-6, medium.viscosity)
                         eta_dynamic = max(1e-6, eta_base / (1.0 + shear_alpha * abs(charge) * bond_factor))
                         if thermal_noise and sc_cycle <= int(thermal_noise_cycles):
                             eta_dynamic = max(
@@ -1795,6 +1860,9 @@ def run_physics_prediction(
             best_lift=best_lift,
             buffer_ionization=buffer_ionization,
             buffer_normality_p=buffer_normality_p,
+            gel_band_sharpness=_gel_health_regression(y[test_mask], pred[test_mask])[0],
+            gel_smearing=_gel_health_regression(y[test_mask], pred[test_mask])[1],
+            gel_ghost_band_rate=_gel_health_regression(y[test_mask], pred[test_mask])[2],
         )
 
         equilibrium_zones: list[EquilibriumZone] = []
@@ -1961,7 +2029,7 @@ def run_physics_prediction(
                 bond_factor = bond_factors.get(col, 1.0)
                 certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                 density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
-                eta_base = max(1e-6, medium.entropy + medium.variance)
+                eta_base = max(1e-6, medium.viscosity)
                 eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
 
                 inhibition = 0.0
@@ -2065,7 +2133,7 @@ def run_physics_prediction(
                     certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                     density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
 
-                    eta_base = max(1e-6, medium.entropy + medium.variance)
+                    eta_base = max(1e-6, medium.viscosity)
                     eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
 
                     inhibition = 0.0
@@ -2167,7 +2235,7 @@ def run_physics_prediction(
                         certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                         density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
 
-                        eta_base = max(1e-6, medium.entropy + medium.variance)
+                        eta_base = max(1e-6, medium.viscosity)
                         eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
                         if thermal_noise and sc_cycle <= int(thermal_noise_cycles):
                             eta_dynamic = max(
@@ -2218,6 +2286,18 @@ def run_physics_prediction(
     y_all = y_cat.to_numpy(dtype="object")
     pred_all = np.array(pred_labels, dtype="object")
     accuracy = float(np.mean((y_all[test_mask] == pred_all[test_mask]).astype("float64")))
+
+    # PCR-style gel readout on TEST only.
+    probs_test = probs[test_mask]
+    y_true_test = y_all[test_mask]
+    y_pred_test = pred_all[test_mask]
+    (
+        gel_sharp,
+        gel_smear,
+        gel_ghost,
+        gel_conf_mean,
+        gel_conf_std,
+    ) = _gel_health_classification(probs_test, y_true_test, y_pred_test)
     best_iter = max(iteration_gains, key=lambda it: it.test_accuracy) if iteration_gains else None
 
     preview = []
@@ -2250,6 +2330,11 @@ def run_physics_prediction(
         best_lift=None if best_iter is None else float(best_iter.lift_over_baseline),
         buffer_ionization=buffer_ionization,
         buffer_normality_p=buffer_normality_p,
+        gel_band_sharpness=gel_sharp,
+        gel_smearing=gel_smear,
+        gel_ghost_band_rate=gel_ghost,
+        gel_confidence_mean=gel_conf_mean,
+        gel_confidence_std=gel_conf_std,
     )
 
     # Output equilibrium zones = Stage 1 zones + (optional) Stage 2 shattered zones.

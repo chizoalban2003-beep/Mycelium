@@ -147,6 +147,19 @@
             {% if result.metrics.rmse is not none %}
               <div><span class="text-slate-400">RMSE:</span> {{ result.metrics.rmse }}{% if result.target_kind == 'datetime' %} seconds{% endif %}</div>
             {% endif %}
+            {% if result.metrics.gel_band_sharpness is not none %}
+              <div class="pt-2 border-t border-slate-800"></div>
+              <div><span class="text-slate-400">Gel band sharpness:</span> {{ result.metrics.gel_band_sharpness }}</div>
+              {% if result.metrics.gel_smearing is not none %}
+                <div><span class="text-slate-400">Gel smearing (entropy):</span> {{ result.metrics.gel_smearing }}</div>
+              {% endif %}
+              {% if result.metrics.gel_ghost_band_rate is not none %}
+                <div><span class="text-slate-400">Ghost band rate:</span> {{ result.metrics.gel_ghost_band_rate }}</div>
+              {% endif %}
+              {% if result.metrics.gel_confidence_mean is not none %}
+                <div><span class="text-slate-400">Mean confidence:</span> {{ result.metrics.gel_confidence_mean }}{% if result.metrics.gel_confidence_std is not none %} (σ={{ result.metrics.gel_confidence_std }}){% endif %}</div>
+              {% endif %}
+            {% endif %}
           </div>
         </div>
 

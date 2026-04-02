@@ -167,6 +167,21 @@ async def electrophoresis_predict(
                 else round(float(pred.metrics.baseline_accuracy), 6),
                 "best_cycle": pred.metrics.best_cycle,
                 "best_lift": None if pred.metrics.best_lift is None else round(float(pred.metrics.best_lift), 6),
+                "gel_band_sharpness": None
+                if pred.metrics.gel_band_sharpness is None
+                else round(float(pred.metrics.gel_band_sharpness), 6),
+                "gel_smearing": None
+                if pred.metrics.gel_smearing is None
+                else round(float(pred.metrics.gel_smearing), 6),
+                "gel_ghost_band_rate": None
+                if pred.metrics.gel_ghost_band_rate is None
+                else round(float(pred.metrics.gel_ghost_band_rate), 6),
+                "gel_confidence_mean": None
+                if pred.metrics.gel_confidence_mean is None
+                else round(float(pred.metrics.gel_confidence_mean), 6),
+                "gel_confidence_std": None
+                if pred.metrics.gel_confidence_std is None
+                else round(float(pred.metrics.gel_confidence_std), 6),
             },
             "preview": pred.preview_rows,
         }
