@@ -293,6 +293,52 @@ async def predict_action(
                 }
                 for w in pred.weights
             ],
+            "migration_map": [
+                {
+                    "feature": m.feature,
+                    "kind": m.feature_kind,
+                    "method": m.method,
+                    "charge": round(float(m.charge), 6),
+                    "entropy": round(float(m.entropy), 6),
+                    "variance": round(float(m.variance), 6),
+                    "standard_error": round(float(m.standard_error), 6),
+                    "kl_divergence": round(float(m.kl_divergence), 6),
+                    "density": round(float(m.density), 6),
+                    "viscosity": round(float(m.viscosity), 6),
+                    "terminal_velocity": round(float(m.terminal_velocity), 6),
+                    "arrival_speed": round(float(m.arrival_speed), 6),
+                    "direction": m.direction,
+                    "state": m.state,
+                }
+                for m in pred.migration_map
+            ],
+            "bonding_map": [
+                {
+                    "feature_a": b.feature_a,
+                    "feature_b": b.feature_b,
+                    "affinity": round(float(b.affinity), 6),
+                    "bonding_factor": round(float(b.bonding_factor), 6),
+                }
+                for b in pred.bonding_map
+            ],
+            "iteration_gains": [
+                {
+                    "cycle": int(it.cycle),
+                    "test_accuracy": round(float(it.test_accuracy), 6),
+                    "lift_over_baseline": round(float(it.lift_over_baseline), 6),
+                }
+                for it in pred.iteration_gains
+            ],
+            "equilibrium_zones": [
+                {
+                    "zone_id": int(ez.zone_id),
+                    "features": ez.features,
+                    "avg_pI": round(float(ez.avg_pI), 6),
+                    "avg_momentum": round(float(ez.avg_momentum), 6),
+                    "strength": round(float(ez.strength), 6),
+                }
+                for ez in pred.equilibrium_zones
+            ],
             "metrics": {
                 "target_kind": pred.metrics.target_kind,
                 "n_rows": pred.metrics.n_rows,
@@ -304,6 +350,11 @@ async def predict_action(
                 "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
                 "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
                 "accuracy": None if pred.metrics.accuracy is None else round(float(pred.metrics.accuracy), 6),
+                "baseline_accuracy": None
+                if pred.metrics.baseline_accuracy is None
+                else round(float(pred.metrics.baseline_accuracy), 6),
+                "best_cycle": pred.metrics.best_cycle,
+                "best_lift": None if pred.metrics.best_lift is None else round(float(pred.metrics.best_lift), 6),
             },
             "preview": pred.preview_rows,
         }
