@@ -23,6 +23,9 @@ async def electrophoresis_predict(
     train_ratio: float = Form(0.8),
     random_seed: int = Form(42),
     no_split: bool = Form(False),
+    cascade_enabled: bool = Form(True),
+    competitive_inhibition: bool = Form(True),
+    thermal_noise: bool = Form(True),
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -58,6 +61,9 @@ async def electrophoresis_predict(
             train_fraction=float(train_ratio),
             random_seed=int(random_seed),
             top_k_weights=top_k,
+            cascade_enabled=bool(cascade_enabled),
+            competitive_inhibition=bool(competitive_inhibition),
+            thermal_noise=bool(thermal_noise),
         )
 
         return {

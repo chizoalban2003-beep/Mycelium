@@ -692,6 +692,15 @@ def run_physics_prediction(
     shear_alpha: float = 0.75,
     top_bond_pairs: int = 20,
     n_zones: int = 5,
+    cascade_enabled: bool = True,
+    competitive_inhibition: bool = True,
+    thermal_noise: bool = True,
+    thermal_noise_cycles: int = 3,
+    thermal_noise_level: float = 0.10,
+    stage2_cycles: int = 6,
+    stage2_voltage_multiplier: float = 2.0,
+    inhibition_strength: float = 0.9,
+    scavenger_cycles: int = 2,
 ) -> PredictionResult:
     if target_col not in df.columns:
         raise PredictorError(f"Target column '{target_col}' not found. Columns: {list(df.columns)}")
@@ -897,6 +906,51 @@ def run_physics_prediction(
     feature_info = {w.feature: w for w in weights_used}
     feature_cols_used = [w.feature for w in weights_used]
 
+    # Stage 1 (Primary Sorting): compute stable zones based on pI positions.
+    feature_positions_stage1: dict[str, float] = {col: pI_map.get(col, 0.5) for col in feature_cols_used}
+    zone_assignment_stage1 = _discretize_into_zones(feature_positions_stage1, n_zones=n_zones)
+    zone_bins_stage1: dict[int, list[str]] = {i: [] for i in range(n_zones)}
+    for feat, zid in zone_assignment_stage1.items():
+        zone_bins_stage1[int(zid)].append(feat)
+    # Zone 1 complex = highest interaction bin (largest by feature count).
+    zone1_features = list(max(zone_bins_stage1.values(), key=lambda xs: len(xs), default=[]))
+
+    dominant_global = max(feature_cols_used, key=lambda f: abs(migration_by_feature[f].terminal_velocity))
+    dominant_global_kind = feature_kinds[dominant_global]
+    affinity_to_global_dominant: dict[str, float] = {}
+    for f in feature_cols_used:
+        if f == dominant_global:
+            affinity_to_global_dominant[f] = 0.0
+        else:
+            affinity_to_global_dominant[f] = float(
+                _feature_affinity(
+                    df[f][train_mask],
+                    feature_kinds[f],
+                    df[dominant_global][train_mask],
+                    dominant_global_kind,
+                )
+            )
+
+    # If the largest bin is too small to fractionate, define Zone 1 as the dominant feature
+    # plus its strongest bonded neighbors (high-interaction complex).
+    if len(zone1_features) < 3 and len(feature_cols_used) >= 3:
+        neighbors: list[tuple[float, str]] = []
+        for b in bonds:
+            if b.feature_a == dominant_global:
+                neighbors.append((float(b.affinity), b.feature_b))
+            elif b.feature_b == dominant_global:
+                neighbors.append((float(b.affinity), b.feature_a))
+        neighbors.sort(key=lambda t: t[0], reverse=True)
+        zone1_features = [dominant_global] + [n for _, n in neighbors if n != dominant_global]
+        # Pad by weight if needed.
+        if len(zone1_features) < 3:
+            for f in feature_cols_used:
+                if f not in zone1_features:
+                    zone1_features.append(f)
+                if len(zone1_features) >= 3:
+                    break
+        zone1_features = zone1_features[: min(len(zone1_features), len(feature_cols_used))]
+
     # Precompute feature numeric encodings for binary targets.
     x_encoded_by_feature: dict[str, np.ndarray] = {}
     for col in feature_cols_used:
@@ -922,6 +976,8 @@ def run_physics_prediction(
     n_cycles_eff = max(1, int(n_cycles))
     lr = float(cycle_learning_rate)
     shear = max(0.0, float(shear_alpha))
+    grad1 = 0.35
+    rng_stage1 = np.random.default_rng(int(random_seed) + 30011)
 
     for cycle in range(1, n_cycles_eff + 1):
         cycle_update = np.zeros_like(logits)
@@ -956,10 +1012,26 @@ def run_physics_prediction(
                 eta_base = max(1e-6, medium.entropy + medium.variance)
                 eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
 
+                inhibition = 0.0
+                if competitive_inhibition and col != dominant_global:
+                    inhibition = float(inhibition_strength) * abs(float(affinity_to_global_dominant.get(col, 0.0)))
+
+                thermal_term = 0.0
+                if thermal_noise and cycle <= int(thermal_noise_cycles):
+                    eta_dynamic = max(
+                        1e-6,
+                        eta_dynamic
+                        * (1.0 + rng_stage1.uniform(-float(thermal_noise_level), float(thermal_noise_level))),
+                    )
+                    thermal_term = float(rng_stage1.normal(0.0, float(thermal_noise_level))) * abs(float(charge))
+
                 eff_charge = float(charge)
                 if eff_charge < 0:
                     eff_charge *= neg_mult
-                v = plane_mobility * (eff_charge * density * bond_factor) / eta_dynamic
+                q = eff_charge * density * bond_factor
+                x_pos = float(pI_map.get(col, 0.5))
+                field = float(plane_mobility) - float(grad1) * x_pos
+                v = (q * field + thermal_term) / (eta_dynamic + inhibition)
 
                 denom += abs(v)
                 class_score += v * z
@@ -980,6 +1052,209 @@ def run_physics_prediction(
                 lift_over_baseline=test_acc - baseline_accuracy,
             )
         )
+
+    # Stage 2 (Fractional Distillation): automatically re-focus the strongest cluster (Zone 1)
+    # with higher field strength + narrower gradient, plus inhibition + thermal noise.
+    if cascade_enabled and len(zone1_features) >= 3:
+        # Narrowed gradient: use variance within the cluster relative to global feature variance.
+        global_var = float(np.mean([m.variance for m in migration_map])) if migration_map else 1.0
+        cluster_var = float(np.mean([migration_by_feature[f].variance for f in zone1_features]))
+        grad = float(np.clip(0.55 * (cluster_var / (global_var + 1e-9)), 0.05, 0.9))
+        E = float(stage2_voltage_multiplier) * float(plane_mobility)
+
+        rng = np.random.default_rng(int(random_seed) + 40007)
+        lr2 = float(cycle_learning_rate) * 0.75
+
+        dominant = max(zone1_features, key=lambda f: abs(migration_by_feature[f].terminal_velocity))
+        dominant_kind = feature_kinds[dominant]
+        affinity_to_dominant: dict[str, float] = {}
+        for f in zone1_features:
+            if f == dominant:
+                affinity_to_dominant[f] = 0.0
+            else:
+                affinity_to_dominant[f] = float(
+                    _feature_affinity(
+                        df[f][train_mask],
+                        feature_kinds[f],
+                        df[dominant][train_mask],
+                        dominant_kind,
+                    )
+                )
+
+        n2 = max(1, int(stage2_cycles))
+        for stage_cycle in range(1, n2 + 1):
+            cycle_update = np.zeros_like(logits)
+            for j, cls in enumerate(classes):
+                y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
+                p = _sigmoid(logits[:, j])
+                residual = y01 - p
+                residual_train = residual[train_mask]
+
+                class_score = np.zeros(df.shape[0], dtype="float64")
+                denom = 0.0
+
+                for col in zone1_features:
+                    fk = feature_info[col].feature_kind
+                    if fk in ("numeric", "datetime", "bool"):
+                        x_raw = x_encoded_by_feature[col]
+                    else:
+                        x_cat = df[col].astype("string").fillna("__MISSING__")
+                        tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                        rates = tmp.groupby("x")["r"].mean()
+                        x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
+
+                    z = _zscore_with_train_stats(x_raw, train_mask)
+                    charge = _pearson_corr(z[train_mask], residual_train)
+                    if not math.isfinite(charge) or abs(charge) < 1e-8:
+                        continue
+
+                    medium = migration_by_feature[col]
+                    bond_factor = bond_factors.get(col, 1.0)
+                    certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
+                    density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
+
+                    eta_base = max(1e-6, medium.entropy + medium.variance)
+                    eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
+
+                    inhibition = 0.0
+                    if competitive_inhibition and col != dominant:
+                        inhibition = float(inhibition_strength) * abs(float(affinity_to_dominant.get(col, 0.0)))
+
+                    thermal_term = 0.0
+                    if thermal_noise and stage_cycle <= int(thermal_noise_cycles):
+                        eta_dynamic = max(
+                            1e-6,
+                            eta_dynamic * (1.0 + rng.uniform(-float(thermal_noise_level), float(thermal_noise_level))),
+                        )
+                        thermal_term = float(rng.normal(0.0, float(thermal_noise_level))) * abs(float(charge))
+
+                    eff_charge = float(charge)
+                    if eff_charge < 0:
+                        eff_charge *= neg_mult
+                    q = eff_charge * density * bond_factor
+                    x_pos = float(pI_map.get(col, 0.5))
+
+                    # v4 focusing: v = [q(E - ∇pH * x) + T_noise] / [η + I_competitive]
+                    field = E - grad * x_pos
+                    v = (q * field + thermal_term) / (eta_dynamic + inhibition)
+
+                    denom += abs(v)
+                    class_score += v * z
+
+                if denom <= 1e-12:
+                    denom = 1.0
+                cycle_update[:, j] = class_score / denom
+
+            logits += lr2 * cycle_update
+            probs = _softmax(logits)
+            pred_idx_cycle = np.argmax(probs, axis=1)
+            pred_cycle = np.array([classes[int(i)] for i in pred_idx_cycle], dtype="object")
+            test_acc = float(
+                np.mean((y_cat[test_mask].to_numpy(dtype="object") == pred_cycle[test_mask]).astype("float64"))
+            )
+            iteration_gains.append(
+                IterationInfo(
+                    cycle=n_cycles_eff + stage_cycle,
+                    test_accuracy=test_acc,
+                    lift_over_baseline=test_acc - baseline_accuracy,
+                )
+            )
+
+        # Cluster shattering: split Zone 1 into at least 3 sub-zones by pI quantiles.
+        zone1_sorted = sorted(zone1_features, key=lambda f: float(pI_map.get(f, 0.5)))
+        subzones = [list(chunk) for chunk in np.array_split(np.array(zone1_sorted, dtype=object), 3) if len(chunk) > 0]
+        shattered_zones: list[EquilibriumZone] = []
+        for k, feats in enumerate(subzones[:3]):
+            feats_list = [str(x) for x in feats]
+            shattered_zones.append(
+                EquilibriumZone(
+                    zone_id=100 + k,
+                    features=feats_list,
+                    avg_pI=float(np.mean([pI_map.get(f, 0.5) for f in feats_list])),
+                    avg_momentum=float(0.0),
+                    strength=float(len(feats_list) / max(1, len(zone1_features))),
+                )
+            )
+
+        # Residual recycling: send the "waste" (lowest-signal third) back for a scavenger pass.
+        waste_features = sorted(zone1_features, key=lambda f: abs(float(feature_info[f].weight)))
+        waste_features = waste_features[: max(1, len(waste_features) // 3)]
+        if scavenger_cycles > 0 and waste_features:
+            rng2 = np.random.default_rng(int(random_seed) + 50021)
+            lr3 = float(cycle_learning_rate) * 0.25
+            for sc_cycle in range(1, int(scavenger_cycles) + 1):
+                cycle_update = np.zeros_like(logits)
+                for j, cls in enumerate(classes):
+                    y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
+                    p = _sigmoid(logits[:, j])
+                    residual = y01 - p
+                    residual_train = residual[train_mask]
+
+                    class_score = np.zeros(df.shape[0], dtype="float64")
+                    denom = 0.0
+                    for col in waste_features:
+                        fk = feature_info[col].feature_kind
+                        if fk in ("numeric", "datetime", "bool"):
+                            x_raw = x_encoded_by_feature[col]
+                        else:
+                            x_cat = df[col].astype("string").fillna("__MISSING__")
+                            tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                            rates = tmp.groupby("x")["r"].mean()
+                            x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
+
+                        z = _zscore_with_train_stats(x_raw, train_mask)
+                        charge = _pearson_corr(z[train_mask], residual_train)
+                        if not math.isfinite(charge) or abs(charge) < 1e-8:
+                            continue
+
+                        medium = migration_by_feature[col]
+                        bond_factor = bond_factors.get(col, 1.0)
+                        certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
+                        density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
+
+                        eta_base = max(1e-6, medium.entropy + medium.variance)
+                        eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
+                        if thermal_noise and sc_cycle <= int(thermal_noise_cycles):
+                            eta_dynamic = max(
+                                1e-6,
+                                eta_dynamic
+                                * (1.0 + rng2.uniform(-float(thermal_noise_level), float(thermal_noise_level))),
+                            )
+
+                        eff_charge = float(charge)
+                        if eff_charge < 0:
+                            eff_charge *= neg_mult
+                        q = eff_charge * density * bond_factor
+                        x_pos = float(pI_map.get(col, 0.5))
+                        field = float(plane_mobility) - grad * x_pos
+                        v = (q * field) / eta_dynamic
+
+                        denom += abs(v)
+                        class_score += v * z
+
+                    if denom <= 1e-12:
+                        denom = 1.0
+                    cycle_update[:, j] = class_score / denom
+
+                logits += lr3 * cycle_update
+                probs = _softmax(logits)
+                pred_idx_cycle = np.argmax(probs, axis=1)
+                pred_cycle = np.array([classes[int(i)] for i in pred_idx_cycle], dtype="object")
+                test_acc = float(
+                    np.mean((y_cat[test_mask].to_numpy(dtype="object") == pred_cycle[test_mask]).astype("float64"))
+                )
+                iteration_gains.append(
+                    IterationInfo(
+                        cycle=n_cycles_eff + n2 + sc_cycle,
+                        test_accuracy=test_acc,
+                        lift_over_baseline=test_acc - baseline_accuracy,
+                    )
+                )
+
+        # Persist shattered zones for output (added after Stage 1 zones at the end).
+        _cascade_shattered_zones = shattered_zones
+    else:
+        _cascade_shattered_zones = []
 
     probs = _softmax(logits)
     pred_idx = np.argmax(probs, axis=1)
@@ -1010,14 +1285,10 @@ def run_physics_prediction(
         best_lift=None if best_iter is None else float(best_iter.lift_over_baseline),
     )
 
-    feature_positions_final: dict[str, float] = {}
-    for col in feature_cols_used:
-        feature_positions_final[col] = pI_map.get(col, 0.5)
-    zone_assignment = _discretize_into_zones(feature_positions_final, n_zones=n_zones)
-
+    # Output equilibrium zones = Stage 1 zones + (optional) Stage 2 shattered zones.
     equilibrium_zones: list[EquilibriumZone] = []
     for zone_id in range(n_zones):
-        features_in_zone = [feat for feat, zid in zone_assignment.items() if zid == zone_id]
+        features_in_zone = zone_bins_stage1.get(zone_id, [])
         if features_in_zone:
             avg_pI = float(np.mean([pI_map.get(f, 0.5) for f in features_in_zone]))
             avg_momentum = float(np.mean([0.85 ** int(best_iter.cycle) for _ in features_in_zone])) if best_iter else 0.0
@@ -1031,6 +1302,10 @@ def run_physics_prediction(
                     strength=strength,
                 )
             )
+
+    # Attach shattered sub-zones if cascade ran.
+    if _cascade_shattered_zones:
+        equilibrium_zones.extend(_cascade_shattered_zones)
 
     return PredictionResult(
         target=target_col,
