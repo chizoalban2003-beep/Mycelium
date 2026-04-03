@@ -230,6 +230,30 @@ def predict_page(
             "low_confidence_entropy_threshold": 0.0,
             "low_confidence_smear_metric": "entropy",
             "low_confidence_combine_rule": "or",
+            "low_confidence_auto_conf_quantile": 0.20,
+            "low_confidence_auto_smear_quantile": 0.80,
+            "low_confidence_require_ionized": False,
+            "low_confidence_ionization_pvalue": 0.05,
+            "low_confidence_ionization_z_min": 0.25,
+            "low_confidence_confirmatory_enabled": False,
+            "low_confidence_confirmatory_conf_min": 0.50,
+            "low_confidence_confirmatory_conf_max": 0.90,
+            "low_confidence_confirmatory_consensus_threshold": 0.60,
+            "low_confidence_confirmatory_min_ion_hits": 0,
+            "low_confidence_secondary_enabled": False,
+            "low_confidence_secondary_cycles": 0,
+            "low_confidence_secondary_viscosity_multiplier": 0.75,
+            "low_confidence_secondary_inhibition_multiplier": 0.85,
+            "low_confidence_secondary_shear_multiplier": 1.10,
+            "low_confidence_secondary_relax_ionization_gate": True,
+            "low_confidence_secondary_ionization_z_min": 0.10,
+            "low_confidence_secondary_relaxed_ion_conf_min": 0.55,
+            "low_confidence_secondary_use_spearman": True,
+            "low_confidence_secondary_spearman_min_abs": 0.015,
+            "low_confidence_secondary_spearman_margin": 0.010,
+            "low_confidence_secondary_promote_min_zone_votes": 3,
+            "low_confidence_secondary_promote_z_min": 0.50,
+            "low_confidence_secondary_promote_conf_min": 0.42,
         },
     )
 
@@ -261,6 +285,30 @@ async def predict_action(
     low_confidence_entropy_threshold: float = Form(0.0),
     low_confidence_smear_metric: str = Form("entropy"),
     low_confidence_combine_rule: str = Form("or"),
+    low_confidence_auto_conf_quantile: float = Form(0.20),
+    low_confidence_auto_smear_quantile: float = Form(0.80),
+    low_confidence_require_ionized: str | None = Form(None),
+    low_confidence_ionization_pvalue: float = Form(0.05),
+    low_confidence_ionization_z_min: float = Form(0.25),
+    low_confidence_confirmatory_enabled: str | None = Form(None),
+    low_confidence_confirmatory_conf_min: float = Form(0.50),
+    low_confidence_confirmatory_conf_max: float = Form(0.90),
+    low_confidence_confirmatory_consensus_threshold: float = Form(0.60),
+    low_confidence_confirmatory_min_ion_hits: int = Form(0),
+    low_confidence_secondary_enabled: str | None = Form(None),
+    low_confidence_secondary_cycles: int = Form(0),
+    low_confidence_secondary_viscosity_multiplier: float = Form(0.75),
+    low_confidence_secondary_inhibition_multiplier: float = Form(0.85),
+    low_confidence_secondary_shear_multiplier: float = Form(1.10),
+    low_confidence_secondary_relax_ionization_gate: str | None = Form(None),
+    low_confidence_secondary_ionization_z_min: float = Form(0.10),
+    low_confidence_secondary_relaxed_ion_conf_min: float = Form(0.55),
+    low_confidence_secondary_use_spearman: str | None = Form(None),
+    low_confidence_secondary_spearman_min_abs: float = Form(0.015),
+    low_confidence_secondary_spearman_margin: float = Form(0.010),
+    low_confidence_secondary_promote_min_zone_votes: int = Form(3),
+    low_confidence_secondary_promote_z_min: float = Form(0.50),
+    low_confidence_secondary_promote_conf_min: float = Form(0.42),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -350,6 +398,109 @@ async def predict_action(
         low_confidence_smear_metric = str(low_confidence_smear_metric or "entropy")
         low_confidence_combine_rule = str(low_confidence_combine_rule or "or")
 
+        try:
+            low_confidence_auto_conf_quantile = float(low_confidence_auto_conf_quantile)
+        except Exception:
+            low_confidence_auto_conf_quantile = 0.20
+        low_confidence_auto_conf_quantile = max(0.0, min(1.0, low_confidence_auto_conf_quantile))
+
+        try:
+            low_confidence_auto_smear_quantile = float(low_confidence_auto_smear_quantile)
+        except Exception:
+            low_confidence_auto_smear_quantile = 0.80
+        low_confidence_auto_smear_quantile = max(0.0, min(1.0, low_confidence_auto_smear_quantile))
+
+        low_confidence_require_ionized_bool = bool(low_confidence_require_ionized)
+        try:
+            low_confidence_ionization_pvalue = float(low_confidence_ionization_pvalue)
+        except Exception:
+            low_confidence_ionization_pvalue = 0.05
+        low_confidence_ionization_pvalue = max(0.0, min(1.0, low_confidence_ionization_pvalue))
+        try:
+            low_confidence_ionization_z_min = float(low_confidence_ionization_z_min)
+        except Exception:
+            low_confidence_ionization_z_min = 0.25
+        low_confidence_ionization_z_min = max(0.0, low_confidence_ionization_z_min)
+
+        low_confidence_confirmatory_enabled_bool = bool(low_confidence_confirmatory_enabled)
+        try:
+            low_confidence_confirmatory_conf_min = float(low_confidence_confirmatory_conf_min)
+        except Exception:
+            low_confidence_confirmatory_conf_min = 0.50
+        try:
+            low_confidence_confirmatory_conf_max = float(low_confidence_confirmatory_conf_max)
+        except Exception:
+            low_confidence_confirmatory_conf_max = 0.90
+        try:
+            low_confidence_confirmatory_consensus_threshold = float(low_confidence_confirmatory_consensus_threshold)
+        except Exception:
+            low_confidence_confirmatory_consensus_threshold = 0.60
+        low_confidence_confirmatory_consensus_threshold = max(0.0, min(1.0, low_confidence_confirmatory_consensus_threshold))
+        try:
+            low_confidence_confirmatory_min_ion_hits = int(low_confidence_confirmatory_min_ion_hits)
+        except Exception:
+            low_confidence_confirmatory_min_ion_hits = 0
+        low_confidence_confirmatory_min_ion_hits = max(0, min(50, low_confidence_confirmatory_min_ion_hits))
+
+        low_confidence_secondary_enabled_bool = bool(low_confidence_secondary_enabled)
+        try:
+            low_confidence_secondary_cycles = int(low_confidence_secondary_cycles)
+        except Exception:
+            low_confidence_secondary_cycles = 0
+        low_confidence_secondary_cycles = max(0, min(50, low_confidence_secondary_cycles))
+        try:
+            low_confidence_secondary_viscosity_multiplier = float(low_confidence_secondary_viscosity_multiplier)
+        except Exception:
+            low_confidence_secondary_viscosity_multiplier = 0.75
+        low_confidence_secondary_viscosity_multiplier = max(0.10, min(2.50, low_confidence_secondary_viscosity_multiplier))
+        try:
+            low_confidence_secondary_inhibition_multiplier = float(low_confidence_secondary_inhibition_multiplier)
+        except Exception:
+            low_confidence_secondary_inhibition_multiplier = 0.85
+        low_confidence_secondary_inhibition_multiplier = max(0.0, min(2.0, low_confidence_secondary_inhibition_multiplier))
+        try:
+            low_confidence_secondary_shear_multiplier = float(low_confidence_secondary_shear_multiplier)
+        except Exception:
+            low_confidence_secondary_shear_multiplier = 1.10
+        low_confidence_secondary_shear_multiplier = max(0.0, min(4.0, low_confidence_secondary_shear_multiplier))
+        low_confidence_secondary_relax_ionization_gate_bool = bool(low_confidence_secondary_relax_ionization_gate)
+        try:
+            low_confidence_secondary_ionization_z_min = float(low_confidence_secondary_ionization_z_min)
+        except Exception:
+            low_confidence_secondary_ionization_z_min = 0.10
+        low_confidence_secondary_ionization_z_min = max(0.0, low_confidence_secondary_ionization_z_min)
+        try:
+            low_confidence_secondary_relaxed_ion_conf_min = float(low_confidence_secondary_relaxed_ion_conf_min)
+        except Exception:
+            low_confidence_secondary_relaxed_ion_conf_min = 0.55
+        low_confidence_secondary_relaxed_ion_conf_min = max(0.0, min(1.0, low_confidence_secondary_relaxed_ion_conf_min))
+        low_confidence_secondary_use_spearman_bool = bool(low_confidence_secondary_use_spearman)
+        try:
+            low_confidence_secondary_spearman_min_abs = float(low_confidence_secondary_spearman_min_abs)
+        except Exception:
+            low_confidence_secondary_spearman_min_abs = 0.015
+        low_confidence_secondary_spearman_min_abs = max(0.0, min(1.0, low_confidence_secondary_spearman_min_abs))
+        try:
+            low_confidence_secondary_spearman_margin = float(low_confidence_secondary_spearman_margin)
+        except Exception:
+            low_confidence_secondary_spearman_margin = 0.010
+        low_confidence_secondary_spearman_margin = max(0.0, min(1.0, low_confidence_secondary_spearman_margin))
+        try:
+            low_confidence_secondary_promote_min_zone_votes = int(low_confidence_secondary_promote_min_zone_votes)
+        except Exception:
+            low_confidence_secondary_promote_min_zone_votes = 3
+        low_confidence_secondary_promote_min_zone_votes = max(0, min(50, low_confidence_secondary_promote_min_zone_votes))
+        try:
+            low_confidence_secondary_promote_z_min = float(low_confidence_secondary_promote_z_min)
+        except Exception:
+            low_confidence_secondary_promote_z_min = 0.50
+        low_confidence_secondary_promote_z_min = max(0.0, low_confidence_secondary_promote_z_min)
+        try:
+            low_confidence_secondary_promote_conf_min = float(low_confidence_secondary_promote_conf_min)
+        except Exception:
+            low_confidence_secondary_promote_conf_min = 0.42
+        low_confidence_secondary_promote_conf_min = max(0.0, min(1.0, low_confidence_secondary_promote_conf_min))
+
         cascade_enabled_bool = bool(cascade_enabled)
         competitive_inhibition_bool = bool(competitive_inhibition)
         thermal_noise_bool = bool(thermal_noise)
@@ -376,6 +527,30 @@ async def predict_action(
             low_confidence_entropy_threshold=low_confidence_entropy_threshold,
             low_confidence_smear_metric=low_confidence_smear_metric,
             low_confidence_combine_rule=low_confidence_combine_rule,
+            low_confidence_auto_conf_quantile=low_confidence_auto_conf_quantile,
+            low_confidence_auto_smear_quantile=low_confidence_auto_smear_quantile,
+            low_confidence_require_ionized=low_confidence_require_ionized_bool,
+            low_confidence_ionization_pvalue=low_confidence_ionization_pvalue,
+            low_confidence_ionization_z_min=low_confidence_ionization_z_min,
+            low_confidence_confirmatory_enabled=low_confidence_confirmatory_enabled_bool,
+            low_confidence_confirmatory_conf_min=low_confidence_confirmatory_conf_min,
+            low_confidence_confirmatory_conf_max=low_confidence_confirmatory_conf_max,
+            low_confidence_confirmatory_consensus_threshold=low_confidence_confirmatory_consensus_threshold,
+            low_confidence_confirmatory_min_ion_hits=low_confidence_confirmatory_min_ion_hits,
+            low_confidence_secondary_enabled=low_confidence_secondary_enabled_bool,
+            low_confidence_secondary_cycles=low_confidence_secondary_cycles,
+            low_confidence_secondary_viscosity_multiplier=low_confidence_secondary_viscosity_multiplier,
+            low_confidence_secondary_inhibition_multiplier=low_confidence_secondary_inhibition_multiplier,
+            low_confidence_secondary_shear_multiplier=low_confidence_secondary_shear_multiplier,
+            low_confidence_secondary_relax_ionization_gate=low_confidence_secondary_relax_ionization_gate_bool,
+            low_confidence_secondary_ionization_z_min=low_confidence_secondary_ionization_z_min,
+            low_confidence_secondary_relaxed_ion_conf_min=low_confidence_secondary_relaxed_ion_conf_min,
+            low_confidence_secondary_use_spearman=low_confidence_secondary_use_spearman_bool,
+            low_confidence_secondary_spearman_min_abs=low_confidence_secondary_spearman_min_abs,
+            low_confidence_secondary_spearman_margin=low_confidence_secondary_spearman_margin,
+            low_confidence_secondary_promote_min_zone_votes=low_confidence_secondary_promote_min_zone_votes,
+            low_confidence_secondary_promote_z_min=low_confidence_secondary_promote_z_min,
+            low_confidence_secondary_promote_conf_min=low_confidence_secondary_promote_conf_min,
         )
 
         result = {
@@ -503,6 +678,26 @@ async def predict_action(
                 if getattr(pred.metrics, "selective_accuracy", None) is None
                 else round(float(pred.metrics.selective_accuracy), 6),
             },
+            "diagnostics": {
+                "trapped_features": sorted(
+                    [
+                        {
+                            "feature": m.feature,
+                            "kind": m.feature_kind,
+                            "ionization": m.ionization,
+                            "method": m.method,
+                            "charge": round(float(m.charge), 6),
+                            "viscosity": round(float(m.viscosity), 6),
+                            "terminal_velocity": round(float(m.terminal_velocity), 6),
+                            "p_value": None if m.p_value is None else round(float(m.p_value), 8),
+                        }
+                        for m in pred.migration_map
+                        if str(getattr(m, "state", "")) == "trapped"
+                    ],
+                    key=lambda d: (float(d.get("viscosity", 0.0)), abs(float(d.get("terminal_velocity", 0.0)))),
+                    reverse=True,
+                )[:12]
+            },
             "preview": pred.preview_rows,
         }
 
@@ -542,5 +737,29 @@ async def predict_action(
             "low_confidence_entropy_threshold": low_confidence_entropy_threshold,
             "low_confidence_smear_metric": low_confidence_smear_metric,
             "low_confidence_combine_rule": low_confidence_combine_rule,
+            "low_confidence_auto_conf_quantile": low_confidence_auto_conf_quantile,
+            "low_confidence_auto_smear_quantile": low_confidence_auto_smear_quantile,
+            "low_confidence_require_ionized": low_confidence_require_ionized_bool,
+            "low_confidence_ionization_pvalue": low_confidence_ionization_pvalue,
+            "low_confidence_ionization_z_min": low_confidence_ionization_z_min,
+            "low_confidence_confirmatory_enabled": low_confidence_confirmatory_enabled_bool,
+            "low_confidence_confirmatory_conf_min": low_confidence_confirmatory_conf_min,
+            "low_confidence_confirmatory_conf_max": low_confidence_confirmatory_conf_max,
+            "low_confidence_confirmatory_consensus_threshold": low_confidence_confirmatory_consensus_threshold,
+            "low_confidence_confirmatory_min_ion_hits": low_confidence_confirmatory_min_ion_hits,
+            "low_confidence_secondary_enabled": low_confidence_secondary_enabled_bool,
+            "low_confidence_secondary_cycles": low_confidence_secondary_cycles,
+            "low_confidence_secondary_viscosity_multiplier": low_confidence_secondary_viscosity_multiplier,
+            "low_confidence_secondary_inhibition_multiplier": low_confidence_secondary_inhibition_multiplier,
+            "low_confidence_secondary_shear_multiplier": low_confidence_secondary_shear_multiplier,
+            "low_confidence_secondary_relax_ionization_gate": low_confidence_secondary_relax_ionization_gate_bool,
+            "low_confidence_secondary_ionization_z_min": low_confidence_secondary_ionization_z_min,
+            "low_confidence_secondary_relaxed_ion_conf_min": low_confidence_secondary_relaxed_ion_conf_min,
+            "low_confidence_secondary_use_spearman": low_confidence_secondary_use_spearman_bool,
+            "low_confidence_secondary_spearman_min_abs": low_confidence_secondary_spearman_min_abs,
+            "low_confidence_secondary_spearman_margin": low_confidence_secondary_spearman_margin,
+            "low_confidence_secondary_promote_min_zone_votes": low_confidence_secondary_promote_min_zone_votes,
+            "low_confidence_secondary_promote_z_min": low_confidence_secondary_promote_z_min,
+            "low_confidence_secondary_promote_conf_min": low_confidence_secondary_promote_conf_min,
         },
     )

@@ -117,6 +117,159 @@
               </div>
 
               <div>
+                <label class="block text-sm text-slate-300">Auto confidence quantile</label>
+                <input name="low_confidence_auto_conf_quantile" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_auto_conf_quantile if low_confidence_auto_conf_quantile is not none else 0.20 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                <div class="mt-1 text-xs text-slate-500">Used when confidence threshold = 0. Higher = more abstain (e.g. 0.63 ≈ keep ~37%).</div>
+              </div>
+
+              <div>
+                <label class="block text-sm text-slate-300">Auto smear quantile</label>
+                <input name="low_confidence_auto_smear_quantile" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_auto_smear_quantile if low_confidence_auto_smear_quantile is not none else 0.80 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                <div class="mt-1 text-xs text-slate-500">Used when smear threshold = 0. Lower = stricter smear gate.</div>
+              </div>
+
+              <div class="md:col-span-4">
+                <div class="mt-2 border-t border-slate-800 pt-3"></div>
+                <div class="text-sm text-slate-200 font-medium">Ionization gate (coverage shaping)</div>
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div class="md:col-span-2 flex items-center gap-2">
+                    <input type="checkbox" name="low_confidence_require_ionized" {% if low_confidence_require_ionized %}checked{% endif %} />
+                    <div>
+                      <div class="text-sm text-slate-200">Require ionized hits</div>
+                      <div class="text-xs text-slate-500">Abstain rows with zero strong feature hits.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Ion p-value α</label>
+                    <input name="low_confidence_ionization_pvalue" type="number" min="0" max="1" step="0.001" value="{{ low_confidence_ionization_pvalue if low_confidence_ionization_pvalue is not none else 0.05 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">Feature must have p ≤ α to count as ionized.</div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Ion z-min</label>
+                    <input name="low_confidence_ionization_z_min" type="number" min="0" max="10" step="0.01" value="{{ low_confidence_ionization_z_min if low_confidence_ionization_z_min is not none else 0.25 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">Counts a hit if |z| ≥ z-min.</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="md:col-span-4">
+                <div class="mt-2 border-t border-slate-800 pt-3"></div>
+                <div class="text-sm text-slate-200 font-medium">Confirmatory override (mid-confidence rescue)</div>
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div class="md:col-span-2 flex items-center gap-2">
+                    <input type="checkbox" name="low_confidence_confirmatory_enabled" {% if low_confidence_confirmatory_enabled %}checked{% endif %} />
+                    <div>
+                      <div class="text-sm text-slate-200">Enable confirmatory-band keep</div>
+                      <div class="text-xs text-slate-500">Keeps rows with zone-consensus even if smeary.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Conf min</label>
+                    <input name="low_confidence_confirmatory_conf_min" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_confirmatory_conf_min if low_confidence_confirmatory_conf_min is not none else 0.50 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Conf max</label>
+                    <input name="low_confidence_confirmatory_conf_max" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_confirmatory_conf_max if low_confidence_confirmatory_conf_max is not none else 0.90 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Consensus thr</label>
+                    <input name="low_confidence_confirmatory_consensus_threshold" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_confirmatory_consensus_threshold if low_confidence_confirmatory_consensus_threshold is not none else 0.60 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">Higher = require tighter zone clustering.</div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Min ion hits</label>
+                    <input name="low_confidence_confirmatory_min_ion_hits" type="number" min="0" max="50" value="{{ low_confidence_confirmatory_min_ion_hits if low_confidence_confirmatory_min_ion_hits is not none else 0 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">Optional extra safety gate (0 = off).</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="md:col-span-4">
+                <div class="mt-2 border-t border-slate-800 pt-3"></div>
+                <div class="text-sm text-slate-200 font-medium">Stage-3 Secondary Ionization (Cascade Expansion)</div>
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div class="md:col-span-2 flex items-center gap-2">
+                    <input type="checkbox" name="low_confidence_secondary_enabled" {% if low_confidence_secondary_enabled %}checked{% endif %} />
+                    <div>
+                      <div class="text-sm text-slate-200">Enable secondary pass on abstained rows</div>
+                      <div class="text-xs text-slate-500">Row-restricted re-run with Spearman + lower viscosity for slow-movers.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Secondary cycles</label>
+                    <input name="low_confidence_secondary_cycles" type="number" min="0" max="50" value="{{ low_confidence_secondary_cycles if low_confidence_secondary_cycles is not none else 0 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Viscosity multiplier</label>
+                    <input name="low_confidence_secondary_viscosity_multiplier" type="number" min="0.10" max="2.50" step="0.01" value="{{ low_confidence_secondary_viscosity_multiplier if low_confidence_secondary_viscosity_multiplier is not none else 0.75 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">&lt; 1.0 = thinner buffer for Spearman slow-movers.</div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Shear multiplier</label>
+                    <input name="low_confidence_secondary_shear_multiplier" type="number" min="0" max="4.0" step="0.05" value="{{ low_confidence_secondary_shear_multiplier if low_confidence_secondary_shear_multiplier is not none else 1.10 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Inhib multiplier</label>
+                    <input name="low_confidence_secondary_inhibition_multiplier" type="number" min="0" max="2.0" step="0.05" value="{{ low_confidence_secondary_inhibition_multiplier if low_confidence_secondary_inhibition_multiplier is not none else 0.85 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+
+                  <div class="md:col-span-3 flex items-center gap-2">
+                    <input type="checkbox" name="low_confidence_secondary_use_spearman" {% if low_confidence_secondary_use_spearman %}checked{% endif %} />
+                    <div>
+                      <div class="text-sm text-slate-200">Use Spearman on nonparametric features</div>
+                      <div class="text-xs text-slate-500">Helps when Pearson fails but rank-order still tracks residual.</div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm text-slate-300">Spearman min |ρ|</label>
+                    <input name="low_confidence_secondary_spearman_min_abs" type="number" min="0" max="1" step="0.001" value="{{ low_confidence_secondary_spearman_min_abs if low_confidence_secondary_spearman_min_abs is not none else 0.015 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Spearman margin</label>
+                    <input name="low_confidence_secondary_spearman_margin" type="number" min="0" max="1" step="0.001" value="{{ low_confidence_secondary_spearman_margin if low_confidence_secondary_spearman_margin is not none else 0.010 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+
+                  <div class="md:col-span-4">
+                    <div class="mt-2 border-t border-slate-800 pt-3"></div>
+                    <div class="text-sm text-slate-200 font-medium">Fractional voting (cluster promotion)</div>
+                    <div class="mt-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div>
+                        <label class="block text-sm text-slate-300">Min zone votes</label>
+                        <input name="low_confidence_secondary_promote_min_zone_votes" type="number" min="0" max="50" value="{{ low_confidence_secondary_promote_min_zone_votes if low_confidence_secondary_promote_min_zone_votes is not none else 3 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                        <div class="mt-1 text-xs text-slate-500">3+ features in one zone → eligible for promotion.</div>
+                      </div>
+                      <div>
+                        <label class="block text-sm text-slate-300">Vote z-min</label>
+                        <input name="low_confidence_secondary_promote_z_min" type="number" min="0" max="10" step="0.01" value="{{ low_confidence_secondary_promote_z_min if low_confidence_secondary_promote_z_min is not none else 0.50 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                        <div class="mt-1 text-xs text-slate-500">Lower this to count “weaker” bands.</div>
+                      </div>
+                      <div>
+                        <label class="block text-sm text-slate-300">Min conf to promote</label>
+                        <input name="low_confidence_secondary_promote_conf_min" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_secondary_promote_conf_min if low_confidence_secondary_promote_conf_min is not none else 0.42 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                        <div class="mt-1 text-xs text-slate-500">Keeps promotions from being pure noise.</div>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <input type="checkbox" name="low_confidence_secondary_relax_ionization_gate" {% if low_confidence_secondary_relax_ionization_gate %}checked{% endif %} />
+                        <div>
+                          <div class="text-sm text-slate-200">Relax ion gate</div>
+                          <div class="text-xs text-slate-500">Allows secondary pass to rescue strict-zero rows.</div>
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-sm text-slate-300">Relaxed ion z-min</label>
+                        <input name="low_confidence_secondary_ionization_z_min" type="number" min="0" max="10" step="0.01" value="{{ low_confidence_secondary_ionization_z_min if low_confidence_secondary_ionization_z_min is not none else 0.10 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                      </div>
+                      <div>
+                        <label class="block text-sm text-slate-300">Relaxed ion conf-min</label>
+                        <input name="low_confidence_secondary_relaxed_ion_conf_min" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_secondary_relaxed_ion_conf_min if low_confidence_secondary_relaxed_ion_conf_min is not none else 0.55 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
                 <label class="block text-sm text-slate-300">Inhibition strength</label>
                 <input name="inhibition_strength" type="number" min="0" max="2.0" step="0.05" value="{{ inhibition_strength or 0.7 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
                 <div class="mt-1 text-xs text-slate-500">Competitive inhibition magnitude.</div>
@@ -276,6 +429,43 @@
           </div>
         </div>
       </div>
+
+      {% if result.diagnostics and result.diagnostics.trapped_features and (result.diagnostics.trapped_features|length) > 0 %}
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h2 class="font-semibold mb-2">Trapped Features (likely “slow-movers”)</h2>
+          <div class="text-sm text-slate-400">These features carry high viscosity and can contribute to abstentions.</div>
+          <div class="mt-3 overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead class="text-slate-400">
+                <tr>
+                  <th class="text-left py-2 pr-3">Feature</th>
+                  <th class="text-left py-2 pr-3">Kind</th>
+                  <th class="text-left py-2 pr-3">Ionization</th>
+                  <th class="text-left py-2 pr-3">Method</th>
+                  <th class="text-left py-2 pr-3">Charge</th>
+                  <th class="text-left py-2 pr-3">Viscosity</th>
+                  <th class="text-left py-2 pr-3">Velocity</th>
+                  <th class="text-left py-2 pr-3">p-value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in result.diagnostics.trapped_features %}
+                  <tr class="border-t border-slate-800">
+                    <td class="py-2 pr-3 text-slate-200">{{ t.feature }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ t.kind }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ t.ionization }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ t.method }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ t.charge }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ t.viscosity }}</td>
+                    <td class="py-2 pr-3 {% if t.terminal_velocity < 0 %}text-rose-300{% else %}text-emerald-300{% endif %}">{{ t.terminal_velocity }}</td>
+                    <td class="py-2 pr-3 text-slate-300">{{ t.p_value }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
 
       <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
         <h2 class="font-semibold mb-3">Migration Map</h2>

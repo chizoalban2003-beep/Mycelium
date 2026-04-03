@@ -1315,6 +1315,24 @@ def run_physics_prediction(
     low_confidence_reionization_cycles: int = 0,
     low_confidence_reionization_shear_multiplier: float = 1.25,
     low_confidence_reionization_inhibition_multiplier: float = 0.75,
+    # Secondary ionization (cascade expansion): optionally take the rows that would be
+    # flagged/abstained and run a second, row-restricted refinement pass using a
+    # lower effective viscosity and (optionally) rank-based charges for nonparametric
+    # features. Includes a cluster-based promotion rule.
+    low_confidence_secondary_enabled: bool = False,
+    low_confidence_secondary_cycles: int = 0,
+    low_confidence_secondary_viscosity_multiplier: float = 0.75,
+    low_confidence_secondary_inhibition_multiplier: float = 0.85,
+    low_confidence_secondary_shear_multiplier: float = 1.10,
+    low_confidence_secondary_relax_ionization_gate: bool = True,
+    low_confidence_secondary_ionization_z_min: float = 0.10,
+    low_confidence_secondary_relaxed_ion_conf_min: float = 0.55,
+    low_confidence_secondary_use_spearman: bool = True,
+    low_confidence_secondary_spearman_min_abs: float = 0.015,
+    low_confidence_secondary_spearman_margin: float = 0.010,
+    low_confidence_secondary_promote_min_zone_votes: int = 3,
+    low_confidence_secondary_promote_z_min: float = 0.50,
+    low_confidence_secondary_promote_conf_min: float = 0.42,
     # Ionization/viscosity-aware abstention controls.
     low_confidence_require_ionized: bool = False,
     low_confidence_ionization_pvalue: float = 0.05,
@@ -2469,12 +2487,18 @@ def run_physics_prediction(
     need_ion_gate = bool(low_confidence_require_ionized)
     need_visc_override = bool(low_confidence_viscosity_override)
     need_confirmatory = bool(low_confidence_confirmatory_enabled)
-    need_row_diagnostics = mode in ("flag", "abstain") and (need_ion_gate or need_visc_override or need_confirmatory)
+    need_secondary = bool(low_confidence_secondary_enabled) and int(low_confidence_secondary_cycles) > 0
+    need_row_diagnostics = mode in ("flag", "abstain") and (
+        need_ion_gate or need_visc_override or need_confirmatory or need_secondary
+    )
 
     ionized_hit_count = np.zeros(df.shape[0], dtype="int32")
     ionization_mass_row = np.zeros(df.shape[0], dtype="float64")
     viscosity_path = np.full(df.shape[0], float("nan"), dtype="float64")
     confirmatory_consensus = np.zeros(df.shape[0], dtype="float64")
+    zone_cluster_max_votes = np.zeros(df.shape[0], dtype="int32")
+    z_cache: dict[str, np.ndarray] = {}
+    ionized_features: list[str] = []
     if need_row_diagnostics:
         try:
             alpha_p = float(low_confidence_ionization_pvalue)
@@ -2484,7 +2508,6 @@ def run_physics_prediction(
             y_idx_train_mask = (y_idx >= 0.0) & train_mask
             y_idx_mean = float(np.mean(y_idx[y_idx_train_mask])) if bool(np.any(y_idx_train_mask)) else 0.0
 
-            ionized_features: list[str] = []
             if need_ion_gate:
                 for col in feature_cols_used:
                     m = migration_by_feature.get(col)
@@ -2494,7 +2517,6 @@ def run_physics_prediction(
                         ionized_features.append(col)
 
             # Build a single consistent encoding per feature to assess row-level signals.
-            z_cache: dict[str, np.ndarray] = {}
             for col in feature_cols_used:
                 fk = feature_info[col].feature_kind
                 if fk in ("numeric", "datetime", "bool"):
@@ -2549,6 +2571,26 @@ def run_physics_prediction(
                     for arr in zone_to_weight.values():
                         best = np.maximum(best, arr)
                     confirmatory_consensus = np.where(total > 1e-12, best / total, 0.0)
+
+            # Cluster voting (fractional voting): count how many features per row land in each zone
+            # with |z| >= z_min and promote rows with a tight cluster even if individual z are low.
+            if need_secondary and z_cache:
+                z_prom = float(max(0.0, low_confidence_secondary_promote_z_min))
+                zone_to_votes: dict[int, np.ndarray] = {}
+                for col in feature_cols_used:
+                    z = z_cache.get(col)
+                    if z is None:
+                        continue
+                    votes = (np.abs(z) >= z_prom).astype("int32")
+                    zid = int(zone_assignment_stage1.get(col, 0))
+                    if zid not in zone_to_votes:
+                        zone_to_votes[zid] = np.zeros(df.shape[0], dtype="int32")
+                    zone_to_votes[zid] += votes
+                if zone_to_votes:
+                    best_votes = np.zeros(df.shape[0], dtype="int32")
+                    for arr in zone_to_votes.values():
+                        best_votes = np.maximum(best_votes, arr)
+                    zone_cluster_max_votes = best_votes
         except Exception:
             pass
 
@@ -2741,6 +2783,138 @@ def run_physics_prediction(
                 pred_labels = [classes[int(i)] for i in pred_idx]
 
                 # Persist final low_conf_mask after re-ionization.
+                low_conf_mask = np.asarray(low_mask, dtype=bool)
+        except Exception:
+            pass
+
+    # Stage-3 Secondary Ionization (Cascade Expansion): second pass over low-confidence rows.
+    # This is intentionally row-restricted so we don't perturb already-confident rows.
+    sec_cycles = int(max(0, low_confidence_secondary_cycles))
+    if mode in ("flag", "abstain") and bool(low_confidence_secondary_enabled) and sec_cycles > 0:
+        try:
+            low_mask = np.asarray(low_conf_mask, dtype=bool)
+            if bool(np.any(low_mask)) and z_cache:
+                shear_sec = float(max(0.0, shear * float(low_confidence_secondary_shear_multiplier)))
+                inhib_sec = float(
+                    max(0.0, float(inhibition_strength) * float(low_confidence_secondary_inhibition_multiplier))
+                )
+                visc_mult = float(np.clip(float(low_confidence_secondary_viscosity_multiplier), 0.10, 2.50))
+
+                relax_ion = bool(low_confidence_secondary_relax_ionization_gate) and bool(low_confidence_require_ionized)
+                z_min_sec = float(max(0.0, low_confidence_secondary_ionization_z_min))
+                relaxed_ion_conf_min = float(np.clip(float(low_confidence_secondary_relaxed_ion_conf_min), 0.0, 1.0))
+
+                use_spearman = bool(low_confidence_secondary_use_spearman)
+                spear_min_abs = float(max(0.0, low_confidence_secondary_spearman_min_abs))
+                spear_margin = float(max(0.0, low_confidence_secondary_spearman_margin))
+
+                promote_votes = int(max(0, low_confidence_secondary_promote_min_zone_votes))
+                promote_conf_min = float(np.clip(float(low_confidence_secondary_promote_conf_min), 0.0, 1.0))
+
+                for _ in range(sec_cycles):
+                    cycle_update = np.zeros_like(logits)
+                    for j, cls in enumerate(classes):
+                        y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
+                        p = _sigmoid(logits[:, j])
+                        residual = y01 - p
+                        residual_train = residual[train_mask]
+
+                        class_score = np.zeros(df.shape[0], dtype="float64")
+                        denom = 0.0
+                        for col in feature_cols_used:
+                            z = z_cache.get(col)
+                            if z is None:
+                                continue
+
+                            # Primary (Pearson) charge.
+                            charge_p = _pearson_corr(z[train_mask], residual_train)
+                            if not math.isfinite(charge_p):
+                                charge_p = 0.0
+
+                            # Secondary (Spearman) charge for nonparametric features when useful.
+                            medium = migration_by_feature[col]
+                            charge = float(charge_p)
+                            slow_mover = False
+                            if use_spearman and medium.ionization == "nonparametric" and _sp_stats is not None:
+                                r_s, _ = _safe_spearmanr(z[train_mask], residual_train)
+                                if math.isfinite(r_s) and (abs(float(r_s)) >= spear_min_abs):
+                                    if abs(float(r_s)) >= abs(float(charge_p)) + spear_margin:
+                                        charge = float(r_s)
+                                        slow_mover = True
+
+                            if not math.isfinite(charge) or abs(charge) < 1e-8:
+                                continue
+
+                            bond_factor = bond_factors.get(col, 1.0)
+                            certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
+                            density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
+
+                            eta_base = max(1e-6, float(medium.viscosity))
+                            # Slow-movers get a thinner buffer (lower viscosity) so they can contribute.
+                            if slow_mover:
+                                eta_base = max(1e-6, eta_base * visc_mult)
+                            eta_dynamic = max(1e-6, eta_base / (1.0 + shear_sec * abs(charge) * bond_factor))
+
+                            inhibition = 0.0
+                            if competitive_inhibition and col != dominant_global:
+                                inhibition = inhib_sec * abs(float(affinity_to_global_dominant.get(col, 0.0)))
+
+                            eff_charge = float(charge)
+                            if eff_charge < 0:
+                                eff_charge *= neg_mult
+                            q = eff_charge * density * bond_factor
+                            x_pos = float(pI_map.get(col, 0.5))
+                            field = float(plane_mobility) - float(grad1) * x_pos
+                            v = (q * field) / (eta_dynamic + inhibition)
+
+                            denom += abs(v)
+                            class_score += v * z
+
+                        if denom <= 1e-12:
+                            denom = 1.0
+                        cycle_update[:, j] = class_score / denom
+
+                    logits[low_mask, :] += (float(lr) * cycle_update[low_mask, :])
+                    probs = _softmax(logits)
+                    conf = np.max(probs, axis=1)
+                    entropy = _normalized_entropy(probs)
+                    if smear_metric_name == "instability":
+                        smear = instability
+                    else:
+                        smear = entropy
+
+                    if combine_rule == "and":
+                        low_mask = (conf < float(conf_thr)) & (smear > float(ent_thr))
+                    else:
+                        low_mask = (conf < float(conf_thr)) | (smear > float(ent_thr))
+
+                    # Relaxed ionization gate for the secondary pass.
+                    if relax_ion and ionized_features:
+                        ion_hits_sec = np.zeros(df.shape[0], dtype="int32")
+                        for col in ionized_features:
+                            z = z_cache.get(col)
+                            if z is None:
+                                continue
+                            ion_hits_sec += (np.abs(z) >= z_min_sec).astype("int32")
+                        strict_zero = (ionized_hit_count <= 0)
+                        relaxed_ok = (ion_hits_sec > 0)
+                        allow = (~strict_zero) | (relaxed_ok & (conf >= relaxed_ion_conf_min))
+                        low_mask = np.asarray(low_mask, dtype=bool) | (~allow)
+                    elif bool(low_confidence_require_ionized):
+                        low_mask = np.asarray(low_mask, dtype=bool) | (ionized_hit_count <= 0)
+
+                    # Cluster promotion: if enough features (votes) from the row land in the same zone,
+                    # promote it to a prediction even if it remains low-confidence.
+                    if promote_votes > 0:
+                        promote = (conf >= promote_conf_min) & (zone_cluster_max_votes >= promote_votes)
+                        low_mask = np.asarray(low_mask, dtype=bool) & (~promote)
+
+                    if not bool(np.any(low_mask)):
+                        break
+
+                # Refresh final predictions after secondary ionization.
+                pred_idx = np.argmax(probs, axis=1)
+                pred_labels = [classes[int(i)] for i in pred_idx]
                 low_conf_mask = np.asarray(low_mask, dtype=bool)
         except Exception:
             pass
