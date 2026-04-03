@@ -221,8 +221,10 @@ def predict_page(
             "competitive_inhibition": True,
             "thermal_noise": False,
             "stage2_cycles": 2,
+            "stage2_trigger_cycle": 50,
             "inhibition_strength": 0.7,
             "scavenger_cycles": 1,
+            "stage2_shatter_complexes": True,
             "low_confidence_mode": "none",
             "low_confidence_threshold": 0.0,
             "low_confidence_entropy_threshold": 0.0,
@@ -250,8 +252,10 @@ async def predict_action(
     competitive_inhibition: str | None = Form(None),
     thermal_noise: str | None = Form(None),
     stage2_cycles: int = Form(2),
+    stage2_trigger_cycle: int = Form(50),
     inhibition_strength: float = Form(0.7),
     scavenger_cycles: int = Form(1),
+    stage2_shatter_complexes: str | None = Form(None),
     low_confidence_mode: str = Form("none"),
     low_confidence_threshold: float = Form(0.0),
     low_confidence_entropy_threshold: float = Form(0.0),
@@ -316,6 +320,12 @@ async def predict_action(
         stage2_cycles = max(0, min(50, stage2_cycles))
 
         try:
+            stage2_trigger_cycle = int(stage2_trigger_cycle)
+        except Exception:
+            stage2_trigger_cycle = 50
+        stage2_trigger_cycle = max(0, min(200, stage2_trigger_cycle))
+
+        try:
             inhibition_strength = float(inhibition_strength)
         except Exception:
             inhibition_strength = 0.7
@@ -357,8 +367,10 @@ async def predict_action(
             competitive_inhibition=competitive_inhibition_bool,
             thermal_noise=thermal_noise_bool,
             stage2_cycles=stage2_cycles,
+            stage2_trigger_cycle=stage2_trigger_cycle,
             inhibition_strength=inhibition_strength,
             scavenger_cycles=scavenger_cycles,
+            stage2_shatter_complexes=bool(stage2_shatter_complexes),
             low_confidence_mode=low_confidence_mode,
             low_confidence_threshold=low_confidence_threshold,
             low_confidence_entropy_threshold=low_confidence_entropy_threshold,
@@ -521,8 +533,10 @@ async def predict_action(
             "competitive_inhibition": competitive_inhibition_bool,
             "thermal_noise": thermal_noise_bool,
             "stage2_cycles": stage2_cycles,
+            "stage2_trigger_cycle": stage2_trigger_cycle,
             "inhibition_strength": inhibition_strength,
             "scavenger_cycles": scavenger_cycles,
+            "stage2_shatter_complexes": bool(stage2_shatter_complexes),
             "low_confidence_mode": low_confidence_mode,
             "low_confidence_threshold": low_confidence_threshold,
             "low_confidence_entropy_threshold": low_confidence_entropy_threshold,

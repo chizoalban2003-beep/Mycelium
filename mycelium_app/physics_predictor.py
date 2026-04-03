@@ -213,6 +213,12 @@ def _calculate_viscosity_field(
     # cannot migrate toward the target and pollute the final velocity field.
     if unstable:
         eta *= 2.25
+    else:
+        # Express lanes: high-affinity + high-mass compounds move through a thinned medium.
+        # This is intentionally non-linear so mid-strength features aren't over-boosted.
+        lane = float(np.clip(thinning, 0.0, 1.0))
+        if lane >= 0.40:
+            eta *= float(np.clip(1.0 - 0.20 * (lane**0.85), 0.70, 1.0))
 
     return float(max(1e-6, eta))
 
@@ -1281,9 +1287,11 @@ def run_physics_prediction(
     thermal_noise_cycles: int = 3,
     thermal_noise_level: float = 0.10,
     stage2_cycles: int = 2,
+    stage2_trigger_cycle: int = 50,
     stage2_voltage_multiplier: float = 2.0,
     inhibition_strength: float = 0.7,
     scavenger_cycles: int = 1,
+    stage2_shatter_complexes: bool = False,
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
@@ -2070,6 +2078,14 @@ def run_physics_prediction(
     inst_flip_count = np.zeros(df.shape[0], dtype="int32")
     inst_steps: int = 0
 
+    # Optional: delay the Stage-2 focusing/shattering until a specific global cycle.
+    # This allows the stage-1 gel to settle before complex dissociation.
+    stage2_trigger = int(stage2_trigger_cycle)
+    if stage2_trigger <= 0:
+        stage2_trigger = 0
+    if stage2_trigger and int(n_cycles_eff) >= stage2_trigger:
+        n_cycles_eff = max(1, stage2_trigger - 1)
+
     for cycle in range(1, n_cycles_eff + 1):
         cycle_update = np.zeros_like(logits)
         for j, cls in enumerate(classes):
@@ -2211,10 +2227,15 @@ def run_physics_prediction(
 
                     medium = migration_by_feature[col]
                     bond_factor = bond_factors.get(col, 1.0)
+                    if bool(stage2_shatter_complexes) and medium.complex_size is not None and int(medium.complex_size) >= 2:
+                        bond_factor = 1.0
                     certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                     density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
 
                     eta_base = max(1e-6, medium.viscosity)
+                    if bool(stage2_shatter_complexes) and medium.complex_size is not None and int(medium.complex_size) >= 2:
+                        # Undo complex drag in Stage-2 so individual members can migrate independently.
+                        eta_base = max(1e-6, eta_base / float(complex_drag_by_feature.get(col, 1.0)))
                     eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
 
                     inhibition = 0.0
@@ -2323,10 +2344,14 @@ def run_physics_prediction(
 
                         medium = migration_by_feature[col]
                         bond_factor = bond_factors.get(col, 1.0)
+                        if bool(stage2_shatter_complexes) and medium.complex_size is not None and int(medium.complex_size) >= 2:
+                            bond_factor = 1.0
                         certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                         density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
 
                         eta_base = max(1e-6, medium.viscosity)
+                        if bool(stage2_shatter_complexes) and medium.complex_size is not None and int(medium.complex_size) >= 2:
+                            eta_base = max(1e-6, eta_base / float(complex_drag_by_feature.get(col, 1.0)))
                         eta_dynamic = max(1e-6, eta_base / (1.0 + shear * abs(charge) * bond_factor))
                         if thermal_noise and sc_cycle <= int(thermal_noise_cycles):
                             eta_dynamic = max(
