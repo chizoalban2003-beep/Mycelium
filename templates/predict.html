@@ -276,6 +276,46 @@
                         <label class="block text-sm text-slate-300">Relaxed ion conf-min</label>
                         <input name="low_confidence_secondary_relaxed_ion_conf_min" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_secondary_relaxed_ion_conf_min if low_confidence_secondary_relaxed_ion_conf_min is not none else 0.55 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
                       </div>
+
+                      <div class="md:col-span-4">
+                        <div class="mt-2 border-t border-slate-800 pt-3"></div>
+                        <div class="text-sm text-slate-200 font-medium">Reciprocating Sieve (v4.2)</div>
+                        <div class="mt-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                          <div class="md:col-span-2 flex items-center gap-2">
+                            <input type="checkbox" name="low_confidence_secondary_sieve_enabled" {% if low_confidence_secondary_sieve_enabled %}checked{% endif %} />
+                            <div>
+                              <div class="text-sm text-slate-200">Shake tangled rows</div>
+                              <div class="text-xs text-slate-500">Reverse-step + noise for rows that stay low-confidence without improving.</div>
+                            </div>
+                          </div>
+                          <div>
+                            <label class="block text-sm text-slate-300">Shake cycles</label>
+                            <input name="low_confidence_secondary_sieve_cycles" type="number" min="0" max="25" value="{{ low_confidence_secondary_sieve_cycles if low_confidence_secondary_sieve_cycles is not none else 2 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                          </div>
+                          <div>
+                            <label class="block text-sm text-slate-300">Reverse mult</label>
+                            <input name="low_confidence_secondary_sieve_reverse_multiplier" type="number" min="0" max="2" step="0.05" value="{{ low_confidence_secondary_sieve_reverse_multiplier if low_confidence_secondary_sieve_reverse_multiplier is not none else 0.75 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                          </div>
+                          <div>
+                            <label class="block text-sm text-slate-300">Noise std</label>
+                            <input name="low_confidence_secondary_sieve_noise_std" type="number" min="0" max="0.50" step="0.01" value="{{ low_confidence_secondary_sieve_noise_std if low_confidence_secondary_sieve_noise_std is not none else 0.04 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                          </div>
+                          <div>
+                            <label class="block text-sm text-slate-300">Instability min</label>
+                            <input name="low_confidence_secondary_sieve_instability_min" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_secondary_sieve_instability_min if low_confidence_secondary_sieve_instability_min is not none else 0.65 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                          </div>
+                          <div>
+                            <label class="block text-sm text-slate-300">Conf Δ max</label>
+                            <input name="low_confidence_secondary_sieve_conf_delta_max" type="number" min="0" max="0.25" step="0.001" value="{{ low_confidence_secondary_sieve_conf_delta_max if low_confidence_secondary_sieve_conf_delta_max is not none else 0.002 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                            <div class="mt-1 text-xs text-slate-500">Lower = only shake when confidence fails to rise.</div>
+                          </div>
+                          <div>
+                            <label class="block text-sm text-slate-300">Update norm max</label>
+                            <input name="low_confidence_secondary_sieve_update_norm_max" type="number" min="0" max="10" step="0.001" value="{{ low_confidence_secondary_sieve_update_norm_max if low_confidence_secondary_sieve_update_norm_max is not none else 0.003 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                            <div class="mt-1 text-xs text-slate-500">Set to 0 to disable this filter.</div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

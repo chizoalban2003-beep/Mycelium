@@ -54,6 +54,7 @@ def _print_run(name: str, pred, seconds: float) -> None:
                     f"events={sieve.get('events')} rows_total={sieve.get('rows_total')} "
                     f"cycles={sieve.get('cycles')} reverse={sieve.get('reverse_multiplier')} "
                     f"noise_std={sieve.get('noise_std')} inst_min={sieve.get('instability_min')} "
+                    f"conf_delta_max={sieve.get('conf_delta_max')} "
                     f"update_max={sieve.get('update_norm_max')}"
                 )
             stages = (sel.get("test_stages") or {})
@@ -130,6 +131,7 @@ def main() -> int:
     parser.add_argument("--sec-sieve-reverse", type=float, default=0.75)
     parser.add_argument("--sec-sieve-noise", type=float, default=0.04)
     parser.add_argument("--sec-sieve-inst", type=float, default=0.65)
+    parser.add_argument("--sec-sieve-conf-delta-max", type=float, default=0.002)
     parser.add_argument("--sec-sieve-update-max", type=float, default=0.003)
 
     args = parser.parse_args()
@@ -187,6 +189,7 @@ def main() -> int:
         low_confidence_secondary_sieve_reverse_multiplier=float(args.sec_sieve_reverse),
         low_confidence_secondary_sieve_noise_std=float(args.sec_sieve_noise),
         low_confidence_secondary_sieve_instability_min=float(args.sec_sieve_inst),
+        low_confidence_secondary_sieve_conf_delta_max=float(args.sec_sieve_conf_delta_max),
         low_confidence_secondary_sieve_update_norm_max=float(args.sec_sieve_update_max),
     )
     dt2 = time.perf_counter() - t1

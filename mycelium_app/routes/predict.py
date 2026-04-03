@@ -61,6 +61,13 @@ async def electrophoresis_predict(
     low_confidence_secondary_promote_min_zone_votes: int = Form(3),
     low_confidence_secondary_promote_z_min: float = Form(0.50),
     low_confidence_secondary_promote_conf_min: float = Form(0.42),
+    low_confidence_secondary_sieve_enabled: bool = Form(False),
+    low_confidence_secondary_sieve_cycles: int = Form(2),
+    low_confidence_secondary_sieve_reverse_multiplier: float = Form(0.75),
+    low_confidence_secondary_sieve_noise_std: float = Form(0.04),
+    low_confidence_secondary_sieve_instability_min: float = Form(0.65),
+    low_confidence_secondary_sieve_conf_delta_max: float = Form(0.002),
+    low_confidence_secondary_sieve_update_norm_max: float = Form(0.003),
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -134,6 +141,13 @@ async def electrophoresis_predict(
             low_confidence_secondary_promote_min_zone_votes=int(low_confidence_secondary_promote_min_zone_votes),
             low_confidence_secondary_promote_z_min=float(low_confidence_secondary_promote_z_min),
             low_confidence_secondary_promote_conf_min=float(low_confidence_secondary_promote_conf_min),
+            low_confidence_secondary_sieve_enabled=bool(low_confidence_secondary_sieve_enabled),
+            low_confidence_secondary_sieve_cycles=int(low_confidence_secondary_sieve_cycles),
+            low_confidence_secondary_sieve_reverse_multiplier=float(low_confidence_secondary_sieve_reverse_multiplier),
+            low_confidence_secondary_sieve_noise_std=float(low_confidence_secondary_sieve_noise_std),
+            low_confidence_secondary_sieve_instability_min=float(low_confidence_secondary_sieve_instability_min),
+            low_confidence_secondary_sieve_conf_delta_max=float(low_confidence_secondary_sieve_conf_delta_max),
+            low_confidence_secondary_sieve_update_norm_max=float(low_confidence_secondary_sieve_update_norm_max),
         )
 
         return {
