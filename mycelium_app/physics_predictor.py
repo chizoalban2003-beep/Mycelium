@@ -1352,6 +1352,16 @@ def run_physics_prediction(
     low_confidence_viscosity_override: bool = False,
     low_confidence_viscosity_override_threshold: float = 1.0,
     low_confidence_label: str = "__LOW_CONFIDENCE__",
+    # Primary-stage micro-shakes (v4.3 experiment): apply scheduled sieve pulses during
+    # the main electrophoresis cycles to prevent tangles from solidifying.
+    low_confidence_primary_sieve_enabled: bool = False,
+    low_confidence_primary_sieve_cycle_a: int = 30,
+    low_confidence_primary_sieve_cycle_b: int = 45,
+    low_confidence_primary_sieve_shake_cycles: int = 2,
+    low_confidence_primary_sieve_reverse_multiplier: float = 1.0,
+    low_confidence_primary_sieve_noise_std: float = 0.08,
+    low_confidence_primary_sieve_instability_min: float = 0.50,
+    low_confidence_primary_sieve_conf_delta_max: float = 0.003,
     return_predictions: bool = False,
 ) -> PredictionResult:
     _require_scipy()
@@ -2123,6 +2133,16 @@ def run_physics_prediction(
     shear = max(0.0, float(shear_alpha))
     grad1 = 0.35
     rng_stage1 = np.random.default_rng(int(random_seed) + 30011)
+    rng_primary_sieve = np.random.default_rng(int(random_seed) + 50123)
+
+    primary_sieve_enabled = bool(low_confidence_primary_sieve_enabled)
+    primary_sieve_cycle_a = int(low_confidence_primary_sieve_cycle_a)
+    primary_sieve_cycle_b = int(low_confidence_primary_sieve_cycle_b)
+    primary_sieve_shake_cycles = int(max(0, low_confidence_primary_sieve_shake_cycles))
+    primary_sieve_reverse = float(max(0.0, low_confidence_primary_sieve_reverse_multiplier))
+    primary_sieve_noise = float(max(0.0, low_confidence_primary_sieve_noise_std))
+    primary_sieve_inst_min = float(np.clip(float(low_confidence_primary_sieve_instability_min), 0.0, 1.0))
+    primary_sieve_conf_delta_max = float(max(0.0, low_confidence_primary_sieve_conf_delta_max))
 
     es_patience = int(max(0, early_stop_patience))
     es_tol = float(max(0.0, early_stop_tol))
@@ -2211,6 +2231,45 @@ def run_physics_prediction(
 
         conf_now = np.max(probs, axis=1)
         pred_now = np.argmax(probs, axis=1)
+
+        # v4.3 scheduled micro-shakes: apply two small pulses at cycle A/B to tangled rows.
+        if (
+            primary_sieve_enabled
+            and primary_sieve_shake_cycles > 0
+            and (cycle == primary_sieve_cycle_a or cycle == primary_sieve_cycle_b)
+            and inst_prev_conf is not None
+            and inst_prev_pred_idx is not None
+        ):
+            try:
+                # Running instability estimate based on observed jitter/flip stats so far.
+                if inst_steps > 0:
+                    conf_jitter = inst_jitter_sum / float(inst_steps)
+                    flip_rate = inst_flip_count.astype("float64") / float(inst_steps)
+                    inst_now = np.clip(0.60 * flip_rate + 0.40 * conf_jitter, 0.0, 1.0)
+                else:
+                    inst_now = np.zeros(df.shape[0], dtype="float64")
+
+                conf_delta = np.asarray(conf_now, dtype="float64") - np.asarray(inst_prev_conf, dtype="float64")
+                tangled = (
+                    (inst_now >= primary_sieve_inst_min)
+                    & (conf_delta <= primary_sieve_conf_delta_max)
+                )
+                if bool(np.any(tangled)):
+                    for _ in range(primary_sieve_shake_cycles):
+                        if primary_sieve_reverse > 0.0:
+                            logits[tangled, :] += float(lr) * (-primary_sieve_reverse) * cycle_update[tangled, :]
+                        if primary_sieve_noise > 0.0:
+                            logits[tangled, :] += rng_primary_sieve.normal(
+                                loc=0.0,
+                                scale=primary_sieve_noise,
+                                size=(int(np.sum(tangled.astype("int32"))), logits.shape[1]),
+                            )
+                    probs = _softmax(logits)
+                    conf_now = np.max(probs, axis=1)
+                    pred_now = np.argmax(probs, axis=1)
+            except Exception:
+                pass
+
         if inst_prev_conf is not None and inst_prev_pred_idx is not None:
             inst_jitter_sum += np.abs(conf_now - inst_prev_conf)
             inst_flip_count += (pred_now != inst_prev_pred_idx).astype("int32")

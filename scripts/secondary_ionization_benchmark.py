@@ -113,6 +113,16 @@ def main() -> int:
     parser.add_argument("--inhibition-strength", type=float, default=0.7)
     parser.add_argument("--scavenger", type=int, default=1)
 
+    # v4.3: primary-stage scheduled micro-shakes
+    parser.add_argument("--prim-sieve", action="store_true", default=False)
+    parser.add_argument("--prim-sieve-a", type=int, default=30)
+    parser.add_argument("--prim-sieve-b", type=int, default=45)
+    parser.add_argument("--prim-sieve-cycles", type=int, default=2)
+    parser.add_argument("--prim-sieve-reverse", type=float, default=1.0)
+    parser.add_argument("--prim-sieve-noise", type=float, default=0.08)
+    parser.add_argument("--prim-sieve-inst", type=float, default=0.50)
+    parser.add_argument("--prim-sieve-conf-delta-max", type=float, default=0.003)
+
     # Secondary ionization settings
     parser.add_argument("--sec", action="store_true", default=True)
     parser.add_argument("--sec-cycles", type=int, default=2)
@@ -162,6 +172,14 @@ def main() -> int:
         low_confidence_require_ionized=bool(args.ion_gate),
         low_confidence_ionization_pvalue=float(args.ion_p),
         low_confidence_ionization_z_min=float(args.ion_z),
+        low_confidence_primary_sieve_enabled=bool(args.prim_sieve),
+        low_confidence_primary_sieve_cycle_a=int(args.prim_sieve_a),
+        low_confidence_primary_sieve_cycle_b=int(args.prim_sieve_b),
+        low_confidence_primary_sieve_shake_cycles=int(args.prim_sieve_cycles),
+        low_confidence_primary_sieve_reverse_multiplier=float(args.prim_sieve_reverse),
+        low_confidence_primary_sieve_noise_std=float(args.prim_sieve_noise),
+        low_confidence_primary_sieve_instability_min=float(args.prim_sieve_inst),
+        low_confidence_primary_sieve_conf_delta_max=float(args.prim_sieve_conf_delta_max),
         return_predictions=True,
     )
 

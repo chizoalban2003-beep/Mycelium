@@ -256,6 +256,14 @@ def predict_page(
             "low_confidence_secondary_promote_min_zone_votes": 3,
             "low_confidence_secondary_promote_z_min": 0.50,
             "low_confidence_secondary_promote_conf_min": 0.42,
+            "low_confidence_primary_sieve_enabled": False,
+            "low_confidence_primary_sieve_cycle_a": 30,
+            "low_confidence_primary_sieve_cycle_b": 45,
+            "low_confidence_primary_sieve_shake_cycles": 2,
+            "low_confidence_primary_sieve_reverse_multiplier": 1.0,
+            "low_confidence_primary_sieve_noise_std": 0.08,
+            "low_confidence_primary_sieve_instability_min": 0.50,
+            "low_confidence_primary_sieve_conf_delta_max": 0.003,
             "low_confidence_secondary_sieve_enabled": False,
             "low_confidence_secondary_sieve_cycles": 2,
             "low_confidence_secondary_sieve_reverse_multiplier": 0.75,
@@ -320,6 +328,14 @@ async def predict_action(
     low_confidence_secondary_promote_min_zone_votes: int = Form(3),
     low_confidence_secondary_promote_z_min: float = Form(0.50),
     low_confidence_secondary_promote_conf_min: float = Form(0.42),
+    low_confidence_primary_sieve_enabled: str | None = Form(None),
+    low_confidence_primary_sieve_cycle_a: int = Form(30),
+    low_confidence_primary_sieve_cycle_b: int = Form(45),
+    low_confidence_primary_sieve_shake_cycles: int = Form(2),
+    low_confidence_primary_sieve_reverse_multiplier: float = Form(1.0),
+    low_confidence_primary_sieve_noise_std: float = Form(0.08),
+    low_confidence_primary_sieve_instability_min: float = Form(0.50),
+    low_confidence_primary_sieve_conf_delta_max: float = Form(0.003),
     low_confidence_secondary_sieve_enabled: str | None = Form(None),
     low_confidence_secondary_sieve_cycles: int = Form(2),
     low_confidence_secondary_sieve_reverse_multiplier: float = Form(0.75),
@@ -347,6 +363,7 @@ async def predict_action(
     low_confidence_secondary_relax_ionization_gate_bool = bool(low_confidence_secondary_relax_ionization_gate)
     low_confidence_secondary_use_spearman_bool = bool(low_confidence_secondary_use_spearman)
     low_confidence_secondary_sieve_enabled_bool = bool(low_confidence_secondary_sieve_enabled)
+    low_confidence_primary_sieve_enabled_bool = bool(low_confidence_primary_sieve_enabled)
 
     try:
         plane_enum = PhysicsPlane(plane)
@@ -540,6 +557,42 @@ async def predict_action(
             low_confidence_secondary_promote_conf_min = 0.42
         low_confidence_secondary_promote_conf_min = max(0.0, min(1.0, low_confidence_secondary_promote_conf_min))
 
+        try:
+            low_confidence_primary_sieve_cycle_a = int(low_confidence_primary_sieve_cycle_a)
+        except Exception:
+            low_confidence_primary_sieve_cycle_a = 30
+        low_confidence_primary_sieve_cycle_a = max(1, min(200, low_confidence_primary_sieve_cycle_a))
+        try:
+            low_confidence_primary_sieve_cycle_b = int(low_confidence_primary_sieve_cycle_b)
+        except Exception:
+            low_confidence_primary_sieve_cycle_b = 45
+        low_confidence_primary_sieve_cycle_b = max(1, min(200, low_confidence_primary_sieve_cycle_b))
+        try:
+            low_confidence_primary_sieve_shake_cycles = int(low_confidence_primary_sieve_shake_cycles)
+        except Exception:
+            low_confidence_primary_sieve_shake_cycles = 2
+        low_confidence_primary_sieve_shake_cycles = max(0, min(25, low_confidence_primary_sieve_shake_cycles))
+        try:
+            low_confidence_primary_sieve_reverse_multiplier = float(low_confidence_primary_sieve_reverse_multiplier)
+        except Exception:
+            low_confidence_primary_sieve_reverse_multiplier = 1.0
+        low_confidence_primary_sieve_reverse_multiplier = max(0.0, min(2.0, low_confidence_primary_sieve_reverse_multiplier))
+        try:
+            low_confidence_primary_sieve_noise_std = float(low_confidence_primary_sieve_noise_std)
+        except Exception:
+            low_confidence_primary_sieve_noise_std = 0.08
+        low_confidence_primary_sieve_noise_std = max(0.0, min(0.50, low_confidence_primary_sieve_noise_std))
+        try:
+            low_confidence_primary_sieve_instability_min = float(low_confidence_primary_sieve_instability_min)
+        except Exception:
+            low_confidence_primary_sieve_instability_min = 0.50
+        low_confidence_primary_sieve_instability_min = max(0.0, min(1.0, low_confidence_primary_sieve_instability_min))
+        try:
+            low_confidence_primary_sieve_conf_delta_max = float(low_confidence_primary_sieve_conf_delta_max)
+        except Exception:
+            low_confidence_primary_sieve_conf_delta_max = 0.003
+        low_confidence_primary_sieve_conf_delta_max = max(0.0, min(0.25, low_confidence_primary_sieve_conf_delta_max))
+
         low_confidence_secondary_sieve_enabled_bool = bool(low_confidence_secondary_sieve_enabled)
         try:
             low_confidence_secondary_sieve_cycles = int(low_confidence_secondary_sieve_cycles)
@@ -624,6 +677,14 @@ async def predict_action(
             low_confidence_secondary_promote_min_zone_votes=low_confidence_secondary_promote_min_zone_votes,
             low_confidence_secondary_promote_z_min=low_confidence_secondary_promote_z_min,
             low_confidence_secondary_promote_conf_min=low_confidence_secondary_promote_conf_min,
+            low_confidence_primary_sieve_enabled=low_confidence_primary_sieve_enabled_bool,
+            low_confidence_primary_sieve_cycle_a=low_confidence_primary_sieve_cycle_a,
+            low_confidence_primary_sieve_cycle_b=low_confidence_primary_sieve_cycle_b,
+            low_confidence_primary_sieve_shake_cycles=low_confidence_primary_sieve_shake_cycles,
+            low_confidence_primary_sieve_reverse_multiplier=low_confidence_primary_sieve_reverse_multiplier,
+            low_confidence_primary_sieve_noise_std=low_confidence_primary_sieve_noise_std,
+            low_confidence_primary_sieve_instability_min=low_confidence_primary_sieve_instability_min,
+            low_confidence_primary_sieve_conf_delta_max=low_confidence_primary_sieve_conf_delta_max,
             low_confidence_secondary_sieve_enabled=low_confidence_secondary_sieve_enabled_bool,
             low_confidence_secondary_sieve_cycles=low_confidence_secondary_sieve_cycles,
             low_confidence_secondary_sieve_reverse_multiplier=low_confidence_secondary_sieve_reverse_multiplier,
@@ -852,6 +913,14 @@ async def predict_action(
             "low_confidence_secondary_promote_min_zone_votes": low_confidence_secondary_promote_min_zone_votes,
             "low_confidence_secondary_promote_z_min": low_confidence_secondary_promote_z_min,
             "low_confidence_secondary_promote_conf_min": low_confidence_secondary_promote_conf_min,
+            "low_confidence_primary_sieve_enabled": low_confidence_primary_sieve_enabled_bool,
+            "low_confidence_primary_sieve_cycle_a": low_confidence_primary_sieve_cycle_a,
+            "low_confidence_primary_sieve_cycle_b": low_confidence_primary_sieve_cycle_b,
+            "low_confidence_primary_sieve_shake_cycles": low_confidence_primary_sieve_shake_cycles,
+            "low_confidence_primary_sieve_reverse_multiplier": low_confidence_primary_sieve_reverse_multiplier,
+            "low_confidence_primary_sieve_noise_std": low_confidence_primary_sieve_noise_std,
+            "low_confidence_primary_sieve_instability_min": low_confidence_primary_sieve_instability_min,
+            "low_confidence_primary_sieve_conf_delta_max": low_confidence_primary_sieve_conf_delta_max,
             "low_confidence_secondary_sieve_enabled": low_confidence_secondary_sieve_enabled_bool,
             "low_confidence_secondary_sieve_cycles": low_confidence_secondary_sieve_cycles,
             "low_confidence_secondary_sieve_reverse_multiplier": low_confidence_secondary_sieve_reverse_multiplier,

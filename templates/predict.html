@@ -321,6 +321,49 @@
                 </div>
               </div>
 
+              <div class="md:col-span-4">
+                <div class="mt-2 border-t border-slate-800 pt-3"></div>
+                <div class="text-sm text-slate-200 font-medium">Primary micro-shakes (v4.3)</div>
+                <div class="mt-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div class="md:col-span-2 flex items-center gap-2">
+                    <input type="checkbox" name="low_confidence_primary_sieve_enabled" {% if low_confidence_primary_sieve_enabled %}checked{% endif %} />
+                    <div>
+                      <div class="text-sm text-slate-200">Double micro-shake pulses</div>
+                      <div class="text-xs text-slate-500">Two scheduled reverse-step + noise pulses to rescue tangled rows earlier.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Cycle A</label>
+                    <input name="low_confidence_primary_sieve_cycle_a" type="number" min="0" max="200" value="{{ low_confidence_primary_sieve_cycle_a if low_confidence_primary_sieve_cycle_a is not none else 30 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Cycle B</label>
+                    <input name="low_confidence_primary_sieve_cycle_b" type="number" min="0" max="200" value="{{ low_confidence_primary_sieve_cycle_b if low_confidence_primary_sieve_cycle_b is not none else 45 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Shake cycles</label>
+                    <input name="low_confidence_primary_sieve_shake_cycles" type="number" min="0" max="25" value="{{ low_confidence_primary_sieve_shake_cycles if low_confidence_primary_sieve_shake_cycles is not none else 2 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Reverse mult</label>
+                    <input name="low_confidence_primary_sieve_reverse_multiplier" type="number" min="0" max="2" step="0.05" value="{{ low_confidence_primary_sieve_reverse_multiplier if low_confidence_primary_sieve_reverse_multiplier is not none else 1.0 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Noise std</label>
+                    <input name="low_confidence_primary_sieve_noise_std" type="number" min="0" max="0.50" step="0.01" value="{{ low_confidence_primary_sieve_noise_std if low_confidence_primary_sieve_noise_std is not none else 0.08 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Instability min</label>
+                    <input name="low_confidence_primary_sieve_instability_min" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_primary_sieve_instability_min if low_confidence_primary_sieve_instability_min is not none else 0.50 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Conf Δ max</label>
+                    <input name="low_confidence_primary_sieve_conf_delta_max" type="number" min="0" max="0.25" step="0.001" value="{{ low_confidence_primary_sieve_conf_delta_max if low_confidence_primary_sieve_conf_delta_max is not none else 0.003 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">Lower = only shake when confidence fails to rise.</div>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label class="block text-sm text-slate-300">Inhibition strength</label>
                 <input name="inhibition_strength" type="number" min="0" max="2.0" step="0.05" value="{{ inhibition_strength or 0.7 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />

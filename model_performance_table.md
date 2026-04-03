@@ -1,21 +1,35 @@
-Mycelium vs baselines (classification) — updated abstention + tuning
+Mycelium vs baselines (classification + regression) — updated comparisons
 
 Dataset: tmp_eval/job_salary_prediction_dataset.csv (nrows=8000)
-Target: remote_work | seed=42 | train_fraction=0.8
+Seed=42 | train_fraction=0.8
 
-Forced prediction (apples-to-apples with sklearn):
+Forced prediction (classification; apples-to-apples with sklearn):
+Target: remote_work
 | Model | Accuracy | F1 (macro) | Time (s) |
 |---|---|---|---|
-| Mycelium (tuned gas, n=50) | 0.3650 | 0.3642 | 8.33 |
-| HistGB | 0.3606 | 0.3606 | 3.63 |
-| KNN | 0.3538 | 0.3502 | 0.94 |
-| Mycelium (default) | 0.3519 | 0.3510 | 6.94 |
-| LogReg | 0.3431 | 0.3403 | 54.54 |
-| RandomForest | 0.3425 | 0.3423 | 1.93 |
-| MLP | 0.3394 | 0.1689 | 1.80 |
-| DecisionTree | 0.3356 | 0.3355 | 0.17 |
-| LinearSVC | 0.3275 | 0.1645 | 0.13 |
-| ExtraTrees | 0.3125 | 0.3120 | 3.84 |
+| LinearSVC | 0.4525 | 0.4357 | 0.21 |
+| LogReg | 0.4519 | 0.4426 | 0.24 |
+| HistGB | 0.3719 | 0.3717 | 2.04 |
+| RandomForest | 0.3581 | 0.3582 | 3.95 |
+| Mycelium (tuned gas, n=50) | 0.3519 | 0.3515 | 8.37 |
+| Mycelium (default) | 0.3519 | 0.3510 | 6.84 |
+| ExtraTrees | 0.3481 | 0.3480 | 6.56 |
+| DecisionTree | 0.3375 | 0.3377 | 0.11 |
+| Dummy (most_frequent) | 0.3331 | 0.1666 | 0.06 |
+| KNN | 0.3312 | 0.3296 | 0.39 |
+
+Forced prediction (regression):
+Target: salary
+| Model | MAE | RMSE | R2 | Time (s) |
+|---|---|---|---|---|
+| HistGB | 5117.52 | 6460.61 | 0.9692 | 1.35 |
+| Ridge | 5353.88 | 7042.21 | 0.9634 | 0.35 |
+| Mycelium (tuned gas, n=50) | 5581.93 | 7241.46 | 0.9613 | 2.28 |
+| RandomForest | 9983.86 | 12710.04 | 0.8809 | 6.69 |
+| ExtraTrees | 12263.74 | 15182.33 | 0.8301 | 9.13 |
+| DecisionTree | 14717.64 | 19139.22 | 0.7300 | 0.10 |
+| KNN | 18440.47 | 22967.44 | 0.6112 | 0.17 |
+| Dummy (mean) | 29473.24 | 36852.00 | -0.0010 | 0.11 |
 
 Selective prediction (Mycelium-only abstain):
 | Mycelium Selective Mode (tuned) | Coverage | Selective Acc | Abstain Rate | Overall Acc |
