@@ -29,6 +29,8 @@ async def electrophoresis_predict(
     low_confidence_mode: str = Form("none"),
     low_confidence_threshold: float = Form(0.0),
     low_confidence_entropy_threshold: float = Form(0.0),
+    low_confidence_smear_metric: str = Form("entropy"),
+    low_confidence_combine_rule: str = Form("or"),
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -70,6 +72,8 @@ async def electrophoresis_predict(
             low_confidence_mode=str(low_confidence_mode),
             low_confidence_threshold=float(low_confidence_threshold),
             low_confidence_entropy_threshold=float(low_confidence_entropy_threshold),
+            low_confidence_smear_metric=str(low_confidence_smear_metric),
+            low_confidence_combine_rule=str(low_confidence_combine_rule),
         )
 
         return {

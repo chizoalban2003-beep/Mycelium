@@ -1287,6 +1287,8 @@ def run_physics_prediction(
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
+    low_confidence_smear_metric: str = "entropy",
+    low_confidence_combine_rule: Literal["or", "and"] = "or",
     low_confidence_label: str = "__LOW_CONFIDENCE__",
     return_predictions: bool = False,
 ) -> PredictionResult:
@@ -2060,6 +2062,14 @@ def run_physics_prediction(
     grad1 = 0.35
     rng_stage1 = np.random.default_rng(int(random_seed) + 30011)
 
+    # Instability (PCR "smear") tracking for categorical targets.
+    # We measure how much per-row confidence jitters and how often argmax flips across cycles.
+    inst_prev_conf: np.ndarray | None = None
+    inst_prev_pred_idx: np.ndarray | None = None
+    inst_jitter_sum = np.zeros(df.shape[0], dtype="float64")
+    inst_flip_count = np.zeros(df.shape[0], dtype="int32")
+    inst_steps: int = 0
+
     for cycle in range(1, n_cycles_eff + 1):
         cycle_update = np.zeros_like(logits)
         for j, cls in enumerate(classes):
@@ -2123,6 +2133,16 @@ def run_physics_prediction(
 
         logits += lr * cycle_update
         probs = _softmax(logits)
+
+        conf_now = np.max(probs, axis=1)
+        pred_now = np.argmax(probs, axis=1)
+        if inst_prev_conf is not None and inst_prev_pred_idx is not None:
+            inst_jitter_sum += np.abs(conf_now - inst_prev_conf)
+            inst_flip_count += (pred_now != inst_prev_pred_idx).astype("int32")
+            inst_steps += 1
+        inst_prev_conf = conf_now
+        inst_prev_pred_idx = pred_now
+
         pred_idx_cycle = np.argmax(probs, axis=1)
         pred_cycle = np.array([classes[int(i)] for i in pred_idx_cycle], dtype="object")
         test_acc = float(np.mean((y_cat[test_mask].to_numpy(dtype="object") == pred_cycle[test_mask]).astype("float64")))
@@ -2228,6 +2248,16 @@ def run_physics_prediction(
 
             logits += lr2 * cycle_update
             probs = _softmax(logits)
+
+            conf_now = np.max(probs, axis=1)
+            pred_now = np.argmax(probs, axis=1)
+            if inst_prev_conf is not None and inst_prev_pred_idx is not None:
+                inst_jitter_sum += np.abs(conf_now - inst_prev_conf)
+                inst_flip_count += (pred_now != inst_prev_pred_idx).astype("int32")
+                inst_steps += 1
+            inst_prev_conf = conf_now
+            inst_prev_pred_idx = pred_now
+
             pred_idx_cycle = np.argmax(probs, axis=1)
             pred_cycle = np.array([classes[int(i)] for i in pred_idx_cycle], dtype="object")
             test_acc = float(
@@ -2322,6 +2352,16 @@ def run_physics_prediction(
 
                 logits += lr3 * cycle_update
                 probs = _softmax(logits)
+
+                conf_now = np.max(probs, axis=1)
+                pred_now = np.argmax(probs, axis=1)
+                if inst_prev_conf is not None and inst_prev_pred_idx is not None:
+                    inst_jitter_sum += np.abs(conf_now - inst_prev_conf)
+                    inst_flip_count += (pred_now != inst_prev_pred_idx).astype("int32")
+                    inst_steps += 1
+                inst_prev_conf = conf_now
+                inst_prev_pred_idx = pred_now
+
                 pred_idx_cycle = np.argmax(probs, axis=1)
                 pred_cycle = np.array([classes[int(i)] for i in pred_idx_cycle], dtype="object")
                 test_acc = float(
@@ -2349,27 +2389,50 @@ def run_physics_prediction(
     conf = np.max(probs, axis=1)
     entropy = _normalized_entropy(probs)
 
+    instability = np.zeros(df.shape[0], dtype="float64")
+    if inst_steps > 0:
+        conf_jitter = inst_jitter_sum / float(inst_steps)
+        flip_rate = inst_flip_count.astype("float64") / float(inst_steps)
+        instability = np.clip(0.60 * flip_rate + 0.40 * conf_jitter, 0.0, 1.0)
+
+    smear_metric_name = str(low_confidence_smear_metric or "entropy").lower().strip()
+    if smear_metric_name == "instability":
+        smear = instability
+    else:
+        smear_metric_name = "entropy"
+        smear = entropy
+
+    combine_rule = str(low_confidence_combine_rule or "or").lower().strip()
+    if combine_rule not in ("or", "and"):
+        combine_rule = "or"
+
     # Auto-calibration: if thresholds are <= 0, derive them from the TEST distribution.
     conf_thr = float(low_confidence_threshold)
     ent_thr = float(low_confidence_entropy_threshold)
     if mode in ("flag", "abstain"):
         conf_test = conf[test_mask]
-        ent_test = entropy[test_mask]
+        smear_test = smear[test_mask]
         if conf_thr <= 0.0:
             # Treat the weakest ~20% confidence as "low" by default.
             conf_thr = float(np.quantile(conf_test, 0.20)) if conf_test.size else 0.0
         if ent_thr <= 0.0:
-            # Treat the noisiest ~20% entropy as "smeared" by default.
-            ent_thr = float(np.quantile(ent_test, 0.80)) if ent_test.size else 1.0
+            # Treat the noisiest ~20% smear as "smeared" by default.
+            ent_thr = float(np.quantile(smear_test, 0.80)) if smear_test.size else 1.0
 
         # Safeguard: if thresholds would abstain almost everything, relax them.
-        prelim = (conf < conf_thr) | (entropy > ent_thr)
+        if combine_rule == "and":
+            prelim = (conf < conf_thr) & (smear > ent_thr)
+        else:
+            prelim = (conf < conf_thr) | (smear > ent_thr)
         prelim_rate = float(np.mean(prelim[test_mask].astype("float64"))) if conf_test.size else 0.0
         if prelim_rate >= 0.95 and conf_test.size:
             conf_thr = float(np.quantile(conf_test, 0.05))
-            ent_thr = float(np.quantile(ent_test, 0.95))
+            ent_thr = float(np.quantile(smear_test, 0.95))
 
-    low_conf_mask = (conf < float(conf_thr)) | (entropy > float(ent_thr))
+    if combine_rule == "and":
+        low_conf_mask = (conf < float(conf_thr)) & (smear > float(ent_thr))
+    else:
+        low_conf_mask = (conf < float(conf_thr)) | (smear > float(ent_thr))
     if mode == "abstain":
         # Replace prediction with a sentinel label (keeps output JSON-compatible).
         pred_labels = [str(low_confidence_label) if bool(low_conf_mask[i]) else pred_labels[i] for i in range(len(pred_labels))]
@@ -2416,7 +2479,10 @@ def run_physics_prediction(
         }
         if mode in ("flag", "abstain"):
             row_preview["confidence"] = None if not math.isfinite(float(conf[i])) else float(conf[i])
-            row_preview["smearing"] = None if not math.isfinite(float(entropy[i])) else float(entropy[i])
+            row_preview["smearing"] = None if not math.isfinite(float(smear[i])) else float(smear[i])
+            row_preview["smear_metric"] = smear_metric_name
+            row_preview["entropy"] = None if not math.isfinite(float(entropy[i])) else float(entropy[i])
+            row_preview["instability"] = None if not math.isfinite(float(instability[i])) else float(instability[i])
             row_preview["low_confidence"] = bool(low_conf_mask[i])
         preview.append(row_preview)
 

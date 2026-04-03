@@ -226,6 +226,8 @@ def predict_page(
             "low_confidence_mode": "none",
             "low_confidence_threshold": 0.0,
             "low_confidence_entropy_threshold": 0.0,
+            "low_confidence_smear_metric": "entropy",
+            "low_confidence_combine_rule": "or",
         },
     )
 
@@ -253,6 +255,8 @@ async def predict_action(
     low_confidence_mode: str = Form("none"),
     low_confidence_threshold: float = Form(0.0),
     low_confidence_entropy_threshold: float = Form(0.0),
+    low_confidence_smear_metric: str = Form("entropy"),
+    low_confidence_combine_rule: str = Form("or"),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -333,6 +337,8 @@ async def predict_action(
             low_confidence_entropy_threshold = float(low_confidence_entropy_threshold)
         except Exception:
             low_confidence_entropy_threshold = 0.0
+        low_confidence_smear_metric = str(low_confidence_smear_metric or "entropy")
+        low_confidence_combine_rule = str(low_confidence_combine_rule or "or")
 
         cascade_enabled_bool = bool(cascade_enabled)
         competitive_inhibition_bool = bool(competitive_inhibition)
@@ -356,6 +362,8 @@ async def predict_action(
             low_confidence_mode=low_confidence_mode,
             low_confidence_threshold=low_confidence_threshold,
             low_confidence_entropy_threshold=low_confidence_entropy_threshold,
+            low_confidence_smear_metric=low_confidence_smear_metric,
+            low_confidence_combine_rule=low_confidence_combine_rule,
         )
 
         result = {
@@ -518,5 +526,7 @@ async def predict_action(
             "low_confidence_mode": low_confidence_mode,
             "low_confidence_threshold": low_confidence_threshold,
             "low_confidence_entropy_threshold": low_confidence_entropy_threshold,
+            "low_confidence_smear_metric": low_confidence_smear_metric,
+            "low_confidence_combine_rule": low_confidence_combine_rule,
         },
     )
