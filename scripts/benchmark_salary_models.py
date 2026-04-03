@@ -16,12 +16,15 @@ if _REPO_ROOT not in sys.path:
 import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import ExtraTreesRegressor
 from sklearn.ensemble import HistGradientBoostingRegressor, RandomForestRegressor
 from sklearn.impute import SimpleImputer
+from sklearn.linear_model import ElasticNet, LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.neighbors import KNeighborsRegressor
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.preprocessing import OneHotEncoder
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.neural_network import MLPRegressor
 
@@ -84,7 +87,7 @@ def build_preprocessor(df: pd.DataFrame, feature_cols: list[str]) -> ColumnTrans
             ("imputer", SimpleImputer(strategy="most_frequent")),
             (
                 "encoder",
-                OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
+                OneHotEncoder(handle_unknown="ignore", sparse_output=False),
             ),
         ]
     )
@@ -104,16 +107,30 @@ def main() -> int:
         description="Benchmark Mycelium v4 vs DecisionTree vs RandomForest vs Gradient Boosting vs Neural Net (MLP) on the salary CSV"
     )
     parser.add_argument("--csv", default="tmp_eval/job_salary_prediction_dataset.csv")
-    parser.add_argument("--target", default="salary")
+    parser.add_argument("--target", default="salary", help="Regression target column name, or 'random' to pick a numeric column")
     parser.add_argument("--train-fraction", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--nrows", type=int, default=50_000, help="Rows to load (default 50k for speed). Use 0 for all.")
+    parser.add_argument(
+        "--random-target-min-unique",
+        type=int,
+        default=10,
+        help="When --target=random, only consider numeric columns with at least this many unique values.",
+    )
     parser.add_argument("--no-tree", action="store_true", help="Disable DecisionTreeRegressor")
     parser.add_argument("--no-mlp", action="store_true", help="Disable MLPRegressor (neural net)")
+    parser.add_argument("--no-linear", action="store_true", help="Disable Linear/Ridge/ElasticNet baselines")
+    parser.add_argument("--no-knn", action="store_true", help="Disable KNeighborsRegressor")
+    parser.add_argument("--no-extra-trees", action="store_true", help="Disable ExtraTreesRegressor")
     parser.add_argument("--tree-max-depth", type=int, default=18)
     parser.add_argument("--tree-min-samples-leaf", type=int, default=5)
     parser.add_argument("--rf-trees", type=int, default=150)
     parser.add_argument("--rf-max-depth", type=int, default=18)
+    parser.add_argument("--extra-trees", type=int, default=400)
+    parser.add_argument("--extra-max-depth", type=int, default=18)
+    parser.add_argument("--knn-k", type=int, default=25)
+    parser.add_argument("--enet-alpha", type=float, default=0.001)
+    parser.add_argument("--enet-l1", type=float, default=0.2)
     parser.add_argument("--gb-max-iter", type=int, default=250)
     parser.add_argument("--mlp-hidden", default="128,64", help="Comma-separated hidden layer sizes")
     parser.add_argument("--mlp-max-iter", type=int, default=80)
@@ -124,8 +141,23 @@ def main() -> int:
     nrows = None if int(args.nrows) == 0 else int(args.nrows)
     df = pd.read_csv(args.csv, nrows=nrows)
 
-    target = args.target
-    if target not in df.columns and target == "s" and "salary" in df.columns:
+    target = str(args.target)
+    if target.lower() == "random":
+        candidates: list[str] = []
+        for c in df.columns:
+            if not pd.api.types.is_numeric_dtype(df[c]):
+                continue
+            if int(df[c].nunique(dropna=True)) < int(args.random_target_min_unique):
+                continue
+            candidates.append(c)
+        if not candidates:
+            raise SystemExit(
+                "--target=random found no numeric target columns. "
+                f"Try lowering --random-target-min-unique (current {int(args.random_target_min_unique)})."
+            )
+        rng = np.random.default_rng(int(args.seed))
+        target = str(rng.choice(candidates))
+    elif target not in df.columns and target == "s" and "salary" in df.columns:
         target = "salary"
 
     if target not in df.columns:
@@ -156,6 +188,13 @@ def main() -> int:
 
     rows: list[BenchmarkRow] = []
 
+    def _fit_predict(name: str, pipe: Pipeline) -> None:
+        t0_local = time.time()
+        pipe.fit(X[train_mask], y[train_mask])
+        pred = pipe.predict(X[test_mask])
+        dt = time.time() - t0_local
+        rows.append(BenchmarkRow(name, regression_metrics(y[test_mask], pred), float(dt)))
+
     # Random Forest
     rf = RandomForestRegressor(
         n_estimators=int(args.rf_trees),
@@ -164,10 +203,7 @@ def main() -> int:
         n_jobs=-1,
     )
     rf_pipe = Pipeline(steps=[("pre", pre), ("model", rf)])
-    t0 = time.time()
-    rf_pipe.fit(X[train_mask], y[train_mask])
-    pred_rf = rf_pipe.predict(X[test_mask])
-    t_rf = time.time() - t0
+    _fit_predict("RandomForest", rf_pipe)
 
     # Gradient Boosting (fast histogram-based)
     gb = HistGradientBoostingRegressor(
@@ -175,10 +211,7 @@ def main() -> int:
         max_iter=int(args.gb_max_iter),
     )
     gb_pipe = Pipeline(steps=[("pre", pre), ("model", gb)])
-    t0 = time.time()
-    gb_pipe.fit(X[train_mask], y[train_mask])
-    pred_gb = gb_pipe.predict(X[test_mask])
-    t_gb = time.time() - t0
+    _fit_predict("HistGB", gb_pipe)
 
     # Decision Tree
     if not bool(args.no_tree):
@@ -188,11 +221,42 @@ def main() -> int:
             min_samples_leaf=int(args.tree_min_samples_leaf),
         )
         tree_pipe = Pipeline(steps=[("pre", pre), ("model", tree)])
-        t0 = time.time()
-        tree_pipe.fit(X[train_mask], y[train_mask])
-        pred_tree = tree_pipe.predict(X[test_mask])
-        t_tree = time.time() - t0
-        rows.append(BenchmarkRow("DecisionTree", regression_metrics(y[test_mask], pred_tree), float(t_tree)))
+        _fit_predict("DecisionTree", tree_pipe)
+
+    # Extra Trees
+    if not bool(args.no_extra_trees):
+        et = ExtraTreesRegressor(
+            n_estimators=int(args.extra_trees),
+            max_depth=int(args.extra_max_depth) if int(args.extra_max_depth) > 0 else None,
+            random_state=int(args.seed),
+            n_jobs=-1,
+        )
+        et_pipe = Pipeline(steps=[("pre", pre), ("model", et)])
+        _fit_predict("ExtraTrees", et_pipe)
+
+    # Linear models (scale for stability)
+    if not bool(args.no_linear):
+        lin_pipe = Pipeline(steps=[("pre", pre), ("scale", StandardScaler()), ("model", LinearRegression())])
+        _fit_predict("LinearRegression", lin_pipe)
+
+        ridge_pipe = Pipeline(
+            steps=[("pre", pre), ("scale", StandardScaler()), ("model", Ridge(alpha=1.0, random_state=int(args.seed)))])
+        _fit_predict("Ridge", ridge_pipe)
+
+        enet = ElasticNet(
+            alpha=float(args.enet_alpha),
+            l1_ratio=float(args.enet_l1),
+            random_state=int(args.seed),
+            max_iter=5_000,
+        )
+        enet_pipe = Pipeline(steps=[("pre", pre), ("scale", StandardScaler()), ("model", enet)])
+        _fit_predict("ElasticNet", enet_pipe)
+
+    # KNN (needs scaling)
+    if not bool(args.no_knn):
+        knn = KNeighborsRegressor(n_neighbors=int(args.knn_k), weights="distance")
+        knn_pipe = Pipeline(steps=[("pre", pre), ("scale", StandardScaler()), ("model", knn)])
+        _fit_predict("KNN", knn_pipe)
 
     # Neural Net (MLP)
     if not bool(args.no_mlp):
@@ -214,18 +278,7 @@ def main() -> int:
                 ("model", mlp),
             ]
         )
-        t0 = time.time()
-        mlp_pipe.fit(X[train_mask], y[train_mask])
-        pred_mlp = mlp_pipe.predict(X[test_mask])
-        t_mlp = time.time() - t0
-        rows.append(BenchmarkRow("MLP", regression_metrics(y[test_mask], pred_mlp), float(t_mlp)))
-
-    # Metrics
-    m_rf = regression_metrics(y[test_mask], pred_rf)
-    m_gb = regression_metrics(y[test_mask], pred_gb)
-
-    rows.append(BenchmarkRow("RandomForest", m_rf, float(t_rf)))
-    rows.append(BenchmarkRow("HistGB", m_gb, float(t_gb)))
+        _fit_predict("MLP", mlp_pipe)
 
     # Mycelium metrics are already computed on test split.
     print("Dataset:", args.csv)

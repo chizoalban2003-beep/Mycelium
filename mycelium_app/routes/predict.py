@@ -26,6 +26,9 @@ async def electrophoresis_predict(
     cascade_enabled: bool = Form(True),
     competitive_inhibition: bool = Form(True),
     thermal_noise: bool = Form(False),
+    low_confidence_mode: str = Form("none"),
+    low_confidence_threshold: float = Form(0.0),
+    low_confidence_entropy_threshold: float = Form(0.0),
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -64,6 +67,9 @@ async def electrophoresis_predict(
             cascade_enabled=bool(cascade_enabled),
             competitive_inhibition=bool(competitive_inhibition),
             thermal_noise=bool(thermal_noise),
+            low_confidence_mode=str(low_confidence_mode),
+            low_confidence_threshold=float(low_confidence_threshold),
+            low_confidence_entropy_threshold=float(low_confidence_entropy_threshold),
         )
 
         return {
@@ -182,6 +188,15 @@ async def electrophoresis_predict(
                 "gel_confidence_std": None
                 if pred.metrics.gel_confidence_std is None
                 else round(float(pred.metrics.gel_confidence_std), 6),
+                "abstain_rate": None
+                if getattr(pred.metrics, "abstain_rate", None) is None
+                else round(float(pred.metrics.abstain_rate), 6),
+                "coverage": None
+                if getattr(pred.metrics, "coverage", None) is None
+                else round(float(pred.metrics.coverage), 6),
+                "selective_accuracy": None
+                if getattr(pred.metrics, "selective_accuracy", None) is None
+                else round(float(pred.metrics.selective_accuracy), 6),
             },
             "preview": pred.preview_rows,
         }

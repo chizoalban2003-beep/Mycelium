@@ -223,6 +223,9 @@ def predict_page(
             "stage2_cycles": 2,
             "inhibition_strength": 0.7,
             "scavenger_cycles": 1,
+            "low_confidence_mode": "none",
+            "low_confidence_threshold": 0.0,
+            "low_confidence_entropy_threshold": 0.0,
         },
     )
 
@@ -247,6 +250,9 @@ async def predict_action(
     stage2_cycles: int = Form(2),
     inhibition_strength: float = Form(0.7),
     scavenger_cycles: int = Form(1),
+    low_confidence_mode: str = Form("none"),
+    low_confidence_threshold: float = Form(0.0),
+    low_confidence_entropy_threshold: float = Form(0.0),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -317,6 +323,17 @@ async def predict_action(
             scavenger_cycles = 1
         scavenger_cycles = max(0, min(10, scavenger_cycles))
 
+        # Low-confidence readout controls
+        low_confidence_mode = str(low_confidence_mode or "none")
+        try:
+            low_confidence_threshold = float(low_confidence_threshold)
+        except Exception:
+            low_confidence_threshold = 0.0
+        try:
+            low_confidence_entropy_threshold = float(low_confidence_entropy_threshold)
+        except Exception:
+            low_confidence_entropy_threshold = 0.0
+
         cascade_enabled_bool = bool(cascade_enabled)
         competitive_inhibition_bool = bool(competitive_inhibition)
         thermal_noise_bool = bool(thermal_noise)
@@ -336,6 +353,9 @@ async def predict_action(
             stage2_cycles=stage2_cycles,
             inhibition_strength=inhibition_strength,
             scavenger_cycles=scavenger_cycles,
+            low_confidence_mode=low_confidence_mode,
+            low_confidence_threshold=low_confidence_threshold,
+            low_confidence_entropy_threshold=low_confidence_entropy_threshold,
         )
 
         result = {
@@ -453,6 +473,15 @@ async def predict_action(
                 "gel_confidence_std": None
                 if pred.metrics.gel_confidence_std is None
                 else round(float(pred.metrics.gel_confidence_std), 6),
+                "abstain_rate": None
+                if getattr(pred.metrics, "abstain_rate", None) is None
+                else round(float(pred.metrics.abstain_rate), 6),
+                "coverage": None
+                if getattr(pred.metrics, "coverage", None) is None
+                else round(float(pred.metrics.coverage), 6),
+                "selective_accuracy": None
+                if getattr(pred.metrics, "selective_accuracy", None) is None
+                else round(float(pred.metrics.selective_accuracy), 6),
             },
             "preview": pred.preview_rows,
         }
@@ -486,5 +515,8 @@ async def predict_action(
             "stage2_cycles": stage2_cycles,
             "inhibition_strength": inhibition_strength,
             "scavenger_cycles": scavenger_cycles,
+            "low_confidence_mode": low_confidence_mode,
+            "low_confidence_threshold": low_confidence_threshold,
+            "low_confidence_entropy_threshold": low_confidence_entropy_threshold,
         },
     )

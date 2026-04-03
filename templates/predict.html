@@ -74,6 +74,26 @@
               </div>
 
               <div>
+                <label class="block text-sm text-slate-300">Low-confidence mode</label>
+                <select name="low_confidence_mode" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2">
+                  <option value="none" {% if (low_confidence_mode or 'none') == 'none' %}selected{% endif %}>None</option>
+                  <option value="flag" {% if (low_confidence_mode or 'none') == 'flag' %}selected{% endif %}>Flag</option>
+                  <option value="abstain" {% if (low_confidence_mode or 'none') == 'abstain' %}selected{% endif %}>Abstain</option>
+                </select>
+                <div class="mt-1 text-xs text-slate-500">Flag/abstain when bands smear.</div>
+              </div>
+              <div>
+                <label class="block text-sm text-slate-300">Confidence threshold</label>
+                <input name="low_confidence_threshold" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_threshold if low_confidence_threshold is not none else 0.0 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                <div class="mt-1 text-xs text-slate-500">0 = auto-calibrate from test.</div>
+              </div>
+              <div>
+                <label class="block text-sm text-slate-300">Entropy threshold</label>
+                <input name="low_confidence_entropy_threshold" type="number" min="0" max="1" step="0.01" value="{{ low_confidence_entropy_threshold if low_confidence_entropy_threshold is not none else 0.0 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                <div class="mt-1 text-xs text-slate-500">0 = auto-calibrate from test.</div>
+              </div>
+
+              <div>
                 <label class="block text-sm text-slate-300">Inhibition strength</label>
                 <input name="inhibition_strength" type="number" min="0" max="2.0" step="0.05" value="{{ inhibition_strength or 0.7 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
                 <div class="mt-1 text-xs text-slate-500">Competitive inhibition magnitude.</div>
@@ -158,6 +178,18 @@
               {% endif %}
               {% if result.metrics.gel_confidence_mean is not none %}
                 <div><span class="text-slate-400">Mean confidence:</span> {{ result.metrics.gel_confidence_mean }}{% if result.metrics.gel_confidence_std is not none %} (σ={{ result.metrics.gel_confidence_std }}){% endif %}</div>
+              {% endif %}
+              {% if result.metrics.coverage is not none or result.metrics.abstain_rate is not none or result.metrics.selective_accuracy is not none %}
+                <div class="pt-2 border-t border-slate-800"></div>
+                {% if result.metrics.coverage is not none %}
+                  <div><span class="text-slate-400">Coverage:</span> {{ result.metrics.coverage }}</div>
+                {% endif %}
+                {% if result.metrics.abstain_rate is not none %}
+                  <div><span class="text-slate-400">Abstain rate:</span> {{ result.metrics.abstain_rate }}</div>
+                {% endif %}
+                {% if result.metrics.selective_accuracy is not none %}
+                  <div><span class="text-slate-400">Selective accuracy:</span> {{ result.metrics.selective_accuracy }}</div>
+                {% endif %}
               {% endif %}
             {% endif %}
           </div>

@@ -83,6 +83,10 @@ class PredictionMetrics:
     gel_ghost_band_rate: float | None = None
     gel_confidence_mean: float | None = None
     gel_confidence_std: float | None = None
+    # Selective prediction / abstention metrics (categorical targets only when enabled).
+    abstain_rate: float | None = None
+    coverage: float | None = None
+    selective_accuracy: float | None = None
 
 
 @dataclass(frozen=True)
@@ -205,8 +209,10 @@ def _calculate_viscosity_field(
 
     if ionization == "nonparametric":
         eta *= 1.35
+    # Unstable compounds (p > alpha) should see high inert viscosity so random noise
+    # cannot migrate toward the target and pollute the final velocity field.
     if unstable:
-        eta *= 1.25
+        eta *= 2.25
 
     return float(max(1e-6, eta))
 
@@ -556,6 +562,29 @@ def _safe_pearsonr(x: np.ndarray, y: np.ndarray) -> tuple[float, float | None]:
         return _pearson_corr(x, y), None
 
 
+def _safe_spearmanr(x: np.ndarray, y: np.ndarray) -> tuple[float, float | None]:
+    if _sp_stats is None:
+        # fallback to Pearson-style corr of ranks (cheap approximation)
+        mask = np.isfinite(x) & np.isfinite(y)
+        if int(mask.sum()) < 3:
+            return 0.0, None
+        xr = pd.Series(x[mask]).rank(method="average").to_numpy(dtype="float64")
+        yr = pd.Series(y[mask]).rank(method="average").to_numpy(dtype="float64")
+        return _pearson_corr(xr, yr), None
+
+    mask = np.isfinite(x) & np.isfinite(y)
+    if int(mask.sum()) < 3:
+        return 0.0, None
+    try:
+        res = _sp_stats.spearmanr(x[mask], y[mask])
+        # SciPy returns statistic + pvalue, but can sometimes return NaN.
+        stat = 0.0 if not math.isfinite(float(res.statistic)) else float(res.statistic)
+        pval = None if res.pvalue is None or (not math.isfinite(float(res.pvalue))) else float(res.pvalue)
+        return float(np.clip(stat, -1.0, 1.0)), pval
+    except Exception:
+        return 0.0, None
+
+
 def _safe_ttest_ind(a: np.ndarray, b: np.ndarray) -> float | None:
     if _sp_stats is None:
         return None
@@ -646,6 +675,7 @@ def _compute_compound_association(
     *,
     train_mask: np.ndarray,
     random_seed: int,
+    buffer_ionization: Literal["parametric", "nonparametric"] | None = None,
 ) -> tuple[float, str, bool, Literal["parametric", "nonparametric"], float | None, float | None, float, bool]:
     """Bio-stochastic association.
 
@@ -666,9 +696,18 @@ def _compute_compound_association(
         y = _to_float_array(target, kind=target_kind)
         if feature_kind in ("numeric", "datetime", "bool"):
             x = _to_float_array(feature, kind=feature_kind)
-            r, p = _safe_pearsonr(x[train_mask], y[train_mask])
-            charge, method, signed = float(r), "pearson", True
-            p_value = p
+            # Dual-gate: if either the feature or the target buffer is nonparametric,
+            # prefer rank-based association to reduce sensitivity to heavy tails/noise.
+            tgt_ion = buffer_ionization
+            use_parametric = (ionization == "parametric") and (tgt_ion in (None, "parametric"))
+            if use_parametric:
+                r, p = _safe_pearsonr(x[train_mask], y[train_mask])
+                charge, method, signed = float(r), "pearson", True
+                p_value = p
+            else:
+                r, p = _safe_spearmanr(x[train_mask], y[train_mask])
+                charge, method, signed = float(r), "spearman", True
+                p_value = p
         else:
             # Categorical feature vs numeric target: ANOVA (parametric) or Kruskal-Wallis (nonparam).
             x_cat = feature.astype("string").fillna("__MISSING__")
@@ -676,7 +715,8 @@ def _compute_compound_association(
             for cat in pd.unique(x_cat[train_mask]):
                 idx = (x_cat == cat).to_numpy() & train_mask
                 groups.append(y[idx])
-            p_value = _safe_anova(groups) if ionization == "parametric" else _safe_kruskal(groups)
+            gate = buffer_ionization if buffer_ionization is not None else ionization
+            p_value = _safe_anova(groups) if gate == "parametric" else _safe_kruskal(groups)
             # Direction isn't interpretable; keep eta.
             charge, method, signed = _correlation_ratio(_to_category_array(x_cat[train_mask]), y[train_mask]), "eta", False
 
@@ -1244,6 +1284,10 @@ def run_physics_prediction(
     stage2_voltage_multiplier: float = 2.0,
     inhibition_strength: float = 0.7,
     scavenger_cycles: int = 1,
+    low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
+    low_confidence_threshold: float = 0.0,
+    low_confidence_entropy_threshold: float = 0.0,
+    low_confidence_label: str = "__LOW_CONFIDENCE__",
     return_predictions: bool = False,
 ) -> PredictionResult:
     _require_scipy()
@@ -1323,6 +1367,7 @@ def run_physics_prediction(
             target_kind,
             train_mask=train_mask,
             random_seed=int(random_seed) + 7,
+            buffer_ionization=buffer_ionization,
         )
         if not math.isfinite(w):
             w = 0.0
@@ -1366,8 +1411,9 @@ def run_physics_prediction(
             "complex_size": None if csize is None else int(csize),
         }
 
-    # Complex anchoring: a low-strength or unstable member can drag an entire complex.
-    complex_drag_by_id: dict[int, float] = {}
+    # Complex anchoring + dissociation: anchors should primarily trap themselves,
+    # not drag stable, high-signal neighbors into syrupy (high-viscosity) zones.
+    complex_drag_by_feature: dict[str, float] = {}
     for cid, members in members_by_complex.items():
         if not members:
             continue
@@ -1380,10 +1426,20 @@ def run_physics_prediction(
         )
         has_anchor = any((compound_stats[m]["strength"] < 0.20) or (m in unstable_features) for m in members if m in compound_stats)
         if not has_anchor:
-            complex_drag_by_id[int(cid)] = 1.0
+            for m in members:
+                complex_drag_by_feature[str(m)] = 1.0
         else:
-            drag = 1.0 + 0.55 * float(max(0.0, 1.0 - avg_strength)) + 0.35 * float(np.clip(unstable_ratio, 0.0, 1.0))
-            complex_drag_by_id[int(cid)] = float(np.clip(drag, 1.0, 2.25))
+            # Global complex turbulence baseline.
+            complex_drag = 1.0 + 0.45 * float(max(0.0, 1.0 - avg_strength)) + 0.30 * float(np.clip(unstable_ratio, 0.0, 1.0))
+            complex_drag = float(np.clip(complex_drag, 1.0, 2.0))
+            for m in members:
+                m_strength = float(compound_stats[m]["strength"])
+                is_unstable = m in unstable_features
+                # Anchors get most of the drag; stable members are mostly dissociated.
+                if is_unstable or m_strength < 0.20:
+                    complex_drag_by_feature[str(m)] = float(np.clip(complex_drag * 1.15, 1.0, 2.25))
+                else:
+                    complex_drag_by_feature[str(m)] = 1.0
 
     # Pass 2: compute migration fields with target-gradient + complex interaction.
     for col in feature_cols:
@@ -1422,9 +1478,7 @@ def run_physics_prediction(
 
         bond_factor = bond_factors.get(col, 1.0)
 
-        complex_drag = 1.0
-        if cid is not None:
-            complex_drag = float(complex_drag_by_id.get(int(cid), 1.0))
+        complex_drag = float(complex_drag_by_feature.get(col, 1.0))
 
         viscosity = _calculate_viscosity_field(
             plane=plane,
@@ -1483,7 +1537,14 @@ def run_physics_prediction(
             )
         )
 
-    weights_sorted = sorted(weights, key=lambda wi: abs(wi.weight), reverse=True)
+    def _selection_score(wi: WeightInfo) -> float:
+        s0 = compound_stats.get(wi.feature)
+        mass0 = 0.0 if not s0 else float(s0.get("mass", 0.0))
+        mass_norm0 = float(np.clip(mass0 / 6.0, 0.0, 1.0))
+        # Favor statistically stable compounds (high mass) to reduce random/noise lift.
+        return float(abs(wi.weight) * (0.35 + 0.65 * mass_norm0))
+
+    weights_sorted = sorted(weights, key=_selection_score, reverse=True)
     weights_used = [w for w in weights_sorted if abs(w.weight) > 1e-8]
 
     # If everything is ~0, keep a few anyway so the UI can show something.
@@ -2283,9 +2344,53 @@ def run_physics_prediction(
     pred_idx = np.argmax(probs, axis=1)
     pred_labels = [classes[int(i)] for i in pred_idx]
 
+    # PCR-style per-row band density analysis: optionally flag or abstain when the gel smears.
+    mode = str(low_confidence_mode).lower().strip()
+    conf = np.max(probs, axis=1)
+    entropy = _normalized_entropy(probs)
+
+    # Auto-calibration: if thresholds are <= 0, derive them from the TEST distribution.
+    conf_thr = float(low_confidence_threshold)
+    ent_thr = float(low_confidence_entropy_threshold)
+    if mode in ("flag", "abstain"):
+        conf_test = conf[test_mask]
+        ent_test = entropy[test_mask]
+        if conf_thr <= 0.0:
+            # Treat the weakest ~20% confidence as "low" by default.
+            conf_thr = float(np.quantile(conf_test, 0.20)) if conf_test.size else 0.0
+        if ent_thr <= 0.0:
+            # Treat the noisiest ~20% entropy as "smeared" by default.
+            ent_thr = float(np.quantile(ent_test, 0.80)) if ent_test.size else 1.0
+
+        # Safeguard: if thresholds would abstain almost everything, relax them.
+        prelim = (conf < conf_thr) | (entropy > ent_thr)
+        prelim_rate = float(np.mean(prelim[test_mask].astype("float64"))) if conf_test.size else 0.0
+        if prelim_rate >= 0.95 and conf_test.size:
+            conf_thr = float(np.quantile(conf_test, 0.05))
+            ent_thr = float(np.quantile(ent_test, 0.95))
+
+    low_conf_mask = (conf < float(conf_thr)) | (entropy > float(ent_thr))
+    if mode == "abstain":
+        # Replace prediction with a sentinel label (keeps output JSON-compatible).
+        pred_labels = [str(low_confidence_label) if bool(low_conf_mask[i]) else pred_labels[i] for i in range(len(pred_labels))]
+
     y_all = y_cat.to_numpy(dtype="object")
     pred_all = np.array(pred_labels, dtype="object")
     accuracy = float(np.mean((y_all[test_mask] == pred_all[test_mask]).astype("float64")))
+
+    # Selective metrics on TEST only.
+    abstain_rate: float | None = None
+    coverage: float | None = None
+    selective_accuracy: float | None = None
+    if mode in ("flag", "abstain"):
+        low_test = np.asarray(low_conf_mask, dtype=bool)[test_mask]
+        abstain_rate = float(np.mean(low_test.astype("float64"))) if low_test.size else 0.0
+        coverage = float(1.0 - abstain_rate)
+        keep = ~low_test
+        if int(np.sum(keep)) >= 1:
+            selective_accuracy = float(np.mean((y_all[test_mask][keep] == pred_all[test_mask][keep]).astype("float64")))
+        else:
+            selective_accuracy = None
 
     # PCR-style gel readout on TEST only.
     probs_test = probs[test_mask]
@@ -2304,7 +2409,16 @@ def run_physics_prediction(
     test_indices = np.flatnonzero(test_mask)
     for idx in test_indices[: min(max_preview_rows, len(test_indices))]:
         i = int(idx)
-        preview.append({"row": i, "actual": str(y_cat.iloc[i]), "predicted": str(pred_labels[i])})
+        row_preview = {
+            "row": i,
+            "actual": str(y_cat.iloc[i]),
+            "predicted": str(pred_labels[i]),
+        }
+        if mode in ("flag", "abstain"):
+            row_preview["confidence"] = None if not math.isfinite(float(conf[i])) else float(conf[i])
+            row_preview["smearing"] = None if not math.isfinite(float(entropy[i])) else float(entropy[i])
+            row_preview["low_confidence"] = bool(low_conf_mask[i])
+        preview.append(row_preview)
 
     test_row_indices = None
     test_actual = None
@@ -2335,6 +2449,9 @@ def run_physics_prediction(
         gel_ghost_band_rate=gel_ghost,
         gel_confidence_mean=gel_conf_mean,
         gel_confidence_std=gel_conf_std,
+        abstain_rate=abstain_rate,
+        coverage=coverage,
+        selective_accuracy=selective_accuracy,
     )
 
     # Output equilibrium zones = Stage 1 zones + (optional) Stage 2 shattered zones.

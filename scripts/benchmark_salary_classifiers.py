@@ -50,10 +50,23 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark Mycelium vs sklearn classifiers on the salary dataset")
     parser.add_argument("--path", default="tmp_eval/job_salary_prediction_dataset.csv")
     parser.add_argument("--nrows", type=int, default=50_000)
-    parser.add_argument("--target", default="remote_work", help="Classification target column")
+    parser.add_argument(
+        "--target",
+        default="remote_work",
+        help="Classification target column, or 'random' to pick a low-cardinality column",
+    )
     parser.add_argument("--train-fraction", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--top-k", type=int, default=30)
+    parser.add_argument("--n-jobs", type=int, default=-1, help="Parallel jobs for sklearn ensemble models")
+    parser.add_argument("--rf-trees", type=int, default=150)
+    parser.add_argument("--extra-trees", type=int, default=250)
+    parser.add_argument(
+        "--random-target-max-classes",
+        type=int,
+        default=30,
+        help="When --target=random, only consider columns with <= this many unique values (after NA filled).",
+    )
     parser.add_argument("--report", action="store_true", help="Print sklearn classification_report for each model")
     parser.add_argument(
         "--report-max-classes",
@@ -71,16 +84,32 @@ def main() -> int:
     args = parser.parse_args()
 
     df = pd.read_csv(args.path, nrows=int(args.nrows))
-    if args.target not in df.columns:
+    target = str(args.target)
+    if target.lower() == "random":
+        candidates: list[str] = []
+        for c in df.columns:
+            y_tmp = df[c].astype("string").fillna("__MISSING__")
+            nunique = int(y_tmp.nunique(dropna=True))
+            if 2 <= nunique <= int(args.random_target_max_classes):
+                candidates.append(c)
+        if not candidates:
+            raise SystemExit(
+                "--target=random found no low-cardinality target columns. "
+                f"Try increasing --random-target-max-classes (current {int(args.random_target_max_classes)})."
+            )
+        rng = np.random.default_rng(int(args.seed))
+        target = str(rng.choice(candidates))
+
+    if target not in df.columns:
         raise SystemExit(f"Target '{args.target}' not found. Columns: {list(df.columns)}")
 
     train_mask, test_mask = _train_test_split_mask(len(df), args.train_fraction, args.seed)
 
     # Classification labels
-    y_raw = df[args.target].astype("string").fillna("__MISSING__")
+    y_raw = df[target].astype("string").fillna("__MISSING__")
 
     # Features
-    X = df.drop(columns=[args.target])
+    X = df.drop(columns=[target])
 
     # ----- Mycelium
     from mycelium_app.physics_predictor import PhysicsPlane, run_physics_prediction
@@ -88,7 +117,7 @@ def main() -> int:
     t0 = time.perf_counter()
     myc = run_physics_prediction(
         df,
-        target_col=args.target,
+        target_col=target,
         plane=PhysicsPlane.solid,
         train_fraction=float(args.train_fraction),
         random_seed=int(args.seed),
@@ -108,8 +137,11 @@ def main() -> int:
     from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 
     from sklearn.tree import DecisionTreeClassifier
-    from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
+    from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier, HistGradientBoostingClassifier
+    from sklearn.linear_model import LogisticRegression
     from sklearn.neural_network import MLPClassifier
+    from sklearn.neighbors import KNeighborsClassifier
+    from sklearn.svm import LinearSVC
 
     le = LabelEncoder()
     y = le.fit_transform(y_raw.to_numpy())
@@ -136,6 +168,17 @@ def main() -> int:
     results: list[tuple[str, float, float, float]] = []
     reports: dict[str, str] = {}
     confusions: dict[str, str] = {}
+
+    myc_f1: float | None = None
+    if myc.test_actual is not None and myc.test_predicted is not None:
+        myc_f1 = float(
+            f1_score(
+                np.asarray(myc.test_actual, dtype=str),
+                np.asarray(myc.test_predicted, dtype=str),
+                average="macro",
+                zero_division=0,
+            )
+        )
 
     def _build_report(model_name: str, y_true_labels: np.ndarray, y_pred_labels: np.ndarray) -> None:
         if not bool(args.report):
@@ -185,7 +228,7 @@ def main() -> int:
 
     def eval_model(name: str, estimator) -> None:
         t0_local = time.perf_counter()
-        pipe = Pipeline([
+        pipe = estimator if isinstance(estimator, Pipeline) else Pipeline([
             ("prep", preprocess),
             ("model", estimator),
         ])
@@ -217,11 +260,23 @@ def main() -> int:
     eval_model(
         "RandomForest",
         RandomForestClassifier(
-            n_estimators=300,
+            n_estimators=int(args.rf_trees),
             random_state=int(args.seed),
-            n_jobs=-1,
+            n_jobs=int(args.n_jobs),
             max_depth=None,
             min_samples_leaf=2,
+        ),
+    )
+
+    # Extra Trees
+    eval_model(
+        "ExtraTrees",
+        ExtraTreesClassifier(
+            n_estimators=int(args.extra_trees),
+            random_state=int(args.seed),
+            n_jobs=int(args.n_jobs),
+            max_depth=None,
+            min_samples_leaf=1,
         ),
     )
 
@@ -236,41 +291,71 @@ def main() -> int:
         ),
     )
 
-    # Neural Net (MLP)
-    t0_mlp = time.perf_counter()
-    mlp_pipe = Pipeline(
-        [
-            ("prep", preprocess),
-            ("scale", StandardScaler()),
-            (
-                "model",
-                MLPClassifier(
-                    hidden_layer_sizes=(128, 64),
-                    random_state=int(args.seed),
-                    early_stopping=True,
-                    max_iter=60,
-                    learning_rate_init=0.001,
-                    batch_size=256,
+    # Logistic Regression (multinomial)
+    eval_model(
+        "LogReg",
+        Pipeline(
+            [
+                ("prep", preprocess),
+                ("scale", StandardScaler()),
+                (
+                    "model",
+                    LogisticRegression(
+                        max_iter=1000,
+                        n_jobs=-1,
+                        random_state=int(args.seed),
+                        solver="saga",
+                    ),
                 ),
-            ),
-        ]
-    )
-    mlp_pipe.fit(X_train, y_train)
-    mlp_pred = mlp_pipe.predict(X_test)
-    mlp_time = time.perf_counter() - t0_mlp
-    results.append(
-        (
-            "MLP",
-            float(accuracy_score(y_test, mlp_pred)),
-            float(f1_score(y_test, mlp_pred, average="macro")),
-            float(mlp_time),
-        )
+            ]
+        ),
     )
 
-    if bool(args.report):
-        _build_report("MLP", y_test_labels, le.inverse_transform(mlp_pred))
-    if bool(args.confusion):
-        _build_confusion("MLP", y_test_labels, le.inverse_transform(mlp_pred))
+    # Linear SVM
+    eval_model(
+        "LinearSVC",
+        Pipeline(
+            [
+                ("prep", preprocess),
+                ("scale", StandardScaler()),
+                ("model", LinearSVC(random_state=int(args.seed))),
+            ]
+        ),
+    )
+
+    # KNN
+    eval_model(
+        "KNN",
+        Pipeline(
+            [
+                ("prep", preprocess),
+                ("scale", StandardScaler()),
+                ("model", KNeighborsClassifier(n_neighbors=25, weights="distance")),
+            ]
+        ),
+    )
+
+    # Neural Net (MLP)
+    eval_model(
+        "MLP",
+        Pipeline(
+            [
+                ("prep", preprocess),
+                ("scale", StandardScaler()),
+                (
+                    "model",
+                    MLPClassifier(
+                        hidden_layer_sizes=(128, 64),
+                        random_state=int(args.seed),
+                        early_stopping=True,
+                        max_iter=60,
+                        learning_rate_init=0.001,
+                        batch_size=256,
+                    ),
+                ),
+            ]
+        ),
+    )
 
     if bool(args.report):
         if myc.test_actual is None or myc.test_predicted is None:
@@ -291,10 +376,10 @@ def main() -> int:
     # ----- Print
     print(f"Dataset: {args.path}")
     print(f"Rows: {len(df)} Train/Test: {int(train_mask.sum())} / {int(test_mask.sum())} Seed: {args.seed}")
-    print(f"Target: {args.target}  Classes: {len(le.classes_)}")
+    print(f"Target: {target}  Classes: {len(le.classes_)}")
 
     print("\nModel           Accuracy        F1(macro)       Time(s)")
-    print(f"Mycelium v4     {_fmt(myc_acc):<14s} {'-':<14s} {myc_time:>10.2f}")
+    print(f"Mycelium v4     {_fmt(myc_acc):<14s} {_fmt(myc_f1):<14s} {myc_time:>10.2f}")
     for name, acc, f1, dt in sorted(results, key=lambda r: r[1], reverse=True):
         print(f"{name:<14s} {_fmt(acc):<14s} {_fmt(f1):<14s} {dt:>10.2f}")
 
