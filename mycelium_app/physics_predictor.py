@@ -1292,11 +1292,35 @@ def run_physics_prediction(
     inhibition_strength: float = 0.7,
     scavenger_cycles: int = 1,
     stage2_shatter_complexes: bool = False,
+    # Optional convergence control: stop early if the predicted distribution stabilizes.
+    early_stop_patience: int = 0,
+    early_stop_tol: float = 1e-4,
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
     low_confidence_smear_metric: str = "entropy",
     low_confidence_combine_rule: Literal["or", "and"] = "or",
+    low_confidence_auto_conf_quantile: float = 0.20,
+    low_confidence_auto_smear_quantile: float = 0.80,
+    low_confidence_safeguard_max_abstain: float = 0.95,
+    # Confirmatory-band override (coverage expansion): keep mid-confidence rows when
+    # many strong/stable features converge into the same migration zone.
+    low_confidence_confirmatory_enabled: bool = False,
+    low_confidence_confirmatory_conf_min: float = 0.50,
+    low_confidence_confirmatory_conf_max: float = 0.90,
+    low_confidence_confirmatory_consensus_threshold: float = 0.60,
+    low_confidence_confirmatory_min_ion_hits: int = 0,
+    # Target re-ionization: for rows marked low-confidence, run a small sub-cycle that only
+    # updates those rows with a different "buffer" (effectively higher shear / lower inhibition).
+    low_confidence_reionization_cycles: int = 0,
+    low_confidence_reionization_shear_multiplier: float = 1.25,
+    low_confidence_reionization_inhibition_multiplier: float = 0.75,
+    # Ionization/viscosity-aware abstention controls.
+    low_confidence_require_ionized: bool = False,
+    low_confidence_ionization_pvalue: float = 0.05,
+    low_confidence_ionization_z_min: float = 0.25,
+    low_confidence_viscosity_override: bool = False,
+    low_confidence_viscosity_override_threshold: float = 1.0,
     low_confidence_label: str = "__LOW_CONFIDENCE__",
     return_predictions: bool = False,
 ) -> PredictionResult:
@@ -2070,6 +2094,11 @@ def run_physics_prediction(
     grad1 = 0.35
     rng_stage1 = np.random.default_rng(int(random_seed) + 30011)
 
+    es_patience = int(max(0, early_stop_patience))
+    es_tol = float(max(0.0, early_stop_tol))
+    es_prev_conf: np.ndarray | None = None
+    es_stable_steps: int = 0
+
     # Instability (PCR "smear") tracking for categorical targets.
     # We measure how much per-row confidence jitters and how often argmax flips across cycles.
     inst_prev_conf: np.ndarray | None = None
@@ -2169,6 +2198,21 @@ def run_physics_prediction(
                 lift_over_baseline=test_acc - baseline_accuracy,
             )
         )
+
+        if es_patience > 0:
+            if es_prev_conf is None:
+                es_prev_conf = conf_now.copy()
+                es_stable_steps = 0
+            else:
+                delta = float(np.mean(np.abs(conf_now - es_prev_conf)))
+                es_prev_conf = conf_now.copy()
+                if delta <= es_tol:
+                    es_stable_steps += 1
+                else:
+                    es_stable_steps = 0
+                # Require a few warmup cycles to avoid stopping too early.
+                if cycle >= 8 and es_stable_steps >= es_patience:
+                    break
 
     # Stage 2 (Fractional Distillation): automatically re-focus the strongest cluster (Zone 1)
     # with higher field strength + narrower gradient, plus inhibition + thermal noise.
@@ -2420,6 +2464,94 @@ def run_physics_prediction(
         flip_rate = inst_flip_count.astype("float64") / float(inst_steps)
         instability = np.clip(0.60 * flip_rate + 0.40 * conf_jitter, 0.0, 1.0)
 
+    # Ionization gate (p-value-driven): compute a per-row ionization signal and a viscosity path.
+    # These are only needed for selective gating when enabled.
+    need_ion_gate = bool(low_confidence_require_ionized)
+    need_visc_override = bool(low_confidence_viscosity_override)
+    need_confirmatory = bool(low_confidence_confirmatory_enabled)
+    need_row_diagnostics = mode in ("flag", "abstain") and (need_ion_gate or need_visc_override or need_confirmatory)
+
+    ionized_hit_count = np.zeros(df.shape[0], dtype="int32")
+    ionization_mass_row = np.zeros(df.shape[0], dtype="float64")
+    viscosity_path = np.full(df.shape[0], float("nan"), dtype="float64")
+    confirmatory_consensus = np.zeros(df.shape[0], dtype="float64")
+    if need_row_diagnostics:
+        try:
+            alpha_p = float(low_confidence_ionization_pvalue)
+            z_min = float(max(0.0, low_confidence_ionization_z_min))
+            class_to_idx = {str(c): int(i) for i, c in enumerate(classes)}
+            y_idx = np.array([float(class_to_idx.get(str(v), -1)) for v in y_cat.to_numpy(dtype="object")], dtype="float64")
+            y_idx_train_mask = (y_idx >= 0.0) & train_mask
+            y_idx_mean = float(np.mean(y_idx[y_idx_train_mask])) if bool(np.any(y_idx_train_mask)) else 0.0
+
+            ionized_features: list[str] = []
+            if need_ion_gate:
+                for col in feature_cols_used:
+                    m = migration_by_feature.get(col)
+                    if m is None or m.p_value is None:
+                        continue
+                    if float(m.p_value) <= alpha_p:
+                        ionized_features.append(col)
+
+            # Build a single consistent encoding per feature to assess row-level signals.
+            z_cache: dict[str, np.ndarray] = {}
+            for col in feature_cols_used:
+                fk = feature_info[col].feature_kind
+                if fk in ("numeric", "datetime", "bool"):
+                    x_raw = x_encoded_by_feature[col]
+                else:
+                    x_cat = df[col].astype("string").fillna("__MISSING__")
+                    tmp = pd.DataFrame({"x": x_cat[y_idx_train_mask], "y": y_idx[y_idx_train_mask]})
+                    means = tmp.groupby("x")["y"].mean()
+                    x_raw = x_cat.map(means).fillna(y_idx_mean).to_numpy(dtype="float64")
+                z_cache[col] = _zscore_with_train_stats(x_raw, train_mask)
+
+            if need_visc_override:
+                visc_num = np.zeros(df.shape[0], dtype="float64")
+                visc_den = np.zeros(df.shape[0], dtype="float64")
+                for col in feature_cols_used:
+                    z = z_cache[col]
+                    absz = np.abs(z)
+                    visc = float(migration_by_feature[col].viscosity)
+                    visc_num += absz * visc
+                    visc_den += absz
+                viscosity_path = np.where(visc_den > 1e-12, visc_num / visc_den, float(_plane_base_viscosity(plane)))
+
+            if ionized_features:
+                for col in ionized_features:
+                    z = z_cache[col]
+                    absz = np.abs(z)
+                    m = migration_by_feature[col]
+                    mass_norm = float(np.clip(float(m.mass) / 6.0, 0.0, 1.0))
+                    ionization_mass_row += mass_norm * absz
+                    ionized_hit_count += (absz >= z_min).astype("int32")
+
+            # Confirmatory band consensus: if most of the row's signal (|z| weighted by mass)
+            # concentrates into a single zone, it's a "confirmatory" band.
+            if need_confirmatory and z_cache:
+                zone_to_weight: dict[int, np.ndarray] = {}
+                total = np.zeros(df.shape[0], dtype="float64")
+                for col in feature_cols_used:
+                    z = z_cache.get(col)
+                    if z is None:
+                        continue
+                    absz = np.abs(z)
+                    m = migration_by_feature[col]
+                    mass_norm = float(np.clip(float(m.mass) / 6.0, 0.0, 1.0))
+                    w = absz * mass_norm
+                    zid = int(zone_assignment_stage1.get(col, 0))
+                    if zid not in zone_to_weight:
+                        zone_to_weight[zid] = np.zeros(df.shape[0], dtype="float64")
+                    zone_to_weight[zid] += w
+                    total += w
+                if zone_to_weight:
+                    best = np.zeros(df.shape[0], dtype="float64")
+                    for arr in zone_to_weight.values():
+                        best = np.maximum(best, arr)
+                    confirmatory_consensus = np.where(total > 1e-12, best / total, 0.0)
+        except Exception:
+            pass
+
     smear_metric_name = str(low_confidence_smear_metric or "entropy").lower().strip()
     if smear_metric_name == "instability":
         smear = instability
@@ -2437,12 +2569,14 @@ def run_physics_prediction(
     if mode in ("flag", "abstain"):
         conf_test = conf[test_mask]
         smear_test = smear[test_mask]
+        q_conf = float(np.clip(float(low_confidence_auto_conf_quantile), 0.0, 1.0))
+        q_smear = float(np.clip(float(low_confidence_auto_smear_quantile), 0.0, 1.0))
         if conf_thr <= 0.0:
-            # Treat the weakest ~20% confidence as "low" by default.
-            conf_thr = float(np.quantile(conf_test, 0.20)) if conf_test.size else 0.0
+            # Treat the weakest q_conf confidence as "low" by default.
+            conf_thr = float(np.quantile(conf_test, q_conf)) if conf_test.size else 0.0
         if ent_thr <= 0.0:
-            # Treat the noisiest ~20% smear as "smeared" by default.
-            ent_thr = float(np.quantile(smear_test, 0.80)) if smear_test.size else 1.0
+            # Treat the noisiest (1 - q_smear) smear tail as "smeared" by default.
+            ent_thr = float(np.quantile(smear_test, q_smear)) if smear_test.size else 1.0
 
         # Safeguard: if thresholds would abstain almost everything, relax them.
         if combine_rule == "and":
@@ -2450,7 +2584,8 @@ def run_physics_prediction(
         else:
             prelim = (conf < conf_thr) | (smear > ent_thr)
         prelim_rate = float(np.mean(prelim[test_mask].astype("float64"))) if conf_test.size else 0.0
-        if prelim_rate >= 0.95 and conf_test.size:
+        max_abstain = float(np.clip(float(low_confidence_safeguard_max_abstain), 0.0, 1.0))
+        if prelim_rate >= max_abstain and conf_test.size and max_abstain < 1.0:
             conf_thr = float(np.quantile(conf_test, 0.05))
             ent_thr = float(np.quantile(smear_test, 0.95))
 
@@ -2458,6 +2593,153 @@ def run_physics_prediction(
         low_conf_mask = (conf < float(conf_thr)) & (smear > float(ent_thr))
     else:
         low_conf_mask = (conf < float(conf_thr)) | (smear > float(ent_thr))
+
+    # Inverse instability logic: if instability is the smear metric, allow low-viscosity paths
+    # to override smear-based rejection (these are often complex-but-correct interactions).
+    if mode in ("flag", "abstain") and smear_metric_name == "instability" and bool(low_confidence_viscosity_override):
+        try:
+            visc_thr = float(low_confidence_viscosity_override_threshold)
+            if math.isfinite(visc_thr):
+                override = np.isfinite(viscosity_path) & (viscosity_path <= visc_thr)
+                low_conf_mask = np.asarray(low_conf_mask, dtype=bool) & (~override)
+        except Exception:
+            pass
+
+    # Chi-square / p-value ionization gate: rows with zero "ionized" feature hits are discarded first.
+    if mode in ("flag", "abstain") and bool(low_confidence_require_ionized):
+        try:
+            low_conf_mask = np.asarray(low_conf_mask, dtype=bool) | (ionized_hit_count <= 0)
+        except Exception:
+            pass
+
+    # Coverage expansion: confirmatory-band override.
+    # If the row's signal concentrates in one zone (high consensus) and the confidence is in a mid-range,
+    # keep it even if it was marked low-confidence.
+    if mode in ("flag", "abstain") and bool(low_confidence_confirmatory_enabled):
+        try:
+            cmin = float(low_confidence_confirmatory_conf_min)
+            cmax = float(low_confidence_confirmatory_conf_max)
+            if cmax < cmin:
+                cmin, cmax = cmax, cmin
+            cons_thr = float(np.clip(float(low_confidence_confirmatory_consensus_threshold), 0.0, 1.0))
+            min_hits = int(max(0, low_confidence_confirmatory_min_ion_hits))
+            mid = (conf >= cmin) & (conf <= cmax)
+            consensus_ok = confirmatory_consensus >= cons_thr
+            if min_hits > 0:
+                consensus_ok = consensus_ok & (ionized_hit_count >= min_hits)
+            keep_confirmatory = mid & consensus_ok
+            low_conf_mask = np.asarray(low_conf_mask, dtype=bool) & (~keep_confirmatory)
+        except Exception:
+            pass
+
+    # Target re-ionization: sub-cycles that only update logits for low-confidence rows.
+    # This can recover some abstained rows without disturbing already-confident ones.
+    rein_cycles = int(max(0, low_confidence_reionization_cycles))
+    if mode in ("flag", "abstain") and rein_cycles > 0:
+        try:
+            low_mask = np.asarray(low_conf_mask, dtype=bool)
+            if bool(np.any(low_mask)):
+                shear_re = float(max(0.0, shear * float(low_confidence_reionization_shear_multiplier)))
+                inhib_re = float(max(0.0, float(inhibition_strength) * float(low_confidence_reionization_inhibition_multiplier)))
+                # Reuse stage-1 style update, but apply only on low_mask rows.
+                for _ in range(rein_cycles):
+                    cycle_update = np.zeros_like(logits)
+                    for j, cls in enumerate(classes):
+                        y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
+                        p = _sigmoid(logits[:, j])
+                        residual = y01 - p
+                        residual_train = residual[train_mask]
+
+                        class_score = np.zeros(df.shape[0], dtype="float64")
+                        denom = 0.0
+                        for col in feature_cols_used:
+                            fk = feature_info[col].feature_kind
+                            if fk in ("numeric", "datetime", "bool"):
+                                x_raw = x_encoded_by_feature[col]
+                            else:
+                                x_cat = df[col].astype("string").fillna("__MISSING__")
+                                tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                                rates = tmp.groupby("x")["r"].mean()
+                                x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
+
+                            z = _zscore_with_train_stats(x_raw, train_mask)
+                            charge = _pearson_corr(z[train_mask], residual_train)
+                            if not math.isfinite(charge) or abs(charge) < 1e-8:
+                                continue
+
+                            medium = migration_by_feature[col]
+                            bond_factor = bond_factors.get(col, 1.0)
+                            certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
+                            density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
+                            eta_base = max(1e-6, medium.viscosity)
+                            eta_dynamic = max(1e-6, eta_base / (1.0 + shear_re * abs(charge) * bond_factor))
+
+                            inhibition = 0.0
+                            if competitive_inhibition and col != dominant_global:
+                                inhibition = inhib_re * abs(float(affinity_to_global_dominant.get(col, 0.0)))
+
+                            eff_charge = float(charge)
+                            if eff_charge < 0:
+                                eff_charge *= neg_mult
+                            q = eff_charge * density * bond_factor
+                            x_pos = float(pI_map.get(col, 0.5))
+                            field = float(plane_mobility) - float(grad1) * x_pos
+                            v = (q * field) / (eta_dynamic + inhibition)
+
+                            denom += abs(v)
+                            class_score += v * z
+
+                        if denom <= 1e-12:
+                            denom = 1.0
+                        cycle_update[:, j] = class_score / denom
+
+                    # Apply updates only to low-confidence rows.
+                    logits[low_mask, :] += (float(lr) * cycle_update[low_mask, :])
+                    probs = _softmax(logits)
+                    conf = np.max(probs, axis=1)
+                    entropy = _normalized_entropy(probs)
+
+                    # Recompute smear and low_mask using current thresholds.
+                    if smear_metric_name == "instability":
+                        smear = instability
+                    else:
+                        smear = entropy
+
+                    if combine_rule == "and":
+                        low_mask = (conf < float(conf_thr)) & (smear > float(ent_thr))
+                    else:
+                        low_mask = (conf < float(conf_thr)) | (smear > float(ent_thr))
+
+                    if bool(low_confidence_require_ionized):
+                        low_mask = np.asarray(low_mask, dtype=bool) | (ionized_hit_count <= 0)
+
+                    if bool(low_confidence_confirmatory_enabled):
+                        cmin = float(low_confidence_confirmatory_conf_min)
+                        cmax = float(low_confidence_confirmatory_conf_max)
+                        if cmax < cmin:
+                            cmin, cmax = cmax, cmin
+                        cons_thr = float(np.clip(float(low_confidence_confirmatory_consensus_threshold), 0.0, 1.0))
+                        min_hits = int(max(0, low_confidence_confirmatory_min_ion_hits))
+                        mid = (conf >= cmin) & (conf <= cmax)
+                        consensus_ok = confirmatory_consensus >= cons_thr
+                        if min_hits > 0:
+                            consensus_ok = consensus_ok & (ionized_hit_count >= min_hits)
+                        keep_confirmatory = mid & consensus_ok
+                        low_mask = np.asarray(low_mask, dtype=bool) & (~keep_confirmatory)
+
+                    if bool(low_confidence_viscosity_override) and smear_metric_name == "instability":
+                        visc_thr = float(low_confidence_viscosity_override_threshold)
+                        if math.isfinite(visc_thr):
+                            override = np.isfinite(viscosity_path) & (viscosity_path <= visc_thr)
+                            low_mask = np.asarray(low_mask, dtype=bool) & (~override)
+
+                    if not bool(np.any(low_mask)):
+                        break
+
+                # Persist final low_conf_mask after re-ionization.
+                low_conf_mask = np.asarray(low_mask, dtype=bool)
+        except Exception:
+            pass
     if mode == "abstain":
         # Replace prediction with a sentinel label (keeps output JSON-compatible).
         pred_labels = [str(low_confidence_label) if bool(low_conf_mask[i]) else pred_labels[i] for i in range(len(pred_labels))]
@@ -2508,6 +2790,10 @@ def run_physics_prediction(
             row_preview["smear_metric"] = smear_metric_name
             row_preview["entropy"] = None if not math.isfinite(float(entropy[i])) else float(entropy[i])
             row_preview["instability"] = None if not math.isfinite(float(instability[i])) else float(instability[i])
+            row_preview["ionized_hits"] = int(ionized_hit_count[i]) if int(ionized_hit_count.size) > i else 0
+            row_preview["ionization_mass"] = None if not math.isfinite(float(ionization_mass_row[i])) else float(ionization_mass_row[i])
+            row_preview["viscosity_path"] = None if not math.isfinite(float(viscosity_path[i])) else float(viscosity_path[i])
+            row_preview["confirmatory_consensus"] = None if not math.isfinite(float(confirmatory_consensus[i])) else float(confirmatory_consensus[i])
             row_preview["low_confidence"] = bool(low_conf_mask[i])
         preview.append(row_preview)
 
