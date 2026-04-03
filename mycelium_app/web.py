@@ -243,6 +243,8 @@ def predict_page(
             "low_confidence_secondary_enabled": False,
             "low_confidence_secondary_cycles": 0,
             "low_confidence_secondary_viscosity_multiplier": 0.75,
+            "low_confidence_secondary_viscosity_anneal": False,
+            "low_confidence_secondary_viscosity_multiplier_start": 0.95,
             "low_confidence_secondary_inhibition_multiplier": 0.85,
             "low_confidence_secondary_shear_multiplier": 1.10,
             "low_confidence_secondary_relax_ionization_gate": True,
@@ -298,6 +300,8 @@ async def predict_action(
     low_confidence_secondary_enabled: str | None = Form(None),
     low_confidence_secondary_cycles: int = Form(0),
     low_confidence_secondary_viscosity_multiplier: float = Form(0.75),
+    low_confidence_secondary_viscosity_anneal: str | None = Form(None),
+    low_confidence_secondary_viscosity_multiplier_start: float = Form(0.95),
     low_confidence_secondary_inhibition_multiplier: float = Form(0.85),
     low_confidence_secondary_shear_multiplier: float = Form(1.10),
     low_confidence_secondary_relax_ionization_gate: str | None = Form(None),
@@ -453,6 +457,15 @@ async def predict_action(
         except Exception:
             low_confidence_secondary_viscosity_multiplier = 0.75
         low_confidence_secondary_viscosity_multiplier = max(0.10, min(2.50, low_confidence_secondary_viscosity_multiplier))
+
+        low_confidence_secondary_viscosity_anneal_bool = bool(low_confidence_secondary_viscosity_anneal)
+        try:
+            low_confidence_secondary_viscosity_multiplier_start = float(low_confidence_secondary_viscosity_multiplier_start)
+        except Exception:
+            low_confidence_secondary_viscosity_multiplier_start = 0.95
+        low_confidence_secondary_viscosity_multiplier_start = max(
+            0.10, min(2.50, low_confidence_secondary_viscosity_multiplier_start)
+        )
         try:
             low_confidence_secondary_inhibition_multiplier = float(low_confidence_secondary_inhibition_multiplier)
         except Exception:
@@ -540,6 +553,8 @@ async def predict_action(
             low_confidence_secondary_enabled=low_confidence_secondary_enabled_bool,
             low_confidence_secondary_cycles=low_confidence_secondary_cycles,
             low_confidence_secondary_viscosity_multiplier=low_confidence_secondary_viscosity_multiplier,
+            low_confidence_secondary_viscosity_anneal=low_confidence_secondary_viscosity_anneal_bool,
+            low_confidence_secondary_viscosity_multiplier_start=low_confidence_secondary_viscosity_multiplier_start,
             low_confidence_secondary_inhibition_multiplier=low_confidence_secondary_inhibition_multiplier,
             low_confidence_secondary_shear_multiplier=low_confidence_secondary_shear_multiplier,
             low_confidence_secondary_relax_ionization_gate=low_confidence_secondary_relax_ionization_gate_bool,
@@ -701,6 +716,15 @@ async def predict_action(
             "preview": pred.preview_rows,
         }
 
+        # Predictor-level diagnostics (e.g. abstain reason breakdown).
+        try:
+            if getattr(pred, "diagnostics", None):
+                sel = (pred.diagnostics or {}).get("selective")
+                if sel:
+                    result.setdefault("diagnostics", {})["abstain_breakdown"] = sel
+        except Exception:
+            pass
+
     except PredictorError as e:
         error = str(e)
     except Exception as e:
@@ -750,6 +774,8 @@ async def predict_action(
             "low_confidence_secondary_enabled": low_confidence_secondary_enabled_bool,
             "low_confidence_secondary_cycles": low_confidence_secondary_cycles,
             "low_confidence_secondary_viscosity_multiplier": low_confidence_secondary_viscosity_multiplier,
+            "low_confidence_secondary_viscosity_anneal": low_confidence_secondary_viscosity_anneal_bool,
+            "low_confidence_secondary_viscosity_multiplier_start": low_confidence_secondary_viscosity_multiplier_start,
             "low_confidence_secondary_inhibition_multiplier": low_confidence_secondary_inhibition_multiplier,
             "low_confidence_secondary_shear_multiplier": low_confidence_secondary_shear_multiplier,
             "low_confidence_secondary_relax_ionization_gate": low_confidence_secondary_relax_ionization_gate_bool,

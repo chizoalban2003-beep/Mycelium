@@ -48,6 +48,8 @@ async def electrophoresis_predict(
     low_confidence_secondary_enabled: bool = Form(False),
     low_confidence_secondary_cycles: int = Form(0),
     low_confidence_secondary_viscosity_multiplier: float = Form(0.75),
+    low_confidence_secondary_viscosity_anneal: bool = Form(False),
+    low_confidence_secondary_viscosity_multiplier_start: float | None = Form(None),
     low_confidence_secondary_inhibition_multiplier: float = Form(0.85),
     low_confidence_secondary_shear_multiplier: float = Form(1.10),
     low_confidence_secondary_relax_ionization_gate: bool = Form(True),
@@ -119,6 +121,8 @@ async def electrophoresis_predict(
             low_confidence_secondary_enabled=bool(low_confidence_secondary_enabled),
             low_confidence_secondary_cycles=int(low_confidence_secondary_cycles),
             low_confidence_secondary_viscosity_multiplier=float(low_confidence_secondary_viscosity_multiplier),
+            low_confidence_secondary_viscosity_anneal=bool(low_confidence_secondary_viscosity_anneal),
+            low_confidence_secondary_viscosity_multiplier_start=low_confidence_secondary_viscosity_multiplier_start,
             low_confidence_secondary_inhibition_multiplier=float(low_confidence_secondary_inhibition_multiplier),
             low_confidence_secondary_shear_multiplier=float(low_confidence_secondary_shear_multiplier),
             low_confidence_secondary_relax_ionization_gate=bool(low_confidence_secondary_relax_ionization_gate),
@@ -137,6 +141,7 @@ async def electrophoresis_predict(
             "target": pred.target,
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,
+            "diagnostics": getattr(pred, "diagnostics", None),
             "weights": [
                 {
                     "feature": w.feature,

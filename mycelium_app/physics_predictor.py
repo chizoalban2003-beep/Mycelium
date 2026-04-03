@@ -128,6 +128,7 @@ class PredictionResult:
     equilibrium_zones: list[EquilibriumZone]
     metrics: PredictionMetrics
     preview_rows: list[dict[str, Any]]
+    diagnostics: dict[str, Any] | None = None
     test_row_indices: list[int] | None = None
     test_actual: list[Any] | None = None
     test_predicted: list[Any] | None = None
@@ -1322,6 +1323,8 @@ def run_physics_prediction(
     low_confidence_secondary_enabled: bool = False,
     low_confidence_secondary_cycles: int = 0,
     low_confidence_secondary_viscosity_multiplier: float = 0.75,
+    low_confidence_secondary_viscosity_anneal: bool = False,
+    low_confidence_secondary_viscosity_multiplier_start: float | None = None,
     low_confidence_secondary_inhibition_multiplier: float = 0.85,
     low_confidence_secondary_shear_multiplier: float = 1.10,
     low_confidence_secondary_relax_ionization_gate: bool = True,
@@ -2605,6 +2608,11 @@ def run_physics_prediction(
     if combine_rule not in ("or", "and"):
         combine_rule = "or"
 
+    # Selective diagnostics: we compute both stage-by-stage abstain rates and a final reason breakdown.
+    selective_diagnostics: dict[str, Any] | None = None
+    mask_pre_reion: np.ndarray | None = None
+    mask_post_reion: np.ndarray | None = None
+
     # Auto-calibration: if thresholds are <= 0, derive them from the TEST distribution.
     conf_thr = float(low_confidence_threshold)
     ent_thr = float(low_confidence_entropy_threshold)
@@ -2673,6 +2681,13 @@ def run_physics_prediction(
             low_conf_mask = np.asarray(low_conf_mask, dtype=bool) & (~keep_confirmatory)
         except Exception:
             pass
+
+    if mode in ("flag", "abstain"):
+        # Snapshot right before re-ionization/secondary passes.
+        try:
+            mask_pre_reion = np.asarray(low_conf_mask, dtype=bool).copy()
+        except Exception:
+            mask_pre_reion = None
 
     # Target re-ionization: sub-cycles that only update logits for low-confidence rows.
     # This can recover some abstained rows without disturbing already-confident ones.
@@ -2787,6 +2802,12 @@ def run_physics_prediction(
         except Exception:
             pass
 
+    if mode in ("flag", "abstain"):
+        try:
+            mask_post_reion = np.asarray(low_conf_mask, dtype=bool).copy()
+        except Exception:
+            mask_post_reion = None
+
     # Stage-3 Secondary Ionization (Cascade Expansion): second pass over low-confidence rows.
     # This is intentionally row-restricted so we don't perturb already-confident rows.
     sec_cycles = int(max(0, low_confidence_secondary_cycles))
@@ -2798,7 +2819,15 @@ def run_physics_prediction(
                 inhib_sec = float(
                     max(0.0, float(inhibition_strength) * float(low_confidence_secondary_inhibition_multiplier))
                 )
-                visc_mult = float(np.clip(float(low_confidence_secondary_viscosity_multiplier), 0.10, 2.50))
+                visc_mult_end = float(np.clip(float(low_confidence_secondary_viscosity_multiplier), 0.10, 2.50))
+                start_raw = low_confidence_secondary_viscosity_multiplier_start
+                visc_mult_start = visc_mult_end
+                if start_raw is not None:
+                    try:
+                        visc_mult_start = float(np.clip(float(start_raw), 0.10, 2.50))
+                    except Exception:
+                        visc_mult_start = visc_mult_end
+                anneal_visc = bool(low_confidence_secondary_viscosity_anneal) and sec_cycles > 1
 
                 relax_ion = bool(low_confidence_secondary_relax_ionization_gate) and bool(low_confidence_require_ionized)
                 z_min_sec = float(max(0.0, low_confidence_secondary_ionization_z_min))
@@ -2811,7 +2840,13 @@ def run_physics_prediction(
                 promote_votes = int(max(0, low_confidence_secondary_promote_min_zone_votes))
                 promote_conf_min = float(np.clip(float(low_confidence_secondary_promote_conf_min), 0.0, 1.0))
 
-                for _ in range(sec_cycles):
+                for cycle_i in range(sec_cycles):
+                    if anneal_visc:
+                        t = float(cycle_i) / float(max(1, sec_cycles - 1))
+                        visc_mult = float(visc_mult_start + t * (visc_mult_end - visc_mult_start))
+                        visc_mult = float(np.clip(visc_mult, 0.10, 2.50))
+                    else:
+                        visc_mult = visc_mult_end
                     cycle_update = np.zeros_like(logits)
                     for j, cls in enumerate(classes):
                         y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
@@ -2918,6 +2953,134 @@ def run_physics_prediction(
                 low_conf_mask = np.asarray(low_mask, dtype=bool)
         except Exception:
             pass
+
+    # Build selective diagnostics (TEST-only) after all reionization/secondary passes.
+    if mode in ("flag", "abstain"):
+        try:
+            test_idx = np.asarray(test_mask, dtype=bool)
+            n_test = int(np.sum(test_idx))
+
+            def _mask_stats(mask_all_rows: np.ndarray | None) -> dict[str, Any] | None:
+                if mask_all_rows is None:
+                    return None
+                low_test = np.asarray(mask_all_rows, dtype=bool)[test_idx]
+                if low_test.size <= 0:
+                    return {
+                        "n_test": n_test,
+                        "n_abstain": 0,
+                        "n_keep": 0,
+                        "abstain_rate": 0.0,
+                        "coverage": 0.0,
+                    }
+                n_abstain = int(np.sum(low_test))
+                n_keep = int(low_test.size - n_abstain)
+                abstain_rate = float(np.mean(low_test.astype("float64")))
+                return {
+                    "n_test": n_test,
+                    "n_abstain": n_abstain,
+                    "n_keep": n_keep,
+                    "abstain_rate": abstain_rate,
+                    "coverage": float(1.0 - abstain_rate),
+                }
+
+            final_mask = np.asarray(low_conf_mask, dtype=bool)
+
+            conf_low = conf < float(conf_thr)
+            smear_high = smear > float(ent_thr)
+            if combine_rule == "and":
+                base_low = conf_low & smear_high
+            else:
+                base_low = conf_low | smear_high
+
+            # Ionization-gate blocking status, reconstructed to match the final gating logic.
+            ion_gate_blocked = np.zeros(df.shape[0], dtype=bool)
+            require_ion = bool(low_confidence_require_ionized)
+            relax_ion_enabled = bool(low_confidence_secondary_relax_ionization_gate) and require_ion
+            z_min_sec_diag = float(max(0.0, low_confidence_secondary_ionization_z_min))
+            relaxed_ion_conf_min_diag = float(np.clip(float(low_confidence_secondary_relaxed_ion_conf_min), 0.0, 1.0))
+            if require_ion:
+                if relax_ion_enabled and ionized_features and z_cache:
+                    ion_hits_sec = np.zeros(df.shape[0], dtype="int32")
+                    for col in ionized_features:
+                        z = z_cache.get(col)
+                        if z is None:
+                            continue
+                        ion_hits_sec += (np.abs(z) >= z_min_sec_diag).astype("int32")
+                    strict_zero = ionized_hit_count <= 0
+                    relaxed_ok = ion_hits_sec > 0
+                    allow = (~strict_zero) | (relaxed_ok & (conf >= relaxed_ion_conf_min_diag))
+                    ion_gate_blocked = ~allow
+                else:
+                    ion_gate_blocked = ionized_hit_count <= 0
+
+            low_test_final = final_mask[test_idx]
+            n_abstain_final = int(np.sum(low_test_final))
+
+            def _count(mask: np.ndarray) -> int:
+                return int(np.sum(mask.astype("int32")))
+
+            reasons: dict[str, Any] = {
+                "n_test": n_test,
+                "n_abstain": n_abstain_final,
+                "n_keep": int(n_test - n_abstain_final),
+            }
+            if n_abstain_final > 0:
+                abstain_sel = test_idx & final_mask
+                conf_low_n = _count(abstain_sel & conf_low)
+                smear_high_n = _count(abstain_sel & smear_high)
+                base_low_n = _count(abstain_sel & base_low)
+                ion_gate_n = _count(abstain_sel & ion_gate_blocked)
+                both_base_ion_n = _count(abstain_sel & base_low & ion_gate_blocked)
+                neither_n = _count(abstain_sel & (~base_low) & (~ion_gate_blocked))
+
+                def _pct(n: int) -> float:
+                    return float(n) / float(n_abstain_final)
+
+                reasons.update(
+                    {
+                        "conf_low": {"count": conf_low_n, "pct_of_abstain": _pct(conf_low_n)},
+                        "smear_high": {"count": smear_high_n, "pct_of_abstain": _pct(smear_high_n)},
+                        "base_low": {"count": base_low_n, "pct_of_abstain": _pct(base_low_n)},
+                        "ion_gate_blocked": {"count": ion_gate_n, "pct_of_abstain": _pct(ion_gate_n)},
+                        "base_low_and_ion_gate": {"count": both_base_ion_n, "pct_of_abstain": _pct(both_base_ion_n)},
+                        "neither_base_nor_ion_gate": {"count": neither_n, "pct_of_abstain": _pct(neither_n)},
+                    }
+                )
+
+            selective_diagnostics = {
+                "mode": mode,
+                "smear_metric": smear_metric_name,
+                "combine_rule": combine_rule,
+                "thresholds": {
+                    "conf_thr": float(conf_thr),
+                    "smear_thr": float(ent_thr),
+                    "auto_conf_quantile": float(np.clip(float(low_confidence_auto_conf_quantile), 0.0, 1.0)),
+                    "auto_smear_quantile": float(np.clip(float(low_confidence_auto_smear_quantile), 0.0, 1.0)),
+                    "require_ionized": bool(low_confidence_require_ionized),
+                    "ionization_pvalue": float(low_confidence_ionization_pvalue),
+                    "ionization_z_min": float(max(0.0, low_confidence_ionization_z_min)),
+                    "secondary_relax_ion_gate": bool(relax_ion_enabled),
+                    "secondary_ionization_z_min": float(z_min_sec_diag),
+                    "secondary_relaxed_ion_conf_min": float(relaxed_ion_conf_min_diag),
+                    "secondary_viscosity_anneal": bool(low_confidence_secondary_viscosity_anneal),
+                    "secondary_viscosity_multiplier_start": None
+                    if low_confidence_secondary_viscosity_multiplier_start is None
+                    else float(low_confidence_secondary_viscosity_multiplier_start),
+                    "secondary_viscosity_multiplier_end": float(low_confidence_secondary_viscosity_multiplier),
+                },
+                "ionized_features": {
+                    "count": int(len(ionized_features)),
+                    "sample": ionized_features[:20],
+                },
+                "test_stages": {
+                    "pre_reionization": _mask_stats(mask_pre_reion),
+                    "post_reionization": _mask_stats(mask_post_reion),
+                    "final": _mask_stats(final_mask),
+                },
+                "final_abstain_reasons": reasons,
+            }
+        except Exception:
+            selective_diagnostics = None
     if mode == "abstain":
         # Replace prediction with a sentinel label (keeps output JSON-compatible).
         pred_labels = [str(low_confidence_label) if bool(low_conf_mask[i]) else pred_labels[i] for i in range(len(pred_labels))]
@@ -2973,6 +3136,13 @@ def run_physics_prediction(
             row_preview["viscosity_path"] = None if not math.isfinite(float(viscosity_path[i])) else float(viscosity_path[i])
             row_preview["confirmatory_consensus"] = None if not math.isfinite(float(confirmatory_consensus[i])) else float(confirmatory_consensus[i])
             row_preview["low_confidence"] = bool(low_conf_mask[i])
+            # Helpful per-row reason flags (best-effort).
+            try:
+                row_preview["reason_conf_low"] = bool(conf_low[i])
+                row_preview["reason_smear_high"] = bool(smear_high[i])
+                row_preview["reason_ion_gate"] = bool(ion_gate_blocked[i])
+            except Exception:
+                pass
         preview.append(row_preview)
 
     test_row_indices = None
@@ -3055,6 +3225,7 @@ def run_physics_prediction(
         iteration_gains=iteration_gains,
         metrics=metrics,
         preview_rows=preview,
+        diagnostics=None if selective_diagnostics is None else {"selective": selective_diagnostics},
         test_row_indices=test_row_indices,
         test_actual=test_actual,
         test_predicted=test_predicted,

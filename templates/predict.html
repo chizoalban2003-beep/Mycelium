@@ -204,6 +204,18 @@
                     <input name="low_confidence_secondary_viscosity_multiplier" type="number" min="0.10" max="2.50" step="0.01" value="{{ low_confidence_secondary_viscosity_multiplier if low_confidence_secondary_viscosity_multiplier is not none else 0.75 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
                     <div class="mt-1 text-xs text-slate-500">&lt; 1.0 = thinner buffer for Spearman slow-movers.</div>
                   </div>
+                  <div class="md:col-span-2 flex items-center gap-2">
+                    <input type="checkbox" name="low_confidence_secondary_viscosity_anneal" {% if low_confidence_secondary_viscosity_anneal %}checked{% endif %} />
+                    <div>
+                      <div class="text-sm text-slate-200">Viscosity annealing</div>
+                      <div class="text-xs text-slate-500">Linearly interpolates viscosity multiplier from start → end across secondary cycles.</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-sm text-slate-300">Visc start (mult)</label>
+                    <input name="low_confidence_secondary_viscosity_multiplier_start" type="number" min="0.10" max="2.50" step="0.01" value="{{ low_confidence_secondary_viscosity_multiplier_start if low_confidence_secondary_viscosity_multiplier_start is not none else 0.95 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+                    <div class="mt-1 text-xs text-slate-500">Higher start = less thinning early.</div>
+                  </div>
                   <div>
                     <label class="block text-sm text-slate-300">Shear multiplier</label>
                     <input name="low_confidence_secondary_shear_multiplier" type="number" min="0" max="4.0" step="0.05" value="{{ low_confidence_secondary_shear_multiplier if low_confidence_secondary_shear_multiplier is not none else 1.10 }}" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
@@ -429,6 +441,112 @@
           </div>
         </div>
       </div>
+
+      {% if result.diagnostics and result.diagnostics.abstain_breakdown and result.metrics and result.metrics.coverage is not none %}
+        {% set abd = result.diagnostics.abstain_breakdown %}
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <h2 class="font-semibold mb-2">Abstention Breakdown (TEST only)</h2>
+          <div class="text-sm text-slate-400">
+            Explains what gates are driving abstentions: confidence, smear, and ionization.
+          </div>
+
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div class="text-slate-300">Mode</div>
+              <div class="text-slate-200 font-medium">{{ abd.mode }}</div>
+              <div class="text-xs text-slate-500 mt-1">smear={{ abd.smear_metric }}, rule={{ abd.combine_rule }}</div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div class="text-slate-300">Thresholds</div>
+              <div class="text-xs text-slate-500 mt-1">
+                conf_thr={{ abd.thresholds.conf_thr }} · smear_thr={{ abd.thresholds.smear_thr }}
+              </div>
+              <div class="text-xs text-slate-500 mt-1">
+                ion_gate={% if abd.thresholds.require_ionized %}on{% else %}off{% endif %} · ion_z_min={{ abd.thresholds.ionization_z_min }}
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
+              <div class="text-slate-300">Ionized features</div>
+              <div class="text-slate-200 font-medium">{{ abd.ionized_features.count }}</div>
+              {% if abd.ionized_features.count == 0 %}
+                <div class="text-xs text-amber-300 mt-1">Ion gate will be very strict (may abstain most rows).</div>
+              {% endif %}
+            </div>
+          </div>
+
+          {% if abd.test_stages %}
+            <div class="mt-4">
+              <div class="text-sm text-slate-200 font-medium mb-2">Stage-by-stage abstain rate</div>
+              <div class="overflow-auto">
+                <table class="min-w-full text-sm">
+                  <thead class="text-slate-400">
+                    <tr>
+                      <th class="text-left py-2 pr-3">Stage</th>
+                      <th class="text-left py-2 pr-3">Abstain rate</th>
+                      <th class="text-left py-2 pr-3">Coverage</th>
+                      <th class="text-left py-2 pr-3">Abstain / Test</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for key, label in [
+                      ('pre_reionization', 'pre re-ionization'),
+                      ('post_reionization', 'post re-ionization'),
+                      ('final', 'final')
+                    ] %}
+                      {% set st = abd.test_stages[key] %}
+                      {% if st %}
+                        <tr class="border-t border-slate-800">
+                          <td class="py-2 pr-3 text-slate-200">{{ label }}</td>
+                          <td class="py-2 pr-3 text-slate-300">{{ (st.abstain_rate * 100)|round(2) }}%</td>
+                          <td class="py-2 pr-3 text-slate-300">{{ (st.coverage * 100)|round(2) }}%</td>
+                          <td class="py-2 pr-3 text-slate-300">{{ st.n_abstain }} / {{ st.n_test }}</td>
+                        </tr>
+                      {% endif %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if abd.final_abstain_reasons and abd.final_abstain_reasons.n_abstain and abd.final_abstain_reasons.n_abstain > 0 %}
+            <div class="mt-4">
+              <div class="text-sm text-slate-200 font-medium mb-2">Final abstain reasons (within abstained rows)</div>
+              <div class="overflow-auto">
+                <table class="min-w-full text-sm">
+                  <thead class="text-slate-400">
+                    <tr>
+                      <th class="text-left py-2 pr-3">Reason</th>
+                      <th class="text-left py-2 pr-3">Count</th>
+                      <th class="text-left py-2 pr-3">% of abstained</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for k, label in [
+                      ('conf_low', 'Confidence low'),
+                      ('smear_high', 'Smear high'),
+                      ('ion_gate_blocked', 'Ion gate blocked'),
+                      ('base_low_and_ion_gate', 'Base low AND ion gate'),
+                      ('neither_base_nor_ion_gate', 'Neither (unexpected)')
+                    ] %}
+                      {% if abd.final_abstain_reasons[k] %}
+                        <tr class="border-t border-slate-800">
+                          <td class="py-2 pr-3 text-slate-200">{{ label }}</td>
+                          <td class="py-2 pr-3 text-slate-300">{{ abd.final_abstain_reasons[k].count }}</td>
+                          <td class="py-2 pr-3 text-slate-300">{{ (abd.final_abstain_reasons[k].pct_of_abstain * 100)|round(2) }}%</td>
+                        </tr>
+                      {% endif %}
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <div class="text-xs text-slate-500 mt-2">
+                Counts overlap (a row can be both conf-low and smear-high, and also fail the ion gate).
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
 
       {% if result.diagnostics and result.diagnostics.trapped_features and (result.diagnostics.trapped_features|length) > 0 %}
         <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">

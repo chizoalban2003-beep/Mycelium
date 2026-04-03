@@ -42,6 +42,33 @@ def _print_run(name: str, pred, seconds: float) -> None:
                 f"visc={float(x.viscosity):.3f} vel={float(x.terminal_velocity):.3f} charge={float(x.charge):.3f} p={pv_s}"
             )
 
+    try:
+        diag = getattr(pred, "diagnostics", None) or {}
+        sel = diag.get("selective")
+        if sel and isinstance(sel, dict):
+            stages = (sel.get("test_stages") or {})
+            reasons = (sel.get("final_abstain_reasons") or {})
+            if stages:
+                print("abstain_stages:")
+                for k in ("pre_reionization", "post_reionization", "final"):
+                    st = stages.get(k)
+                    if not st:
+                        continue
+                    ar = st.get("abstain_rate", None)
+                    cv = st.get("coverage", None)
+                    print(f"  {k:16s} abstain_rate={_fmt(ar)} coverage={_fmt(cv)} n_abstain={st.get('n_abstain')} n_test={st.get('n_test')}")
+            if reasons and reasons.get("n_abstain", 0):
+                print("abstain_reasons_within_abstained:")
+                for key in ("conf_low", "smear_high", "ion_gate_blocked", "base_low_and_ion_gate"):
+                    v = reasons.get(key)
+                    if not v:
+                        continue
+                    print(
+                        f"  {key:22s} count={v.get('count')} pct_of_abstain={float(v.get('pct_of_abstain', 0.0)):.3f}"
+                    )
+    except Exception:
+        pass
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark selective + secondary ionization (cascade expansion)")
@@ -78,7 +105,9 @@ def main() -> int:
     # Secondary ionization settings
     parser.add_argument("--sec", action="store_true", default=True)
     parser.add_argument("--sec-cycles", type=int, default=2)
-    parser.add_argument("--sec-visc", type=float, default=0.65)
+    parser.add_argument("--sec-visc", type=float, default=0.65, help="Secondary viscosity multiplier end value")
+    parser.add_argument("--sec-visc-anneal", action="store_true", default=False)
+    parser.add_argument("--sec-visc-start", type=float, default=None, help="Secondary viscosity multiplier start value")
     parser.add_argument("--sec-shear", type=float, default=1.10)
     parser.add_argument("--sec-inhib", type=float, default=0.85)
     parser.add_argument("--sec-promote-votes", type=int, default=3)
@@ -128,6 +157,8 @@ def main() -> int:
         low_confidence_secondary_enabled=bool(args.sec),
         low_confidence_secondary_cycles=int(args.sec_cycles),
         low_confidence_secondary_viscosity_multiplier=float(args.sec_visc),
+        low_confidence_secondary_viscosity_anneal=bool(args.sec_visc_anneal),
+        low_confidence_secondary_viscosity_multiplier_start=args.sec_visc_start,
         low_confidence_secondary_shear_multiplier=float(args.sec_shear),
         low_confidence_secondary_inhibition_multiplier=float(args.sec_inhib),
         low_confidence_secondary_promote_min_zone_votes=int(args.sec_promote_votes),
