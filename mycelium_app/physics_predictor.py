@@ -2736,6 +2736,10 @@ def run_physics_prediction(
                     if not bool(np.any(low_mask)):
                         break
 
+                # Refresh final predictions after re-ionization.
+                pred_idx = np.argmax(probs, axis=1)
+                pred_labels = [classes[int(i)] for i in pred_idx]
+
                 # Persist final low_conf_mask after re-ionization.
                 low_conf_mask = np.asarray(low_mask, dtype=bool)
         except Exception:
