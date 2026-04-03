@@ -1336,6 +1336,14 @@ def run_physics_prediction(
     low_confidence_secondary_promote_min_zone_votes: int = 3,
     low_confidence_secondary_promote_z_min: float = 0.50,
     low_confidence_secondary_promote_conf_min: float = 0.42,
+    # Reciprocating Sieve (v4.2): attempt to shake loose tangled, low-confidence rows
+    # that have high instability but near-zero net update during secondary ionization.
+    low_confidence_secondary_sieve_enabled: bool = False,
+    low_confidence_secondary_sieve_cycles: int = 2,
+    low_confidence_secondary_sieve_reverse_multiplier: float = 0.75,
+    low_confidence_secondary_sieve_noise_std: float = 0.04,
+    low_confidence_secondary_sieve_instability_min: float = 0.65,
+    low_confidence_secondary_sieve_update_norm_max: float = 0.003,
     # Ionization/viscosity-aware abstention controls.
     low_confidence_require_ionized: bool = False,
     low_confidence_ionization_pvalue: float = 0.05,
@@ -2808,6 +2816,8 @@ def run_physics_prediction(
         except Exception:
             mask_post_reion = None
 
+    secondary_sieve_diag: dict[str, Any] | None = None
+
     # Stage-3 Secondary Ionization (Cascade Expansion): second pass over low-confidence rows.
     # This is intentionally row-restricted so we don't perturb already-confident rows.
     sec_cycles = int(max(0, low_confidence_secondary_cycles))
@@ -2815,6 +2825,7 @@ def run_physics_prediction(
         try:
             low_mask = np.asarray(low_conf_mask, dtype=bool)
             if bool(np.any(low_mask)) and z_cache:
+                rng_sec = np.random.default_rng(int(random_seed) + 17717)
                 shear_sec = float(max(0.0, shear * float(low_confidence_secondary_shear_multiplier)))
                 inhib_sec = float(
                     max(0.0, float(inhibition_strength) * float(low_confidence_secondary_inhibition_multiplier))
@@ -2839,6 +2850,15 @@ def run_physics_prediction(
 
                 promote_votes = int(max(0, low_confidence_secondary_promote_min_zone_votes))
                 promote_conf_min = float(np.clip(float(low_confidence_secondary_promote_conf_min), 0.0, 1.0))
+
+                sieve_enabled = bool(low_confidence_secondary_sieve_enabled)
+                sieve_cycles = int(max(0, low_confidence_secondary_sieve_cycles))
+                sieve_reverse = float(max(0.0, low_confidence_secondary_sieve_reverse_multiplier))
+                sieve_noise = float(max(0.0, low_confidence_secondary_sieve_noise_std))
+                sieve_inst_min = float(np.clip(float(low_confidence_secondary_sieve_instability_min), 0.0, 1.0))
+                sieve_update_max = float(max(0.0, low_confidence_secondary_sieve_update_norm_max))
+                sieve_events = 0
+                sieve_rows_total = 0
 
                 for cycle_i in range(sec_cycles):
                     if anneal_visc:
@@ -2909,7 +2929,41 @@ def run_physics_prediction(
                             denom = 1.0
                         cycle_update[:, j] = class_score / denom
 
-                    logits[low_mask, :] += (float(lr) * cycle_update[low_mask, :])
+                    # Reciprocating Sieve: for rows that look "tangled" (high instability, but
+                    # near-zero update norm), apply a reverse-step plus small noise to escape.
+                    # Then proceed with the normal update on the remaining low-confidence rows.
+                    if sieve_enabled and sieve_cycles > 0 and (sieve_inst_min > 0.0 or sieve_update_max > 0.0):
+                        try:
+                            update_norm = np.sqrt(np.sum(np.square(cycle_update), axis=1))
+                            tangled = (
+                                np.asarray(low_mask, dtype=bool)
+                                & (np.asarray(instability, dtype="float64") >= sieve_inst_min)
+                                & (np.asarray(update_norm, dtype="float64") <= sieve_update_max)
+                            )
+                            if bool(np.any(tangled)):
+                                sieve_events += 1
+                                sieve_rows_total += int(np.sum(tangled.astype("int32")))
+                                # Apply a few quick shake steps only to tangled rows.
+                                for _ in range(sieve_cycles):
+                                    if sieve_reverse > 0.0:
+                                        logits[tangled, :] += float(lr) * (-sieve_reverse) * cycle_update[tangled, :]
+                                    if sieve_noise > 0.0:
+                                        logits[tangled, :] += rng_sec.normal(
+                                            loc=0.0,
+                                            scale=sieve_noise,
+                                            size=(int(np.sum(tangled.astype("int32"))), logits.shape[1]),
+                                        )
+                        except Exception:
+                            tangled = None
+                    else:
+                        tangled = None
+
+                    if tangled is not None and bool(np.any(np.asarray(tangled, dtype=bool))):
+                        forward_mask = np.asarray(low_mask, dtype=bool) & (~np.asarray(tangled, dtype=bool))
+                        if bool(np.any(forward_mask)):
+                            logits[forward_mask, :] += (float(lr) * cycle_update[forward_mask, :])
+                    else:
+                        logits[low_mask, :] += (float(lr) * cycle_update[low_mask, :])
                     probs = _softmax(logits)
                     conf = np.max(probs, axis=1)
                     entropy = _normalized_entropy(probs)
@@ -2951,6 +3005,21 @@ def run_physics_prediction(
                 pred_idx = np.argmax(probs, axis=1)
                 pred_labels = [classes[int(i)] for i in pred_idx]
                 low_conf_mask = np.asarray(low_mask, dtype=bool)
+
+                # Persist sieve counters for diagnostics (best-effort, TEST-only usage).
+                try:
+                    secondary_sieve_diag = {
+                        "enabled": bool(sieve_enabled),
+                        "events": int(sieve_events),
+                        "rows_total": int(sieve_rows_total),
+                        "cycles": int(sieve_cycles),
+                        "reverse_multiplier": float(sieve_reverse),
+                        "noise_std": float(sieve_noise),
+                        "instability_min": float(sieve_inst_min),
+                        "update_norm_max": float(sieve_update_max),
+                    }
+                except Exception:
+                    secondary_sieve_diag = None
         except Exception:
             pass
 
@@ -3067,6 +3136,7 @@ def run_physics_prediction(
                     if low_confidence_secondary_viscosity_multiplier_start is None
                     else float(low_confidence_secondary_viscosity_multiplier_start),
                     "secondary_viscosity_multiplier_end": float(low_confidence_secondary_viscosity_multiplier),
+                    "secondary_sieve": secondary_sieve_diag,
                 },
                 "ionized_features": {
                     "count": int(len(ionized_features)),

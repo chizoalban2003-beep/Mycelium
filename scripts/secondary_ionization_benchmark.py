@@ -46,6 +46,16 @@ def _print_run(name: str, pred, seconds: float) -> None:
         diag = getattr(pred, "diagnostics", None) or {}
         sel = diag.get("selective")
         if sel and isinstance(sel, dict):
+            thresholds = (sel.get("thresholds") or {})
+            sieve = thresholds.get("secondary_sieve") if isinstance(thresholds, dict) else None
+            if sieve and isinstance(sieve, dict) and sieve.get("enabled"):
+                print(
+                    "secondary_sieve: "
+                    f"events={sieve.get('events')} rows_total={sieve.get('rows_total')} "
+                    f"cycles={sieve.get('cycles')} reverse={sieve.get('reverse_multiplier')} "
+                    f"noise_std={sieve.get('noise_std')} inst_min={sieve.get('instability_min')} "
+                    f"update_max={sieve.get('update_norm_max')}"
+                )
             stages = (sel.get("test_stages") or {})
             reasons = (sel.get("final_abstain_reasons") or {})
             if stages:
@@ -114,6 +124,14 @@ def main() -> int:
     parser.add_argument("--sec-promote-z", type=float, default=0.35)
     parser.add_argument("--sec-promote-conf", type=float, default=0.40)
 
+    # Reciprocating Sieve (v4.2)
+    parser.add_argument("--sec-sieve", action="store_true", default=False)
+    parser.add_argument("--sec-sieve-cycles", type=int, default=2)
+    parser.add_argument("--sec-sieve-reverse", type=float, default=0.75)
+    parser.add_argument("--sec-sieve-noise", type=float, default=0.04)
+    parser.add_argument("--sec-sieve-inst", type=float, default=0.65)
+    parser.add_argument("--sec-sieve-update-max", type=float, default=0.003)
+
     args = parser.parse_args()
 
     df = pd.read_csv(args.path, nrows=int(args.nrows) if int(args.nrows) > 0 else None)
@@ -164,6 +182,12 @@ def main() -> int:
         low_confidence_secondary_promote_min_zone_votes=int(args.sec_promote_votes),
         low_confidence_secondary_promote_z_min=float(args.sec_promote_z),
         low_confidence_secondary_promote_conf_min=float(args.sec_promote_conf),
+        low_confidence_secondary_sieve_enabled=bool(args.sec_sieve),
+        low_confidence_secondary_sieve_cycles=int(args.sec_sieve_cycles),
+        low_confidence_secondary_sieve_reverse_multiplier=float(args.sec_sieve_reverse),
+        low_confidence_secondary_sieve_noise_std=float(args.sec_sieve_noise),
+        low_confidence_secondary_sieve_instability_min=float(args.sec_sieve_inst),
+        low_confidence_secondary_sieve_update_norm_max=float(args.sec_sieve_update_max),
     )
     dt2 = time.perf_counter() - t1
     _print_run("secondary_ionization", pred_sec, dt2)
