@@ -1402,6 +1402,7 @@ def run_physics_prediction(
     cycle_learning_rate: float = 0.18,
     cycle_learning_rate_schedule: Literal["constant", "linear_decay", "cosine_decay"] = "constant",
     cycle_learning_rate_min_multiplier: float = 0.25,
+    cycle_learning_rate_exp_decay: float = 1.0,
     shear_alpha: float = 0.75,
     shear_alpha_schedule: Literal["constant", "linear_decay", "cosine_decay"] = "constant",
     shear_alpha_min_multiplier: float = 0.25,
@@ -1426,6 +1427,12 @@ def run_physics_prediction(
     vibrational_viscosity_period: int = 5,
     vibrational_viscosity_amplitude: float = 0.12,
     vibrational_viscosity_waveform: Literal["sine", "square"] = "square",
+    # Target-induced viscosity scaling (buffer shift experiment): adapt viscosity based on
+    # how far the model is from the target (uses normalized residual magnitude).
+    target_induced_viscosity_enabled: bool = False,
+    target_induced_viscosity_gain: float = 0.0,
+    target_induced_viscosity_min_multiplier: float = 0.50,
+    target_induced_viscosity_max_multiplier: float = 1.00,
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
@@ -1522,12 +1529,17 @@ def run_physics_prediction(
         vib_wave = "square"
 
     lr_schedule = str(cycle_learning_rate_schedule).lower().strip()
-    if lr_schedule not in ("constant", "linear_decay", "cosine_decay"):
+    if lr_schedule not in ("constant", "linear_decay", "cosine_decay", "exp_decay"):
         lr_schedule = "constant"
     lr_min_mult = float(cycle_learning_rate_min_multiplier)
     if not math.isfinite(lr_min_mult):
         lr_min_mult = 0.25
     lr_min_mult = float(np.clip(lr_min_mult, 0.0, 1.0))
+
+    lr_exp = float(cycle_learning_rate_exp_decay)
+    if not math.isfinite(lr_exp):
+        lr_exp = 1.0
+    lr_exp = float(np.clip(lr_exp, 0.0, 1.0))
 
     shear_schedule = str(shear_alpha_schedule).lower().strip()
     if shear_schedule not in ("constant", "linear_decay", "cosine_decay"):
@@ -1559,6 +1571,15 @@ def run_physics_prediction(
         base = float(cycle_learning_rate)
         if not math.isfinite(base) or base <= 0.0:
             base = 0.18
+        if lr_schedule == "exp_decay":
+            c = int(max(1, cycle_1based))
+            if lr_exp <= 0.0:
+                m = lr_min_mult
+            else:
+                m = float(lr_exp) ** float(c - 1)
+            m = float(np.clip(m, lr_min_mult, 1.0))
+            return base * m
+
         return base * _schedule_multiplier(cycle_1based, total_cycles, kind=lr_schedule, min_multiplier=lr_min_mult)
 
     def _shear_at(cycle_1based: int, total_cycles: int) -> float:
@@ -1566,6 +1587,34 @@ def run_physics_prediction(
         if not math.isfinite(base) or base < 0.0:
             base = 0.0
         return base * _schedule_multiplier(cycle_1based, total_cycles, kind=shear_schedule, min_multiplier=shear_min_mult)
+
+    tiv_enabled = bool(target_induced_viscosity_enabled)
+    tiv_gain = float(target_induced_viscosity_gain)
+    if not math.isfinite(tiv_gain) or tiv_gain <= 0.0:
+        tiv_enabled = False
+        tiv_gain = 0.0
+    tiv_min = float(target_induced_viscosity_min_multiplier)
+    tiv_max = float(target_induced_viscosity_max_multiplier)
+    if not math.isfinite(tiv_min):
+        tiv_min = 0.50
+    if not math.isfinite(tiv_max):
+        tiv_max = 1.00
+    tiv_min = float(np.clip(tiv_min, 0.05, 1.0))
+    tiv_max = float(np.clip(tiv_max, tiv_min, 1.0))
+
+    def _target_induced_viscosity_multiplier(residual_train: np.ndarray, residual_std: float) -> float:
+        if not tiv_enabled:
+            return 1.0
+        rs = float(residual_std)
+        if not math.isfinite(rs) or rs <= 1e-12:
+            rs = 1.0
+        lvl = float(np.nanmean(np.abs(residual_train))) / (rs + 1e-9)
+        if not math.isfinite(lvl) or lvl < 0.0:
+            lvl = 0.0
+        mult = 1.0 / (1.0 + tiv_gain * lvl)
+        if not math.isfinite(mult):
+            mult = 1.0
+        return float(np.clip(mult, tiv_min, tiv_max))
 
     target_series = df[target_col]
     target_kind = infer_target_kind(target_series)
@@ -1947,6 +1996,7 @@ def run_physics_prediction(
             residual_std = float(np.nanstd(residual_train))
             if not math.isfinite(residual_std) or residual_std <= 1e-12:
                 residual_std = 1.0
+            eta_scale = _target_induced_viscosity_multiplier(residual_train, residual_std)
 
             update_score = np.zeros(df.shape[0], dtype="float64")
             denom = 0.0
@@ -2005,7 +2055,7 @@ def run_physics_prediction(
 
             if denom <= 1e-12:
                 denom = 1.0
-            pred = pred + lr * (update_score / denom) * residual_std
+            pred = pred + (lr / max(1e-9, float(eta_scale))) * (update_score / denom) * residual_std
 
             mae, rmse = _numeric_metrics(y[test_mask], pred[test_mask])
             if target_kind == "datetime":
@@ -2054,6 +2104,7 @@ def run_physics_prediction(
                 residual_std = float(np.nanstd(residual_train))
                 if not math.isfinite(residual_std) or residual_std <= 1e-12:
                     residual_std = 1.0
+                eta_scale = _target_induced_viscosity_multiplier(residual_train, residual_std)
 
                 update_score = np.zeros(df.shape[0], dtype="float64")
                 denom = 0.0
@@ -2111,7 +2162,7 @@ def run_physics_prediction(
 
                 if denom <= 1e-12:
                     denom = 1.0
-                pred = pred + lr2 * (update_score / denom) * residual_std
+                pred = pred + (lr2 / max(1e-9, float(eta_scale))) * (update_score / denom) * residual_std
 
                 mae, rmse = _numeric_metrics(y[test_mask], pred[test_mask])
                 if target_kind == "datetime":
@@ -2476,7 +2527,7 @@ def run_physics_prediction(
                     x_raw = x_encoded_by_feature[col]
                 else:
                     x_cat = df[col].astype("string").fillna("__MISSING__")
-                    tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                    tmp = pd.DataFrame({"x": x_cat[train_mask].to_numpy(dtype=object), "r": residual_train})
                     rates = tmp.groupby("x")["r"].mean()
                     x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
 
@@ -2659,7 +2710,7 @@ def run_physics_prediction(
                         x_raw = x_encoded_by_feature[col]
                     else:
                         x_cat = df[col].astype("string").fillna("__MISSING__")
-                        tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                        tmp = pd.DataFrame({"x": x_cat[train_mask].to_numpy(dtype=object), "r": residual_train})
                         rates = tmp.groupby("x")["r"].mean()
                         x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
 
@@ -2792,7 +2843,7 @@ def run_physics_prediction(
                             x_raw = x_encoded_by_feature[col]
                         else:
                             x_cat = df[col].astype("string").fillna("__MISSING__")
-                            tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                            tmp = pd.DataFrame({"x": x_cat[train_mask].to_numpy(dtype=object), "r": residual_train})
                             rates = tmp.groupby("x")["r"].mean()
                             x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
 
@@ -3123,7 +3174,7 @@ def run_physics_prediction(
                                 x_raw = x_encoded_by_feature[col]
                             else:
                                 x_cat = df[col].astype("string").fillna("__MISSING__")
-                                tmp = pd.DataFrame({"x": x_cat[train_mask], "r": residual_train})
+                                tmp = pd.DataFrame({"x": x_cat[train_mask].to_numpy(dtype=object), "r": residual_train})
                                 rates = tmp.groupby("x")["r"].mean()
                                 x_raw = x_cat.map(rates).fillna(0.0).to_numpy(dtype="float64")
 

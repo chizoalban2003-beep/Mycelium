@@ -459,6 +459,25 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
             )
         )
 
+    # Optional target-induced viscosity scaling (buffer shift) rows.
+    tiv_cfg = getattr(_bench_regression, "_tiv_cfg", None)
+    if isinstance(tiv_cfg, dict) and bool(tiv_cfg.get("enabled")):
+        tiv_kwargs = {
+            "target_induced_viscosity_enabled": True,
+            "target_induced_viscosity_gain": float(tiv_cfg.get("gain", 0.5)),
+            "target_induced_viscosity_min_multiplier": float(tiv_cfg.get("min_multiplier", 0.75)),
+            "target_induced_viscosity_max_multiplier": float(tiv_cfg.get("max_multiplier", 1.0)),
+        }
+        rows.append(
+            _run_mycelium(
+                "Mycelium (tuned gas, n=50, buffer shift)",
+                plane=PhysicsPlane.gas,
+                n_cycles=50,
+                cycle_learning_rate=0.18,
+                **tiv_kwargs,
+            )
+        )
+
     # Explicit sweep-best row (so markdown can be regenerated from this script)
     rows.append(
         _run_mycelium(
@@ -469,6 +488,24 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
             shear_alpha=1.60,
         )
     )
+
+    if isinstance(tiv_cfg, dict) and bool(tiv_cfg.get("enabled")):
+        tiv_kwargs = {
+            "target_induced_viscosity_enabled": True,
+            "target_induced_viscosity_gain": float(tiv_cfg.get("gain", 0.5)),
+            "target_induced_viscosity_min_multiplier": float(tiv_cfg.get("min_multiplier", 0.75)),
+            "target_induced_viscosity_max_multiplier": float(tiv_cfg.get("max_multiplier", 1.0)),
+        }
+        rows.append(
+            _run_mycelium(
+                "Mycelium (sweep best: gas 100c, buffer shift)",
+                plane=PhysicsPlane.gas,
+                n_cycles=100,
+                cycle_learning_rate=0.25,
+                shear_alpha=1.60,
+                **tiv_kwargs,
+            )
+        )
 
     if isinstance(pcr_cfg, dict) and bool(pcr_cfg.get("enabled")):
         rows.append(
@@ -513,27 +550,76 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
         topk = max(1, min(10, topk))
         rng = random.Random(int(seed) + 99173)
 
+        lr_min = float(rnd_cfg.get("lr_min", 0.12))
+        lr_max = float(rnd_cfg.get("lr_max", 0.30))
+        lr_sampling = str(rnd_cfg.get("lr_sampling", "linear")).lower().strip()
+        if lr_sampling not in ("linear", "log"):
+            lr_sampling = "linear"
+        if not math.isfinite(lr_min) or lr_min <= 0.0:
+            lr_min = 0.12
+        if not math.isfinite(lr_max) or lr_max <= 0.0:
+            lr_max = 0.30
+        if lr_max < lr_min:
+            lr_min, lr_max = lr_max, lr_min
+
+        anneal_min = float(rnd_cfg.get("anneal_min", 1.0))
+        anneal_max = float(rnd_cfg.get("anneal_max", 1.0))
+        if not math.isfinite(anneal_min):
+            anneal_min = 1.0
+        if not math.isfinite(anneal_max):
+            anneal_max = 1.0
+        anneal_min = float(np.clip(anneal_min, 0.0, 1.0))
+        anneal_max = float(np.clip(anneal_max, 0.0, 1.0))
+        if anneal_max < anneal_min:
+            anneal_min, anneal_max = anneal_max, anneal_min
+
+        include_buffer = bool(rnd_cfg.get("include_buffer", False))
+        buffer_gain_min = float(rnd_cfg.get("buffer_gain_min", 0.1))
+        buffer_gain_max = float(rnd_cfg.get("buffer_gain_max", 1.0))
+        buffer_min_mult_min = float(rnd_cfg.get("buffer_min_mult_min", 0.5))
+        buffer_min_mult_max = float(rnd_cfg.get("buffer_min_mult_max", 0.9))
+        buffer_max_mult = float(rnd_cfg.get("buffer_max_mult", 1.0))
+
         def _choice(seq: list[object]) -> object:
             return seq[int(rng.randrange(0, len(seq)))]
 
         def _u(a: float, b: float) -> float:
             return float(a + (b - a) * rng.random())
 
+        def _u_log(a: float, b: float) -> float:
+            a = float(a)
+            b = float(b)
+            if a <= 0.0 or b <= 0.0:
+                return _u(max(1e-6, a), max(1e-6, b))
+            la = math.log10(min(a, b))
+            lb = math.log10(max(a, b))
+            return float(10.0 ** (la + (lb - la) * rng.random()))
+
         candidates: list[RegRow] = []
         for _ in range(trials):
             plane = _choice([PhysicsPlane.gas, PhysicsPlane.liquid, PhysicsPlane.solid])
             ncy = int(_choice([30, 50, 75, 100, 120]))
-            lr = float(_u(0.12, 0.30))
+            lr = float(_u_log(lr_min, lr_max) if lr_sampling == "log" else _u(lr_min, lr_max))
             shear = float(_u(0.25, 2.50))
             inhib = float(_u(0.30, 1.20))
             stage2_v = float(_u(0.8, 2.8))
             stage2_cycles = int(_choice([0, 1, 2, 3]))
             shatter = bool(_choice([False, True]))
 
-            lr_sched = str(_choice(["constant", "linear_decay", "cosine_decay"]))
+            lr_sched = str(_choice(["constant", "linear_decay", "cosine_decay", "exp_decay"]))
             lr_min_mult = float(_u(0.10, 0.70))
+            lr_exp_decay = float(_u(anneal_min, anneal_max))
             shear_sched = str(_choice(["constant", "linear_decay", "cosine_decay"]))
             shear_min_mult = float(_u(0.10, 0.70))
+
+            buf_on = False
+            buf_gain = 0.0
+            buf_min_mult = 0.75
+            buf_max_mult = float(buffer_max_mult)
+            if include_buffer and bool(_choice([False, True, True])):
+                buf_on = True
+                buf_gain = float(_u(buffer_gain_min, buffer_gain_max))
+                buf_min_mult = float(_u(buffer_min_mult_min, buffer_min_mult_max))
 
             vib_on = bool(_choice([False, False, True]))
             vib_period = int(_choice([3, 4, 5, 6, 7, 9]))
@@ -543,7 +629,8 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
             label = (
                 "Mycelium (random trial: "
                 f"plane={plane.value}, cycles={ncy}, lr={lr:.3f}, shear={shear:.2f}, "
-                f"lr_sched={lr_sched}@{lr_min_mult:.2f}, shear_sched={shear_sched}@{shear_min_mult:.2f}, "
+                f"lr_sched={lr_sched}@{lr_min_mult:.2f}, lr_exp={lr_exp_decay:.3f}, shear_sched={shear_sched}@{shear_min_mult:.2f}, "
+                f"buf={'y' if buf_on else 'n'}@g{buf_gain:.2f}/min{buf_min_mult:.2f}, "
                 f"E2={stage2_v:.2f}, s2={stage2_cycles}, vib={'y' if vib_on else 'n'})"
             )
             try:
@@ -554,6 +641,7 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
                     cycle_learning_rate=lr,
                     cycle_learning_rate_schedule=lr_sched,
                     cycle_learning_rate_min_multiplier=lr_min_mult,
+                    cycle_learning_rate_exp_decay=lr_exp_decay,
                     shear_alpha=shear,
                     shear_alpha_schedule=shear_sched,
                     shear_alpha_min_multiplier=shear_min_mult,
@@ -565,6 +653,10 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
                     vibrational_viscosity_period=vib_period,
                     vibrational_viscosity_amplitude=vib_amp,
                     vibrational_viscosity_waveform=vib_wave,
+                    target_induced_viscosity_enabled=bool(buf_on),
+                    target_induced_viscosity_gain=float(buf_gain),
+                    target_induced_viscosity_min_multiplier=float(buf_min_mult),
+                    target_induced_viscosity_max_multiplier=float(buf_max_mult),
                 )
                 candidates.append(row)
             except Exception:
@@ -640,8 +732,27 @@ def main() -> int:
     parser.add_argument("--mycelium-pcr-strength-cap", type=float, default=2.5)
     parser.add_argument("--mycelium-pcr-amp-cap", type=float, default=3.5)
     parser.add_argument("--mycelium-pcr-no-req-stable", action="store_true", help="Allow PCR binding on unstable features")
+    parser.add_argument(
+        "--mycelium-buffer-shift",
+        action="store_true",
+        help="Add Mycelium buffer-shift rows (target-induced viscosity scaling)",
+    )
+    parser.add_argument("--mycelium-buffer-gain", type=float, default=0.5)
+    parser.add_argument("--mycelium-buffer-min-mult", type=float, default=0.75)
+    parser.add_argument("--mycelium-buffer-max-mult", type=float, default=1.0)
     parser.add_argument("--mycelium-random-search", type=int, default=0, help="Run N random Mycelium trials for regression and add a best-row")
     parser.add_argument("--mycelium-random-topk", type=int, default=1, help="If random search enabled, also add up to K additional top candidates")
+    parser.add_argument("--mycelium-random-lr-min", type=float, default=0.10)
+    parser.add_argument("--mycelium-random-lr-max", type=float, default=0.40)
+    parser.add_argument("--mycelium-random-lr-sampling", choices=["linear", "log"], default="log")
+    parser.add_argument("--mycelium-random-anneal-min", type=float, default=0.90, help="Min exp-decay factor (1.0 disables annealing)")
+    parser.add_argument("--mycelium-random-anneal-max", type=float, default=1.00, help="Max exp-decay factor (1.0 disables annealing)")
+    parser.add_argument("--mycelium-random-include-buffer", action="store_true", help="Include buffer-shift params in random search")
+    parser.add_argument("--mycelium-random-buffer-gain-min", type=float, default=0.10)
+    parser.add_argument("--mycelium-random-buffer-gain-max", type=float, default=1.00)
+    parser.add_argument("--mycelium-random-buffer-minmult-min", type=float, default=0.50)
+    parser.add_argument("--mycelium-random-buffer-minmult-max", type=float, default=0.90)
+    parser.add_argument("--mycelium-random-buffer-maxmult", type=float, default=1.00)
     args = parser.parse_args()
 
     path = Path(args.path)
@@ -692,9 +803,26 @@ def main() -> int:
         "amp_cap": float(args.mycelium_pcr_amp_cap),
         "require_stable": (not bool(args.mycelium_pcr_no_req_stable)),
     }
+    _bench_regression._tiv_cfg = {
+        "enabled": bool(args.mycelium_buffer_shift),
+        "gain": float(args.mycelium_buffer_gain),
+        "min_multiplier": float(args.mycelium_buffer_min_mult),
+        "max_multiplier": float(args.mycelium_buffer_max_mult),
+    }
     _bench_regression._random_cfg = {
         "trials": int(args.mycelium_random_search),
         "topk": int(args.mycelium_random_topk),
+        "lr_min": float(args.mycelium_random_lr_min),
+        "lr_max": float(args.mycelium_random_lr_max),
+        "lr_sampling": str(args.mycelium_random_lr_sampling),
+        "anneal_min": float(args.mycelium_random_anneal_min),
+        "anneal_max": float(args.mycelium_random_anneal_max),
+        "include_buffer": bool(args.mycelium_random_include_buffer),
+        "buffer_gain_min": float(args.mycelium_random_buffer_gain_min),
+        "buffer_gain_max": float(args.mycelium_random_buffer_gain_max),
+        "buffer_min_mult_min": float(args.mycelium_random_buffer_minmult_min),
+        "buffer_min_mult_max": float(args.mycelium_random_buffer_minmult_max),
+        "buffer_max_mult": float(args.mycelium_random_buffer_maxmult),
     }
     reg_rows = _bench_regression(df, target_col=str(args.reg_target), seed=int(args.seed), train_fraction=float(args.train_fraction))
     print("| Model | MAE | RMSE | R2 | Time (s) |")
