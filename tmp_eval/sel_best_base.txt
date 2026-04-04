@@ -1,0 +1,49 @@
+
+== baseline_selective ==
+time_s=8.48
+accuracy=0.1163
+coverage=0.3175  abstain_rate=0.6825  selective_acc=0.3661
+top_trapped_features:
+  experience_years   state=trapped kind=numeric     ion=nonparametric visc=17.299 vel=0.003 charge=0.008 p=0.813
+  skills_count       state=trapped kind=numeric     ion=nonparametric visc=16.992 vel=0.004 charge=0.013 p=0.6
+  location           state=trapped kind=categorical ion=nonparametric visc=16.682 vel=0.008 charge=0.029 p=0.889
+  job_title          state=trapped kind=categorical ion=nonparametric visc=16.592 vel=0.010 charge=0.042 p=0.403
+  industry           state=trapped kind=categorical ion=nonparametric visc=16.254 vel=0.008 charge=0.044 p=0.139
+  company_size       state=trapped kind=categorical ion=nonparametric visc=15.932 vel=0.005 charge=0.020 p=0.75
+  education_level    state=trapped kind=categorical ion=nonparametric visc=15.928 vel=0.005 charge=0.020 p=0.738
+  certifications     state=trapped kind=numeric     ion=nonparametric visc=10.509 vel=0.008 charge=0.015 p=0.46
+  salary             state=trapped kind=numeric     ion=nonparametric visc=5.353 vel=0.000 charge=0.072 p=2.48e-07
+abstain_stages:
+  pre_reionization abstain_rate=0.6825 coverage=0.3175 n_abstain=1092 n_test=1600
+  post_reionization abstain_rate=0.6825 coverage=0.3175 n_abstain=1092 n_test=1600
+  final            abstain_rate=0.6825 coverage=0.3175 n_abstain=1092 n_test=1600
+abstain_reasons_within_abstained:
+  conf_low               count=960 pct_of_abstain=0.879
+  smear_high             count=320 pct_of_abstain=0.293
+  ion_gate_blocked       count=331 pct_of_abstain=0.303
+  base_low_and_ion_gate  count=199 pct_of_abstain=0.182
+
+== secondary_ionization ==
+time_s=8.49
+accuracy=0.1575
+coverage=0.4213  abstain_rate=0.5787  selective_acc=0.3739
+top_trapped_features:
+  experience_years   state=trapped kind=numeric     ion=nonparametric visc=17.299 vel=0.003 charge=0.008 p=0.813
+  skills_count       state=trapped kind=numeric     ion=nonparametric visc=16.992 vel=0.004 charge=0.013 p=0.6
+  location           state=trapped kind=categorical ion=nonparametric visc=16.682 vel=0.008 charge=0.029 p=0.889
+  job_title          state=trapped kind=categorical ion=nonparametric visc=16.592 vel=0.010 charge=0.042 p=0.403
+  industry           state=trapped kind=categorical ion=nonparametric visc=16.254 vel=0.008 charge=0.044 p=0.139
+  company_size       state=trapped kind=categorical ion=nonparametric visc=15.932 vel=0.005 charge=0.020 p=0.75
+  education_level    state=trapped kind=categorical ion=nonparametric visc=15.928 vel=0.005 charge=0.020 p=0.738
+  certifications     state=trapped kind=numeric     ion=nonparametric visc=10.509 vel=0.008 charge=0.015 p=0.46
+  salary             state=trapped kind=numeric     ion=nonparametric visc=5.353 vel=0.000 charge=0.072 p=2.48e-07
+secondary_sieve: events=0 rows_total=0 cycles=4 reverse=1.0 noise_std=0.12 inst_min=0.5 conf_delta_max=0.003 update_max=0.003
+abstain_stages:
+  pre_reionization abstain_rate=0.6825 coverage=0.3175 n_abstain=1092 n_test=1600
+  post_reionization abstain_rate=0.6825 coverage=0.3175 n_abstain=1092 n_test=1600
+  final            abstain_rate=0.5787 coverage=0.4213 n_abstain=926 n_test=1600
+abstain_reasons_within_abstained:
+  conf_low               count=839 pct_of_abstain=0.906
+  smear_high             count=361 pct_of_abstain=0.390
+  ion_gate_blocked       count=306 pct_of_abstain=0.330
+  base_low_and_ion_gate  count=219 pct_of_abstain=0.237

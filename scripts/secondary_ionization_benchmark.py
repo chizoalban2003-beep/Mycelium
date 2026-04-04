@@ -113,6 +113,16 @@ def main() -> int:
     parser.add_argument("--inhibition-strength", type=float, default=0.7)
     parser.add_argument("--scavenger", type=int, default=1)
 
+    # PCR-style feature amplification (v5.0 sprout)
+    parser.add_argument("--pcr", action="store_true", default=False)
+    parser.add_argument("--pcr-cycles", type=int, default=4)
+    parser.add_argument("--pcr-p", type=float, default=0.05)
+    parser.add_argument("--pcr-tau", type=float, default=4.0)
+    parser.add_argument("--pcr-gain", type=float, default=0.55)
+    parser.add_argument("--pcr-strength-cap", type=float, default=2.5)
+    parser.add_argument("--pcr-amp-cap", type=float, default=3.5)
+    parser.add_argument("--pcr-no-req-stable", action="store_true", default=False)
+
     # v4.3: primary-stage scheduled micro-shakes
     parser.add_argument("--prim-sieve", action="store_true", default=False)
     parser.add_argument("--prim-sieve-a", type=int, default=30)
@@ -164,6 +174,14 @@ def main() -> int:
         stage2_shatter_complexes=bool(args.stage2_shatter),
         inhibition_strength=float(args.inhibition_strength),
         scavenger_cycles=int(args.scavenger),
+        pcr_enabled=bool(args.pcr),
+        pcr_cycles=int(args.pcr_cycles),
+        pcr_pvalue_threshold=float(args.pcr_p),
+        pcr_tau=float(args.pcr_tau),
+        pcr_gain=float(args.pcr_gain),
+        pcr_strength_cap=float(args.pcr_strength_cap),
+        pcr_amp_cap=float(args.pcr_amp_cap),
+        pcr_require_stable=(not bool(args.pcr_no_req_stable)),
         low_confidence_mode=str(args.low_mode),
         low_confidence_threshold=float(args.conf),
         low_confidence_entropy_threshold=float(args.smear),

@@ -138,6 +138,86 @@ class PredictorError(ValueError):
     pass
 
 
+def _primer_strength_from_p(
+    p_value: float | None,
+    *,
+    p_threshold: float,
+    tau: float,
+    strength_cap: float,
+) -> float:
+    """Convert a p-value into a bounded primer "binding strength".
+
+    strength = 0 when p is missing or p >= threshold.
+    Otherwise strength grows with -log10(p) and is scaled by `tau`.
+    """
+
+    if p_value is None:
+        return 0.0
+    try:
+        pv = float(p_value)
+    except Exception:
+        return 0.0
+    if not math.isfinite(pv):
+        return 0.0
+    if pv <= 0.0:
+        pv = 1e-300
+    if pv >= float(p_threshold):
+        return 0.0
+
+    t = float(tau)
+    if not math.isfinite(t) or t <= 1e-12:
+        t = 1.0
+    smax = float(strength_cap)
+    if not math.isfinite(smax) or smax <= 0.0:
+        smax = 1.0
+
+    s = (-math.log10(pv)) / t
+    return float(np.clip(s, 0.0, smax))
+
+
+def _pcr_amplification_factor(
+    *,
+    p_value: float | None,
+    stable: bool,
+    enabled: bool,
+    cycles: int,
+    p_threshold: float,
+    tau: float,
+    gain: float,
+    strength_cap: float,
+    amp_cap: float,
+    require_stable: bool,
+) -> tuple[float, float]:
+    """Return (amp, primer_strength) for a single feature."""
+
+    if not bool(enabled):
+        return 1.0, 0.0
+    if int(cycles) <= 0:
+        return 1.0, 0.0
+    if bool(require_stable) and not bool(stable):
+        return 1.0, 0.0
+
+    s = _primer_strength_from_p(
+        p_value,
+        p_threshold=float(p_threshold),
+        tau=float(tau),
+        strength_cap=float(strength_cap),
+    )
+    if s <= 0.0:
+        return 1.0, 0.0
+
+    g = float(gain)
+    if not math.isfinite(g) or g <= 0.0:
+        g = 0.0
+
+    amp = 1.0 + float(cycles) * g * s
+    cap = float(amp_cap)
+    if not math.isfinite(cap) or cap <= 1.0:
+        cap = 1.0
+    amp = float(np.clip(amp, 1.0, cap))
+    return amp, float(s)
+
+
 def _plane_negative_multiplier(plane: PhysicsPlane) -> float:
     # How strongly negative correlation acts as a "stumbling block".
     # solid: harsher penalty, liquid: medium, gas: softer.
@@ -222,6 +302,47 @@ def _calculate_viscosity_field(
             eta *= float(np.clip(1.0 - 0.20 * (lane**0.85), 0.70, 1.0))
 
     return float(max(1e-6, eta))
+
+
+def _vibrational_viscosity_multiplier(
+    cycle: int,
+    *,
+    enabled: bool,
+    period: int,
+    amplitude: float,
+    waveform: Literal["sine", "square"] = "square",
+    phase: float = 0.0,
+) -> float:
+    """Cycle-wise viscosity multiplier.
+
+    Intended as a gentle, opt-in oscillation of the effective viscosity during training.
+    Multiplies η (so lower values => stronger updates).
+    """
+
+    if not bool(enabled):
+        return 1.0
+
+    p = int(period)
+    if p <= 0:
+        p = 1
+    a = float(np.clip(float(amplitude), 0.0, 0.95))
+    if a <= 0.0:
+        return 1.0
+
+    w = str(waveform).lower().strip()
+    c = int(max(1, cycle))
+    ph = float(phase) if math.isfinite(float(phase)) else 0.0
+
+    if w == "sine":
+        theta = 2.0 * math.pi * (float((c - 1) % p) / float(p)) + ph
+        mult = 1.0 + a * math.sin(theta)
+    else:
+        # Square wave: alternate low/high viscosity in blocks of `period` cycles.
+        phase_offset = 0 if math.sin(ph) >= 0.0 else 1
+        wave_phase = (((c - 1) // p) + phase_offset) % 2
+        mult = (1.0 - a) if wave_phase == 0 else (1.0 + a)
+
+    return float(np.clip(mult, 0.05, 20.0))
 
 
 def _safe_float(x: Any) -> float | None:
@@ -1279,7 +1400,11 @@ def run_physics_prediction(
     max_classes: int = 20,
     n_cycles: int = 30,
     cycle_learning_rate: float = 0.18,
+    cycle_learning_rate_schedule: Literal["constant", "linear_decay", "cosine_decay"] = "constant",
+    cycle_learning_rate_min_multiplier: float = 0.25,
     shear_alpha: float = 0.75,
+    shear_alpha_schedule: Literal["constant", "linear_decay", "cosine_decay"] = "constant",
+    shear_alpha_min_multiplier: float = 0.25,
     top_bond_pairs: int = 20,
     n_zones: int = 5,
     cascade_enabled: bool = True,
@@ -1296,6 +1421,11 @@ def run_physics_prediction(
     # Optional convergence control: stop early if the predicted distribution stabilizes.
     early_stop_patience: int = 0,
     early_stop_tol: float = 1e-4,
+    # Optional: oscillate viscosity during training (helps shake loose tangled dynamics).
+    vibrational_viscosity_enabled: bool = False,
+    vibrational_viscosity_period: int = 5,
+    vibrational_viscosity_amplitude: float = 0.12,
+    vibrational_viscosity_waveform: Literal["sine", "square"] = "square",
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
@@ -1362,6 +1492,17 @@ def run_physics_prediction(
     low_confidence_primary_sieve_noise_std: float = 0.08,
     low_confidence_primary_sieve_instability_min: float = 0.50,
     low_confidence_primary_sieve_conf_delta_max: float = 0.003,
+    # PCR-style feature amplification (v5.0 sprout): boost statistically significant
+    # features (primer binds when p < threshold) by increasing their contribution
+    # to the update numerator (without expanding X).
+    pcr_enabled: bool = False,
+    pcr_cycles: int = 0,
+    pcr_pvalue_threshold: float = 0.05,
+    pcr_tau: float = 4.0,
+    pcr_gain: float = 0.55,
+    pcr_strength_cap: float = 2.5,
+    pcr_amp_cap: float = 3.5,
+    pcr_require_stable: bool = True,
     return_predictions: bool = False,
 ) -> PredictionResult:
     _require_scipy()
@@ -1372,6 +1513,59 @@ def run_physics_prediction(
         raise PredictorError("Need at least 3 rows")
 
     train_mask, test_mask = _train_test_split_mask(int(df.shape[0]), train_fraction, random_seed)
+
+    vib_enabled = bool(vibrational_viscosity_enabled)
+    vib_period = int(vibrational_viscosity_period)
+    vib_amp = float(vibrational_viscosity_amplitude)
+    vib_wave = str(vibrational_viscosity_waveform).lower().strip()
+    if vib_wave not in ("sine", "square"):
+        vib_wave = "square"
+
+    lr_schedule = str(cycle_learning_rate_schedule).lower().strip()
+    if lr_schedule not in ("constant", "linear_decay", "cosine_decay"):
+        lr_schedule = "constant"
+    lr_min_mult = float(cycle_learning_rate_min_multiplier)
+    if not math.isfinite(lr_min_mult):
+        lr_min_mult = 0.25
+    lr_min_mult = float(np.clip(lr_min_mult, 0.0, 1.0))
+
+    shear_schedule = str(shear_alpha_schedule).lower().strip()
+    if shear_schedule not in ("constant", "linear_decay", "cosine_decay"):
+        shear_schedule = "constant"
+    shear_min_mult = float(shear_alpha_min_multiplier)
+    if not math.isfinite(shear_min_mult):
+        shear_min_mult = 0.25
+    shear_min_mult = float(np.clip(shear_min_mult, 0.0, 1.0))
+
+    def _schedule_multiplier(
+        cycle_1based: int,
+        total_cycles: int,
+        *,
+        kind: str,
+        min_multiplier: float,
+    ) -> float:
+        if kind == "constant" or int(total_cycles) <= 1:
+            return 1.0
+        c = int(max(1, cycle_1based))
+        t = float(c - 1) / float(max(1, int(total_cycles) - 1))
+        t = float(np.clip(t, 0.0, 1.0))
+        m = float(np.clip(float(min_multiplier), 0.0, 1.0))
+        if kind == "linear_decay":
+            return (1.0 - t) + m * t
+        # cosine_decay
+        return m + 0.5 * (1.0 - m) * (1.0 + math.cos(math.pi * t))
+
+    def _lr_at(cycle_1based: int, total_cycles: int) -> float:
+        base = float(cycle_learning_rate)
+        if not math.isfinite(base) or base <= 0.0:
+            base = 0.18
+        return base * _schedule_multiplier(cycle_1based, total_cycles, kind=lr_schedule, min_multiplier=lr_min_mult)
+
+    def _shear_at(cycle_1based: int, total_cycles: int) -> float:
+        base = float(shear_alpha)
+        if not math.isfinite(base) or base < 0.0:
+            base = 0.0
+        return base * _schedule_multiplier(cycle_1based, total_cycles, kind=shear_schedule, min_multiplier=shear_min_mult)
 
     target_series = df[target_col]
     target_kind = infer_target_kind(target_series)
@@ -1484,6 +1678,37 @@ def run_physics_prediction(
             "complex_id": None if cid is None else int(cid),
             "complex_size": None if csize is None else int(csize),
         }
+
+    # PCR primer binding: compute per-feature amplification factors from TRAIN stats.
+    pcr_enabled0 = bool(pcr_enabled)
+    pcr_cycles0 = int(pcr_cycles)
+    pcr_pthr0 = float(pcr_pvalue_threshold)
+    pcr_tau0 = float(pcr_tau)
+    pcr_gain0 = float(pcr_gain)
+    pcr_strength_cap0 = float(pcr_strength_cap)
+    pcr_amp_cap0 = float(pcr_amp_cap)
+    pcr_require_stable0 = bool(pcr_require_stable)
+
+    pcr_amp_by_feature: dict[str, float] = {}
+    pcr_strength_by_feature: dict[str, float] = {}
+    if pcr_enabled0 and pcr_cycles0 > 0:
+        for col in feature_cols:
+            s = compound_stats.get(col) or {}
+            amp, strength = _pcr_amplification_factor(
+                p_value=s.get("p_value"),
+                stable=bool(s.get("stable", False)),
+                enabled=pcr_enabled0,
+                cycles=pcr_cycles0,
+                p_threshold=pcr_pthr0,
+                tau=pcr_tau0,
+                gain=pcr_gain0,
+                strength_cap=pcr_strength_cap0,
+                amp_cap=pcr_amp_cap0,
+                require_stable=pcr_require_stable0,
+            )
+            if amp > 1.0:
+                pcr_amp_by_feature[str(col)] = float(amp)
+                pcr_strength_by_feature[str(col)] = float(strength)
 
     # Complex anchoring + dissociation: anchors should primarily trap themselves,
     # not drag stable, high-signal neighbors into syrupy (high-viscosity) zones.
@@ -1698,13 +1923,25 @@ def run_physics_prediction(
             )
             z_by_feature[wi.feature] = _zscore_with_train_stats(x_raw, train_mask)
 
+        # Keep PCR amps only for the used features.
+        if pcr_amp_by_feature:
+            pcr_amp_by_feature = {k: v for k, v in pcr_amp_by_feature.items() if k in z_by_feature}
+
         iteration_gains: list[IterationInfo] = []
         n_cycles_eff = max(1, int(n_cycles))
-        lr = float(cycle_learning_rate)
         grad1 = 0.35
         rng_stage1 = np.random.default_rng(int(random_seed) + 31007)
 
+        total_schedule_cycles = int(n_cycles_eff)
+        if cascade_enabled and len(zone1_features) >= 3:
+            total_schedule_cycles += int(max(1, stage2_cycles))
+            if int(scavenger_cycles) > 0:
+                total_schedule_cycles += int(scavenger_cycles)
+        total_schedule_cycles = int(max(1, total_schedule_cycles))
+
         for cycle in range(1, n_cycles_eff + 1):
+            lr = float(_lr_at(cycle, total_schedule_cycles))
+            shear_eff = float(_shear_at(cycle, total_schedule_cycles))
             residual = y - pred
             residual_train = residual[train_mask]
             residual_std = float(np.nanstd(residual_train))
@@ -1726,7 +1963,7 @@ def run_physics_prediction(
                 certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                 density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
                 eta_base = max(1e-6, medium.viscosity)
-                eta_dynamic = max(1e-6, eta_base / (1.0 + shear_alpha * abs(charge) * bond_factor))
+                eta_dynamic = max(1e-6, eta_base / (1.0 + shear_eff * abs(charge) * bond_factor))
 
                 inhibition = 0.0
                 if competitive_inhibition and col != dominant_global:
@@ -1747,10 +1984,24 @@ def run_physics_prediction(
                 q = eff_charge * density * bond_factor
                 x_pos = float(pI_map.get(col, 0.5))
                 field = float(plane_mobility) - float(grad1) * x_pos
+                if vib_enabled:
+                    eta_dynamic = max(
+                        1e-6,
+                        eta_dynamic
+                        * _vibrational_viscosity_multiplier(
+                            cycle,
+                            enabled=vib_enabled,
+                            period=vib_period,
+                            amplitude=vib_amp,
+                            waveform=vib_wave,
+                            phase=2.0 * math.pi * float(x_pos),
+                        ),
+                    )
                 v = (q * field + thermal_term) / (eta_dynamic + inhibition)
 
                 denom += abs(v)
-                update_score += v * z
+                amp = float(pcr_amp_by_feature.get(col, 1.0))
+                update_score += (amp * v) * z
 
             if denom <= 1e-12:
                 denom = 1.0
@@ -1776,7 +2027,6 @@ def run_physics_prediction(
             cluster_var = float(np.mean([migration_by_feature[f].variance for f in zone1_features]))
             grad2 = float(np.clip(0.55 * (cluster_var / (global_var + 1e-9)), 0.05, 0.9))
             E2 = float(stage2_voltage_multiplier) * float(plane_mobility)
-            lr2 = float(cycle_learning_rate) * 0.6
             rng_stage2 = np.random.default_rng(int(random_seed) + 41011)
 
             dominant = max(zone1_features, key=lambda f: abs(migration_by_feature[f].terminal_velocity))
@@ -1796,6 +2046,9 @@ def run_physics_prediction(
                     )
 
             for stage_cycle in range(1, max(1, int(stage2_cycles)) + 1):
+                gcycle = int(n_cycles_eff + stage_cycle)
+                lr2 = float(_lr_at(gcycle, total_schedule_cycles)) * 0.6
+                shear_eff = float(_shear_at(gcycle, total_schedule_cycles))
                 residual = y - pred
                 residual_train = residual[train_mask]
                 residual_std = float(np.nanstd(residual_train))
@@ -1816,7 +2069,7 @@ def run_physics_prediction(
                     certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                     density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
                     eta_base = max(1e-6, medium.viscosity)
-                    eta_dynamic = max(1e-6, eta_base / (1.0 + shear_alpha * abs(charge) * bond_factor))
+                    eta_dynamic = max(1e-6, eta_base / (1.0 + shear_eff * abs(charge) * bond_factor))
 
                     inhibition = 0.0
                     if competitive_inhibition and col != dominant:
@@ -1837,10 +2090,24 @@ def run_physics_prediction(
                     q = eff_charge * density * bond_factor
                     x_pos = float(pI_map.get(col, 0.5))
                     field = E2 - grad2 * x_pos
+                    if vib_enabled:
+                        eta_dynamic = max(
+                            1e-6,
+                            eta_dynamic
+                            * _vibrational_viscosity_multiplier(
+                                n_cycles_eff + stage_cycle,
+                                enabled=vib_enabled,
+                                period=vib_period,
+                                amplitude=vib_amp,
+                                waveform=vib_wave,
+                                phase=2.0 * math.pi * float(x_pos),
+                            ),
+                        )
                     v = (q * field + thermal_term) / (eta_dynamic + inhibition)
 
                     denom += abs(v)
-                    update_score += v * z
+                    amp = float(pcr_amp_by_feature.get(col, 1.0))
+                    update_score += (amp * v) * z
 
                 if denom <= 1e-12:
                     denom = 1.0
@@ -1881,9 +2148,11 @@ def run_physics_prediction(
                 if f in zone1_features and f not in waste_features:
                     waste_features.append(f)
             if int(scavenger_cycles) > 0 and waste_features:
-                lr3 = float(cycle_learning_rate) * 0.25
                 rng_scav = np.random.default_rng(int(random_seed) + 51017)
                 for sc_cycle in range(1, int(scavenger_cycles) + 1):
+                    gcycle = int(n_cycles_eff + max(1, int(stage2_cycles)) + sc_cycle)
+                    lr3 = float(_lr_at(gcycle, total_schedule_cycles)) * 0.25
+                    shear_eff = float(_shear_at(gcycle, total_schedule_cycles))
                     residual = y - pred
                     residual_train = residual[train_mask]
                     residual_std = float(np.nanstd(residual_train))
@@ -1903,7 +2172,7 @@ def run_physics_prediction(
                         certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                         density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
                         eta_base = max(1e-6, medium.viscosity)
-                        eta_dynamic = max(1e-6, eta_base / (1.0 + shear_alpha * abs(charge) * bond_factor))
+                        eta_dynamic = max(1e-6, eta_base / (1.0 + shear_eff * abs(charge) * bond_factor))
                         if thermal_noise and sc_cycle <= int(thermal_noise_cycles):
                             eta_dynamic = max(
                                 1e-6,
@@ -1917,10 +2186,24 @@ def run_physics_prediction(
                         q = eff_charge * density * bond_factor
                         x_pos = float(pI_map.get(col, 0.5))
                         field = float(plane_mobility) - grad2 * x_pos
+                        if vib_enabled:
+                            eta_dynamic = max(
+                                1e-6,
+                                eta_dynamic
+                                * _vibrational_viscosity_multiplier(
+                                    n_cycles_eff + max(1, int(stage2_cycles)) + sc_cycle,
+                                    enabled=vib_enabled,
+                                    period=vib_period,
+                                    amplitude=vib_amp,
+                                    waveform=vib_wave,
+                                    phase=2.0 * math.pi * float(x_pos),
+                                ),
+                            )
                         v = q * field / eta_dynamic
 
                         denom += abs(v)
-                        update_score += v * z
+                        amp = float(pcr_amp_by_feature.get(col, 1.0))
+                        update_score += (amp * v) * z
 
                     if denom <= 1e-12:
                         denom = 1.0
@@ -2061,6 +2344,10 @@ def run_physics_prediction(
     feature_info = {w.feature: w for w in weights_used}
     feature_cols_used = [w.feature for w in weights_used]
 
+    # Keep PCR amps only for the used features.
+    if pcr_amp_by_feature:
+        pcr_amp_by_feature = {k: v for k, v in pcr_amp_by_feature.items() if k in set(feature_cols_used)}
+
     # Stage 1 (Primary Sorting): compute stable zones based on pI positions.
     feature_positions_stage1: dict[str, float] = {col: pI_map.get(col, 0.5) for col in feature_cols_used}
     zone_assignment_stage1 = _discretize_into_zones(feature_positions_stage1, n_zones=n_zones)
@@ -2129,8 +2416,6 @@ def run_physics_prediction(
     iteration_gains: list[IterationInfo] = []
 
     n_cycles_eff = max(1, int(n_cycles))
-    lr = float(cycle_learning_rate)
-    shear = max(0.0, float(shear_alpha))
     grad1 = 0.35
     rng_stage1 = np.random.default_rng(int(random_seed) + 30011)
     rng_primary_sieve = np.random.default_rng(int(random_seed) + 50123)
@@ -2165,7 +2450,16 @@ def run_physics_prediction(
     if stage2_trigger and int(n_cycles_eff) >= stage2_trigger:
         n_cycles_eff = max(1, stage2_trigger - 1)
 
+    total_schedule_cycles = int(n_cycles_eff)
+    if cascade_enabled and len(zone1_features) >= 3:
+        total_schedule_cycles += int(max(1, stage2_cycles))
+        if int(scavenger_cycles) > 0:
+            total_schedule_cycles += int(scavenger_cycles)
+    total_schedule_cycles = int(max(1, total_schedule_cycles))
+
     for cycle in range(1, n_cycles_eff + 1):
+        lr = float(_lr_at(cycle, total_schedule_cycles))
+        shear = max(0.0, float(_shear_at(cycle, total_schedule_cycles)))
         cycle_update = np.zeros_like(logits)
         for j, cls in enumerate(classes):
             y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
@@ -2217,10 +2511,24 @@ def run_physics_prediction(
                 q = eff_charge * density * bond_factor
                 x_pos = float(pI_map.get(col, 0.5))
                 field = float(plane_mobility) - float(grad1) * x_pos
+                if vib_enabled:
+                    eta_dynamic = max(
+                        1e-6,
+                        eta_dynamic
+                        * _vibrational_viscosity_multiplier(
+                            cycle,
+                            enabled=vib_enabled,
+                            period=vib_period,
+                            amplitude=vib_amp,
+                            waveform=vib_wave,
+                            phase=2.0 * math.pi * float(x_pos),
+                        ),
+                    )
                 v = (q * field + thermal_term) / (eta_dynamic + inhibition)
 
                 denom += abs(v)
-                class_score += v * z
+                amp = float(pcr_amp_by_feature.get(col, 1.0))
+                class_score += (amp * v) * z
 
             if denom <= 1e-12:
                 denom = 1.0
@@ -2313,7 +2621,6 @@ def run_physics_prediction(
         E = float(stage2_voltage_multiplier) * float(plane_mobility)
 
         rng = np.random.default_rng(int(random_seed) + 40007)
-        lr2 = float(cycle_learning_rate) * 0.75
 
         dominant = max(zone1_features, key=lambda f: abs(migration_by_feature[f].terminal_velocity))
         dominant_kind = feature_kinds[dominant]
@@ -2333,6 +2640,9 @@ def run_physics_prediction(
 
         n2 = max(1, int(stage2_cycles))
         for stage_cycle in range(1, n2 + 1):
+            gcycle = int(n_cycles_eff + stage_cycle)
+            lr2 = float(_lr_at(gcycle, total_schedule_cycles)) * 0.75
+            shear = max(0.0, float(_shear_at(gcycle, total_schedule_cycles)))
             cycle_update = np.zeros_like(logits)
             for j, cls in enumerate(classes):
                 y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
@@ -2391,10 +2701,24 @@ def run_physics_prediction(
 
                     # v4 focusing: v = [q(E - ∇pH * x) + T_noise] / [η + I_competitive]
                     field = E - grad * x_pos
+                    if vib_enabled:
+                        eta_dynamic = max(
+                            1e-6,
+                            eta_dynamic
+                            * _vibrational_viscosity_multiplier(
+                                n_cycles_eff + stage_cycle,
+                                enabled=vib_enabled,
+                                period=vib_period,
+                                amplitude=vib_amp,
+                                waveform=vib_wave,
+                                phase=2.0 * math.pi * float(x_pos),
+                            ),
+                        )
                     v = (q * field + thermal_term) / (eta_dynamic + inhibition)
 
                     denom += abs(v)
-                    class_score += v * z
+                    amp = float(pcr_amp_by_feature.get(col, 1.0))
+                    class_score += (amp * v) * z
 
                 if denom <= 1e-12:
                     denom = 1.0
@@ -2449,8 +2773,10 @@ def run_physics_prediction(
                 waste_features.append(f)
         if scavenger_cycles > 0 and waste_features:
             rng2 = np.random.default_rng(int(random_seed) + 50021)
-            lr3 = float(cycle_learning_rate) * 0.25
             for sc_cycle in range(1, int(scavenger_cycles) + 1):
+                gcycle = int(n_cycles_eff + n2 + sc_cycle)
+                lr3 = float(_lr_at(gcycle, total_schedule_cycles)) * 0.25
+                shear = max(0.0, float(_shear_at(gcycle, total_schedule_cycles)))
                 cycle_update = np.zeros_like(logits)
                 for j, cls in enumerate(classes):
                     y01 = (y_cat == str(cls)).astype("float64").to_numpy(dtype="float64")
@@ -2499,10 +2825,24 @@ def run_physics_prediction(
                         q = eff_charge * density * bond_factor
                         x_pos = float(pI_map.get(col, 0.5))
                         field = float(plane_mobility) - grad * x_pos
+                        if vib_enabled:
+                            eta_dynamic = max(
+                                1e-6,
+                                eta_dynamic
+                                * _vibrational_viscosity_multiplier(
+                                    n_cycles_eff + n2 + sc_cycle,
+                                    enabled=vib_enabled,
+                                    period=vib_period,
+                                    amplitude=vib_amp,
+                                    waveform=vib_wave,
+                                    phase=2.0 * math.pi * float(x_pos),
+                                ),
+                            )
                         v = (q * field) / eta_dynamic
 
                         denom += abs(v)
-                        class_score += v * z
+                        amp = float(pcr_amp_by_feature.get(col, 1.0))
+                        class_score += (amp * v) * z
 
                     if denom <= 1e-12:
                         denom = 1.0
@@ -2812,7 +3152,8 @@ def run_physics_prediction(
                             v = (q * field) / (eta_dynamic + inhibition)
 
                             denom += abs(v)
-                            class_score += v * z
+                            amp = float(pcr_amp_by_feature.get(col, 1.0))
+                            class_score += (amp * v) * z
 
                         if denom <= 1e-12:
                             denom = 1.0
@@ -2985,7 +3326,8 @@ def run_physics_prediction(
                             v = (q * field) / (eta_dynamic + inhibition)
 
                             denom += abs(v)
-                            class_score += v * z
+                            amp = float(pcr_amp_by_feature.get(col, 1.0))
+                            class_score += (amp * v) * z
 
                         if denom <= 1e-12:
                             denom = 1.0

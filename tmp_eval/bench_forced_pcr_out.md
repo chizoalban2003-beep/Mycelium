@@ -1,9 +1,7 @@
-Mycelium vs baselines (classification + regression) — updated comparisons
-
 Dataset: tmp_eval/job_salary_prediction_dataset.csv (nrows=8000)
-Seed=42 | train_fraction=0.8
+seed=42  train_fraction=0.8
 
-Forced prediction (classification; apples-to-apples with sklearn):
+Forced prediction (classification):
 Target: remote_work
 | Model | Accuracy | F1 (macro) | Time (s) |
 |---|---|---|---|
@@ -37,14 +35,3 @@ Target: salary
 | DecisionTree | 14717.64 | 19139.22 | 0.7300 | 0.11 |
 | KNN | 18440.47 | 22967.44 | 0.6112 | 0.17 |
 | Dummy (mean) | 29473.24 | 36852.00 | -0.0010 | 0.05 |
-
-Selective prediction (Mycelium-only abstain):
-| Mycelium Selective Mode (tuned) | Coverage | Selective Acc | Abstain Rate | Overall Acc |
-|---|---|---|---|---|
-| keep top ~10% confidence (q=0.90) | 0.0787 | 0.3730 | 0.9213 | 0.0294 |
-| keep ~42.1% (q=0.60 + ionized gate + secondary (4c, visc=0.65) + promote votes=3 @ conf≥0.45 + sieve v4.2 (shake=4, reverse=1.0, noise=0.12, inst≥0.50, confΔ≤0.003)) | 0.4213 | 0.3739 | 0.5787 | 0.1575 |
-| keep ~46.6% (PCR 4c + q=0.60 + ionized gate + secondary (4c, visc=0.65) + promote votes=3 @ conf≥0.45 + sieve v4.2 (shake=4, reverse=1.0, noise=0.12, inst≥0.50, confΔ≤0.003)) | 0.4656 | 0.4309 | 0.5344 | 0.2006 |
-| keep ~38.7% (q=0.60 + ionized gate + secondary (3c, anneal visc 1.00→0.65) + promote votes=3 @ conf≥0.45) | 0.3869 | 0.3716 | 0.6131 | 0.1437 |
-| keep ~38.5% (q=0.60 + ionized gate + secondary (3c, visc=0.75) + promote votes=3 @ conf≥0.45) | 0.3850 | 0.3718 | 0.6150 | 0.1431 |
-| keep ~38.4% (q=0.52 + ionized gate, ion_z_min=0.25) | 0.3844 | 0.3496 | 0.6156 | 0.1344 |
-| keep ~29.4% (q=0.63 + ionized gate, ion_z_min=0.25) | 0.2937 | 0.3723 | 0.7063 | 0.1094 |

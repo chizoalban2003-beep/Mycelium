@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import random
 import sys
 import time
 from dataclasses import dataclass
@@ -163,63 +164,124 @@ def _bench_classification(df: pd.DataFrame, *, target_col: str, seed: int, train
 
     rows: list[ClsRow] = []
 
-    # Mycelium
-    t0 = time.perf_counter()
-    pred = run_physics_prediction(
-        df,
-        target_col=target_col,
+    def _run_mycelium(label: str, **kwargs: object) -> None:
+        t0 = time.perf_counter()
+        pred = run_physics_prediction(
+            df,
+            target_col=target_col,
+            train_fraction=train_fraction,
+            random_seed=seed,
+            top_k_weights=30,
+            cascade_enabled=True,
+            competitive_inhibition=True,
+            thermal_noise=False,
+            stage2_cycles=2,
+            stage2_trigger_cycle=50,
+            stage2_shatter_complexes=True,
+            inhibition_strength=0.7,
+            scavenger_cycles=1,
+            low_confidence_mode="none",
+            return_predictions=True,
+            **kwargs,
+        )
+        dt = time.perf_counter() - t0
+        y_true = np.array(pred.test_actual or [], dtype=str)
+        y_pred = np.array(pred.test_predicted or [], dtype=str)
+        acc = float(accuracy_score(y_true, y_pred)) if y_true.size else float("nan")
+        f1 = float(f1_score(y_true, y_pred, average="macro")) if y_true.size else float("nan")
+        rows.append(ClsRow(label, acc, f1, dt))
+
+    # Mycelium configs (classification)
+    _run_mycelium(
+        "Mycelium (tuned gas, n=50)",
         plane=PhysicsPlane.gas,
-        train_fraction=train_fraction,
-        random_seed=seed,
-        top_k_weights=30,
         n_cycles=50,
         cycle_learning_rate=0.18,
-        cascade_enabled=True,
-        competitive_inhibition=True,
-        thermal_noise=False,
-        stage2_cycles=2,
-        stage2_trigger_cycle=50,
-        stage2_shatter_complexes=True,
-        inhibition_strength=0.7,
-        scavenger_cycles=1,
-        low_confidence_mode="none",
-        return_predictions=True,
     )
-    dt = time.perf_counter() - t0
-    y_true_m = np.array(pred.test_actual or [], dtype=str)
-    y_pred_m = np.array(pred.test_predicted or [], dtype=str)
-    acc_m = float(accuracy_score(y_true_m, y_pred_m)) if y_true_m.size else float("nan")
-    f1_m = float(f1_score(y_true_m, y_pred_m, average="macro")) if y_true_m.size else float("nan")
-    rows.append(ClsRow("Mycelium (tuned gas, n=50)", acc_m, f1_m, dt))
 
-    # Mycelium default-ish
-    t1 = time.perf_counter()
-    pred_def = run_physics_prediction(
-        df,
-        target_col=target_col,
+    # Optional PCR-style feature amplification rows.
+    pcr_cfg = getattr(_bench_classification, "_pcr_cfg", None)
+    if isinstance(pcr_cfg, dict) and bool(pcr_cfg.get("enabled")):
+        pcr_kwargs = {
+            "pcr_enabled": True,
+            "pcr_cycles": int(pcr_cfg.get("cycles", 4)),
+            "pcr_pvalue_threshold": float(pcr_cfg.get("p_threshold", 0.05)),
+            "pcr_tau": float(pcr_cfg.get("tau", 4.0)),
+            "pcr_gain": float(pcr_cfg.get("gain", 0.55)),
+            "pcr_strength_cap": float(pcr_cfg.get("strength_cap", 2.5)),
+            "pcr_amp_cap": float(pcr_cfg.get("amp_cap", 3.5)),
+            "pcr_require_stable": bool(pcr_cfg.get("require_stable", True)),
+        }
+        _run_mycelium(
+            f"Mycelium (tuned gas, n=50, PCR {int(pcr_kwargs['pcr_cycles'])}c)",
+            plane=PhysicsPlane.gas,
+            n_cycles=50,
+            cycle_learning_rate=0.18,
+            **pcr_kwargs,
+        )
+
+    # Extra Mycelium config mirroring the regression sweep-best knobs (may or may not help classification).
+    _run_mycelium(
+        "Mycelium (extra: gas, cycles=100, lr=0.25, shear=1.60)",
+        plane=PhysicsPlane.gas,
+        n_cycles=100,
+        cycle_learning_rate=0.25,
+        shear_alpha=1.60,
+    )
+
+    if isinstance(pcr_cfg, dict) and bool(pcr_cfg.get("enabled")):
+        _run_mycelium(
+            f"Mycelium (extra: gas, 100c, PCR {int(pcr_cfg.get('cycles', 4))}c)",
+            plane=PhysicsPlane.gas,
+            n_cycles=100,
+            cycle_learning_rate=0.25,
+            shear_alpha=1.60,
+            pcr_enabled=True,
+            pcr_cycles=int(pcr_cfg.get("cycles", 4)),
+            pcr_pvalue_threshold=float(pcr_cfg.get("p_threshold", 0.05)),
+            pcr_tau=float(pcr_cfg.get("tau", 4.0)),
+            pcr_gain=float(pcr_cfg.get("gain", 0.55)),
+            pcr_strength_cap=float(pcr_cfg.get("strength_cap", 2.5)),
+            pcr_amp_cap=float(pcr_cfg.get("amp_cap", 3.5)),
+            pcr_require_stable=bool(pcr_cfg.get("require_stable", True)),
+        )
+
+    # Optional: Mycelium with vibrational viscosity (applied to the tuned n=50 config)
+    vib_cfg = getattr(_bench_classification, "_vib_cfg", None)
+    if isinstance(vib_cfg, dict) and bool(vib_cfg.get("enabled")):
+        _run_mycelium(
+            "Mycelium (tuned gas, n=50, vib eta)",
+            plane=PhysicsPlane.gas,
+            n_cycles=50,
+            cycle_learning_rate=0.18,
+            vibrational_viscosity_enabled=True,
+            vibrational_viscosity_period=int(vib_cfg.get("period", 5)),
+            vibrational_viscosity_amplitude=float(vib_cfg.get("amplitude", 0.12)),
+            vibrational_viscosity_waveform=str(vib_cfg.get("waveform", "square")),
+        )
+
+    _run_mycelium(
+        "Mycelium (default)",
         plane=PhysicsPlane.solid,
-        train_fraction=train_fraction,
-        random_seed=seed,
-        top_k_weights=30,
         n_cycles=30,
         cycle_learning_rate=0.18,
-        cascade_enabled=True,
-        competitive_inhibition=True,
-        thermal_noise=False,
-        stage2_cycles=2,
-        stage2_trigger_cycle=50,
-        stage2_shatter_complexes=True,
-        inhibition_strength=0.7,
-        scavenger_cycles=1,
-        low_confidence_mode="none",
-        return_predictions=True,
     )
-    dt_def = time.perf_counter() - t1
-    y_true_d = np.array(pred_def.test_actual or [], dtype=str)
-    y_pred_d = np.array(pred_def.test_predicted or [], dtype=str)
-    acc_d = float(accuracy_score(y_true_d, y_pred_d)) if y_true_d.size else float("nan")
-    f1_d = float(f1_score(y_true_d, y_pred_d, average="macro")) if y_true_d.size else float("nan")
-    rows.append(ClsRow("Mycelium (default)", acc_d, f1_d, dt_def))
+
+    if isinstance(pcr_cfg, dict) and bool(pcr_cfg.get("enabled")):
+        _run_mycelium(
+            f"Mycelium (default, PCR {int(pcr_cfg.get('cycles', 4))}c)",
+            plane=PhysicsPlane.solid,
+            n_cycles=30,
+            cycle_learning_rate=0.18,
+            pcr_enabled=True,
+            pcr_cycles=int(pcr_cfg.get("cycles", 4)),
+            pcr_pvalue_threshold=float(pcr_cfg.get("p_threshold", 0.05)),
+            pcr_tau=float(pcr_cfg.get("tau", 4.0)),
+            pcr_gain=float(pcr_cfg.get("gain", 0.55)),
+            pcr_strength_cap=float(pcr_cfg.get("strength_cap", 2.5)),
+            pcr_amp_cap=float(pcr_cfg.get("amp_cap", 3.5)),
+            pcr_require_stable=bool(pcr_cfg.get("require_stable", True)),
+        )
 
     # Sklearn baselines (same split indices as Mycelium)
     X_train = X.iloc[train_idx]
@@ -336,35 +398,195 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
 
     rows: list[RegRow] = []
 
-    # Mycelium
-    t0 = time.perf_counter()
-    pred = run_physics_prediction(
-        df,
-        target_col=target_col,
-        plane=PhysicsPlane.gas,
-        train_fraction=train_fraction,
-        random_seed=seed,
-        top_k_weights=30,
-        n_cycles=50,
-        cycle_learning_rate=0.18,
-        cascade_enabled=True,
-        competitive_inhibition=True,
-        thermal_noise=False,
-        stage2_cycles=2,
-        stage2_trigger_cycle=50,
-        stage2_shatter_complexes=True,
-        inhibition_strength=0.7,
-        scavenger_cycles=1,
-        low_confidence_mode="none",
-        return_predictions=True,
+    def _run_mycelium(label: str, **kwargs: object) -> RegRow:
+        t0 = time.perf_counter()
+        call_kwargs: dict[str, object] = {
+            "target_col": target_col,
+            "train_fraction": train_fraction,
+            "random_seed": seed,
+            "top_k_weights": 30,
+            "cascade_enabled": True,
+            "competitive_inhibition": True,
+            "thermal_noise": False,
+            "stage2_cycles": 2,
+            "stage2_trigger_cycle": 50,
+            "stage2_shatter_complexes": True,
+            "inhibition_strength": 0.7,
+            "scavenger_cycles": 1,
+            "low_confidence_mode": "none",
+            "return_predictions": True,
+        }
+        call_kwargs.update(kwargs)
+        pred = run_physics_prediction(df, **call_kwargs)
+        dt = time.perf_counter() - t0
+        y_true = np.array(pred.test_actual or [], dtype="float64")
+        y_pred = np.array(pred.test_predicted or [], dtype="float64")
+        mae = float(mean_absolute_error(y_true, y_pred))
+        rmse = float(math.sqrt(float(mean_squared_error(y_true, y_pred))))
+        r2 = float(r2_score(y_true, y_pred))
+        return RegRow(label, mae, rmse, r2, dt)
+
+    # Mycelium baseline config (matches the existing table row)
+    rows.append(
+        _run_mycelium(
+            "Mycelium (tuned gas, n=50)",
+            plane=PhysicsPlane.gas,
+            n_cycles=50,
+            cycle_learning_rate=0.18,
+        )
     )
-    dt = time.perf_counter() - t0
-    y_true_m = np.array(pred.test_actual or [], dtype="float64")
-    y_pred_m = np.array(pred.test_predicted or [], dtype="float64")
-    mae_m = float(mean_absolute_error(y_true_m, y_pred_m))
-    rmse_m = float(math.sqrt(float(mean_squared_error(y_true_m, y_pred_m))))
-    r2_m = float(r2_score(y_true_m, y_pred_m))
-    rows.append(RegRow("Mycelium (tuned gas, n=50)", mae_m, rmse_m, r2_m, dt))
+
+    # Optional PCR-style feature amplification rows.
+    pcr_cfg = getattr(_bench_regression, "_pcr_cfg", None)
+    if isinstance(pcr_cfg, dict) and bool(pcr_cfg.get("enabled")):
+        pcr_kwargs = {
+            "pcr_enabled": True,
+            "pcr_cycles": int(pcr_cfg.get("cycles", 4)),
+            "pcr_pvalue_threshold": float(pcr_cfg.get("p_threshold", 0.05)),
+            "pcr_tau": float(pcr_cfg.get("tau", 4.0)),
+            "pcr_gain": float(pcr_cfg.get("gain", 0.55)),
+            "pcr_strength_cap": float(pcr_cfg.get("strength_cap", 2.5)),
+            "pcr_amp_cap": float(pcr_cfg.get("amp_cap", 3.5)),
+            "pcr_require_stable": bool(pcr_cfg.get("require_stable", True)),
+        }
+        rows.append(
+            _run_mycelium(
+                f"Mycelium (tuned gas, n=50, PCR {int(pcr_kwargs['pcr_cycles'])}c)",
+                plane=PhysicsPlane.gas,
+                n_cycles=50,
+                cycle_learning_rate=0.18,
+                **pcr_kwargs,
+            )
+        )
+
+    # Explicit sweep-best row (so markdown can be regenerated from this script)
+    rows.append(
+        _run_mycelium(
+            "Mycelium (sweep best: plane=gas, cycles=100, lr=0.25, shear=1.60)",
+            plane=PhysicsPlane.gas,
+            n_cycles=100,
+            cycle_learning_rate=0.25,
+            shear_alpha=1.60,
+        )
+    )
+
+    if isinstance(pcr_cfg, dict) and bool(pcr_cfg.get("enabled")):
+        rows.append(
+            _run_mycelium(
+                f"Mycelium (sweep best: gas 100c, PCR {int(pcr_cfg.get('cycles', 4))}c)",
+                plane=PhysicsPlane.gas,
+                n_cycles=100,
+                cycle_learning_rate=0.25,
+                shear_alpha=1.60,
+                pcr_enabled=True,
+                pcr_cycles=int(pcr_cfg.get("cycles", 4)),
+                pcr_pvalue_threshold=float(pcr_cfg.get("p_threshold", 0.05)),
+                pcr_tau=float(pcr_cfg.get("tau", 4.0)),
+                pcr_gain=float(pcr_cfg.get("gain", 0.55)),
+                pcr_strength_cap=float(pcr_cfg.get("strength_cap", 2.5)),
+                pcr_amp_cap=float(pcr_cfg.get("amp_cap", 3.5)),
+                pcr_require_stable=bool(pcr_cfg.get("require_stable", True)),
+            )
+        )
+
+    # Optional: Mycelium with vibrational viscosity
+    vib_cfg = getattr(_bench_regression, "_vib_cfg", None)
+    if isinstance(vib_cfg, dict) and bool(vib_cfg.get("enabled")):
+        rows.append(
+            _run_mycelium(
+                "Mycelium (tuned gas, n=50, vib eta)",
+                plane=PhysicsPlane.gas,
+                n_cycles=50,
+                cycle_learning_rate=0.18,
+                vibrational_viscosity_enabled=True,
+                vibrational_viscosity_period=int(vib_cfg.get("period", 5)),
+                vibrational_viscosity_amplitude=float(vib_cfg.get("amplitude", 0.12)),
+                vibrational_viscosity_waveform=str(vib_cfg.get("waveform", "square")),
+            )
+        )
+
+    # Optional: broader random search (regression only)
+    rnd_cfg = getattr(_bench_regression, "_random_cfg", None)
+    if isinstance(rnd_cfg, dict) and int(rnd_cfg.get("trials", 0)) > 0:
+        trials = int(rnd_cfg.get("trials", 0))
+        topk = int(rnd_cfg.get("topk", 1))
+        topk = max(1, min(10, topk))
+        rng = random.Random(int(seed) + 99173)
+
+        def _choice(seq: list[object]) -> object:
+            return seq[int(rng.randrange(0, len(seq)))]
+
+        def _u(a: float, b: float) -> float:
+            return float(a + (b - a) * rng.random())
+
+        candidates: list[RegRow] = []
+        for _ in range(trials):
+            plane = _choice([PhysicsPlane.gas, PhysicsPlane.liquid, PhysicsPlane.solid])
+            ncy = int(_choice([30, 50, 75, 100, 120]))
+            lr = float(_u(0.12, 0.30))
+            shear = float(_u(0.25, 2.50))
+            inhib = float(_u(0.30, 1.20))
+            stage2_v = float(_u(0.8, 2.8))
+            stage2_cycles = int(_choice([0, 1, 2, 3]))
+            shatter = bool(_choice([False, True]))
+
+            lr_sched = str(_choice(["constant", "linear_decay", "cosine_decay"]))
+            lr_min_mult = float(_u(0.10, 0.70))
+            shear_sched = str(_choice(["constant", "linear_decay", "cosine_decay"]))
+            shear_min_mult = float(_u(0.10, 0.70))
+
+            vib_on = bool(_choice([False, False, True]))
+            vib_period = int(_choice([3, 4, 5, 6, 7, 9]))
+            vib_amp = float(_u(0.05, 0.22))
+            vib_wave = str(_choice(["square", "sine"]))
+
+            label = (
+                "Mycelium (random trial: "
+                f"plane={plane.value}, cycles={ncy}, lr={lr:.3f}, shear={shear:.2f}, "
+                f"lr_sched={lr_sched}@{lr_min_mult:.2f}, shear_sched={shear_sched}@{shear_min_mult:.2f}, "
+                f"E2={stage2_v:.2f}, s2={stage2_cycles}, vib={'y' if vib_on else 'n'})"
+            )
+            try:
+                row = _run_mycelium(
+                    label,
+                    plane=plane,
+                    n_cycles=ncy,
+                    cycle_learning_rate=lr,
+                    cycle_learning_rate_schedule=lr_sched,
+                    cycle_learning_rate_min_multiplier=lr_min_mult,
+                    shear_alpha=shear,
+                    shear_alpha_schedule=shear_sched,
+                    shear_alpha_min_multiplier=shear_min_mult,
+                    inhibition_strength=inhib,
+                    stage2_voltage_multiplier=stage2_v,
+                    stage2_cycles=stage2_cycles,
+                    stage2_shatter_complexes=shatter,
+                    vibrational_viscosity_enabled=vib_on,
+                    vibrational_viscosity_period=vib_period,
+                    vibrational_viscosity_amplitude=vib_amp,
+                    vibrational_viscosity_waveform=vib_wave,
+                )
+                candidates.append(row)
+            except Exception:
+                continue
+
+        if candidates:
+            candidates_sorted = sorted(candidates, key=lambda r: (r.mae, r.rmse))
+            best = candidates_sorted[0]
+            best_label = "Mycelium (random best)"
+            try:
+                i = best.model.find("random trial:")
+                if i >= 0:
+                    summary = best.model[i + len("random trial:") :].strip().strip(")")
+                    if summary:
+                        best_label = f"Mycelium (random best:{summary})"
+            except Exception:
+                pass
+            rows.append(RegRow(best_label, best.mae, best.rmse, best.r2, best.seconds))
+
+            # Optionally append a few more best candidates for inspection
+            for extra in candidates_sorted[1 : 1 + topk]:
+                rows.append(RegRow("Mycelium (random topk candidate)", extra.mae, extra.rmse, extra.r2, extra.seconds))
 
     # Sklearn baselines (same split indices as Mycelium)
     X_train = X.iloc[train_idx]
@@ -406,6 +628,20 @@ def main() -> int:
     parser.add_argument("--train-fraction", type=float, default=0.8)
     parser.add_argument("--cls-target", default="remote_work")
     parser.add_argument("--reg-target", default="salary")
+    parser.add_argument("--mycelium-vib-visc", action="store_true", help="Enable vibrational viscosity for an extra Mycelium row")
+    parser.add_argument("--mycelium-vib-period", type=int, default=5)
+    parser.add_argument("--mycelium-vib-amp", type=float, default=0.12)
+    parser.add_argument("--mycelium-vib-waveform", choices=["square", "sine"], default="square")
+    parser.add_argument("--mycelium-pcr", action="store_true", help="Add Mycelium+PCR rows (primer binding + amplification)")
+    parser.add_argument("--mycelium-pcr-cycles", type=int, default=4)
+    parser.add_argument("--mycelium-pcr-p", type=float, default=0.05)
+    parser.add_argument("--mycelium-pcr-tau", type=float, default=4.0)
+    parser.add_argument("--mycelium-pcr-gain", type=float, default=0.55)
+    parser.add_argument("--mycelium-pcr-strength-cap", type=float, default=2.5)
+    parser.add_argument("--mycelium-pcr-amp-cap", type=float, default=3.5)
+    parser.add_argument("--mycelium-pcr-no-req-stable", action="store_true", help="Allow PCR binding on unstable features")
+    parser.add_argument("--mycelium-random-search", type=int, default=0, help="Run N random Mycelium trials for regression and add a best-row")
+    parser.add_argument("--mycelium-random-topk", type=int, default=1, help="If random search enabled, also add up to K additional top candidates")
     args = parser.parse_args()
 
     path = Path(args.path)
@@ -416,6 +652,22 @@ def main() -> int:
 
     print("\nForced prediction (classification):")
     print(f"Target: {args.cls_target}")
+    _bench_classification._vib_cfg = {
+        "enabled": bool(args.mycelium_vib_visc),
+        "period": int(args.mycelium_vib_period),
+        "amplitude": float(args.mycelium_vib_amp),
+        "waveform": str(args.mycelium_vib_waveform),
+    }
+    _bench_classification._pcr_cfg = {
+        "enabled": bool(args.mycelium_pcr),
+        "cycles": int(args.mycelium_pcr_cycles),
+        "p_threshold": float(args.mycelium_pcr_p),
+        "tau": float(args.mycelium_pcr_tau),
+        "gain": float(args.mycelium_pcr_gain),
+        "strength_cap": float(args.mycelium_pcr_strength_cap),
+        "amp_cap": float(args.mycelium_pcr_amp_cap),
+        "require_stable": (not bool(args.mycelium_pcr_no_req_stable)),
+    }
     cls_rows = _bench_classification(df, target_col=str(args.cls_target), seed=int(args.seed), train_fraction=float(args.train_fraction))
     print("| Model | Accuracy | F1 (macro) | Time (s) |")
     print("|---|---|---|---|")
@@ -424,6 +676,26 @@ def main() -> int:
 
     print("\nForced prediction (regression):")
     print(f"Target: {args.reg_target}")
+    _bench_regression._vib_cfg = {
+        "enabled": bool(args.mycelium_vib_visc),
+        "period": int(args.mycelium_vib_period),
+        "amplitude": float(args.mycelium_vib_amp),
+        "waveform": str(args.mycelium_vib_waveform),
+    }
+    _bench_regression._pcr_cfg = {
+        "enabled": bool(args.mycelium_pcr),
+        "cycles": int(args.mycelium_pcr_cycles),
+        "p_threshold": float(args.mycelium_pcr_p),
+        "tau": float(args.mycelium_pcr_tau),
+        "gain": float(args.mycelium_pcr_gain),
+        "strength_cap": float(args.mycelium_pcr_strength_cap),
+        "amp_cap": float(args.mycelium_pcr_amp_cap),
+        "require_stable": (not bool(args.mycelium_pcr_no_req_stable)),
+    }
+    _bench_regression._random_cfg = {
+        "trials": int(args.mycelium_random_search),
+        "topk": int(args.mycelium_random_topk),
+    }
     reg_rows = _bench_regression(df, target_col=str(args.reg_target), seed=int(args.seed), train_fraction=float(args.train_fraction))
     print("| Model | MAE | RMSE | R2 | Time (s) |")
     print("|---|---|---|---|---|")
