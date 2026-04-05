@@ -4,6 +4,7 @@ from typing import Any
 
 
 PRODUCTION_REGRESSION_PRESET_NAME = "v4.7_soft_multibuffer_20260405"
+PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME = "Mycelium v4.7 Liquid-Crystal (Soft Multi-Buffer)"
 
 # Locked production hyperparameters for numeric regression.
 # These were tuned on an internal tabular regression benchmark, but are intended as a strong

@@ -8,6 +8,23 @@
         Upload a CSV, set the active target electrode, and Mycelium simulates feature migration through a viscosity field.
       </div>
 
+      {% if production_lock_regression %}
+        <div class="mt-3 rounded-lg border border-emerald-900 bg-emerald-950/40 p-3 text-sm text-emerald-200">
+          <div class="font-medium">Production locking is ON for numeric targets</div>
+          <div class="mt-1 text-emerald-200/90">
+            Numeric targets (regression/datetime) will run with the locked preset:
+            <span class="font-semibold">{{ production_regression_preset_display }}</span>
+            <span class="text-emerald-200/80">({{ production_regression_preset }})</span>.
+          </div>
+          {% if production_regression_kwargs and production_regression_kwargs.multibuffer_enabled %}
+            <div class="mt-2 text-emerald-200/90">
+              Multi-Buffer: q=({{ production_regression_kwargs.multibuffer_q_low }}, {{ production_regression_kwargs.multibuffer_q_high }}),
+              transition_frac={{ production_regression_kwargs.multibuffer_transition_frac }}
+            </div>
+          {% endif %}
+        </div>
+      {% endif %}
+
       <form action="/predict" method="post" enctype="multipart/form-data" class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3">
         <div class="md:col-span-2">
           <label class="block text-sm text-slate-300">CSV file</label>
@@ -485,6 +502,9 @@
             <div><span class="text-slate-400">Plane:</span> {{ result.plane }}</div>
             {% if result.production_preset %}
               <div><span class="text-slate-400">Production preset:</span> {{ result.production_preset }}</div>
+              {% if result.production_preset_display %}
+                <div><span class="text-slate-400">Preset label:</span> {{ result.production_preset_display }}</div>
+              {% endif %}
             {% endif %}
             <div><span class="text-slate-400">Rows:</span> {{ result.metrics.n_rows }}</div>
             {% if result.metrics.n_train is not none %}
@@ -509,6 +529,33 @@
             {% endif %}
             {% if result.metrics.rmse is not none %}
               <div><span class="text-slate-400">RMSE:</span> {{ result.metrics.rmse }}{% if result.target_kind == 'datetime' %} seconds{% endif %}</div>
+            {% endif %}
+
+            {% if result.diagnostics and (result.diagnostics.cleaning or result.diagnostics.multibuffer) %}
+              <div class="pt-2 border-t border-slate-800"></div>
+              <div class="text-slate-200 font-medium">Diagnostics</div>
+              {% if result.diagnostics.cleaning %}
+                <div class="text-xs text-slate-400">
+                  Cleaning: impute_missing={{ result.diagnostics.cleaning.impute_missing }}
+                  · clip_numeric_outliers={{ result.diagnostics.cleaning.clip_numeric_outliers }}
+                  · outliers={{ result.diagnostics.cleaning.outlier_strategy }}
+                  {% if result.diagnostics.cleaning.imputed_values is not none %}
+                    · imputed={{ result.diagnostics.cleaning.imputed_values }}
+                  {% endif %}
+                  {% if result.diagnostics.cleaning.clipped_outliers is not none %}
+                    · clipped={{ result.diagnostics.cleaning.clipped_outliers }}
+                  {% endif %}
+                </div>
+              {% endif %}
+              {% if result.diagnostics.multibuffer %}
+                <div class="text-xs text-slate-400">
+                  Multi-Buffer: q=({{ result.diagnostics.multibuffer.q_low }}, {{ result.diagnostics.multibuffer.q_high }})
+                  · transition_frac={{ result.diagnostics.multibuffer.transition_frac }}
+                  {% if result.diagnostics.multibuffer.transition_width is not none %}
+                    · transition_width={{ result.diagnostics.multibuffer.transition_width }}
+                  {% endif %}
+                </div>
+              {% endif %}
             {% endif %}
             {% if result.metrics.gel_band_sharpness is not none %}
               <div class="pt-2 border-t border-slate-800"></div>

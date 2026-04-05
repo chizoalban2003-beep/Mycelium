@@ -17,6 +17,7 @@ from mycelium_app.presets import (
     PRODUCTION_CLASSIFICATION_MAX_COVERAGE_KWARGS,
     PRODUCTION_CLASSIFICATION_MAX_COVERAGE_PRESET_NAME,
     PRODUCTION_REGRESSION_KWARGS,
+    PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME,
     PRODUCTION_REGRESSION_PRESET_NAME,
 )
 from mycelium_app.settings import settings
@@ -206,6 +207,13 @@ async def electrophoresis_predict(
         return {
             "ok": True,
             "production_preset": preset_applied,
+            "production_preset_display": None
+            if preset_applied is None
+            else (
+                PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME
+                if preset_applied == PRODUCTION_REGRESSION_PRESET_NAME
+                else preset_applied
+            ),
             "target": pred.target,
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,

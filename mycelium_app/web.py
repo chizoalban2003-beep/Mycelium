@@ -21,6 +21,7 @@ from mycelium_app.presets import (
     PRODUCTION_CLASSIFICATION_MAX_COVERAGE_KWARGS,
     PRODUCTION_CLASSIFICATION_MAX_COVERAGE_PRESET_NAME,
     PRODUCTION_REGRESSION_KWARGS,
+    PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME,
     PRODUCTION_REGRESSION_PRESET_NAME,
 )
 from mycelium_app.security import create_access_token
@@ -216,6 +217,10 @@ def predict_page(
             "request": request,
             "user": current_user,
             "app_name": settings.app_name,
+            "production_lock_regression": bool(settings.predictor_lock_production_regression_preset),
+            "production_regression_preset": PRODUCTION_REGRESSION_PRESET_NAME,
+            "production_regression_preset_display": PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME,
+            "production_regression_kwargs": dict(PRODUCTION_REGRESSION_KWARGS),
             "result": None,
             "error": None,
             "columns": None,
@@ -783,9 +788,17 @@ async def predict_action(
 
         result = {
             "production_preset": preset_applied,
+            "production_preset_display": None
+            if preset_applied is None
+            else (
+                PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME
+                if preset_applied == PRODUCTION_REGRESSION_PRESET_NAME
+                else preset_applied
+            ),
             "target": pred.target,
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,
+            "diagnostics": getattr(pred, "diagnostics", None),
             "weights": [
                 {
                     "feature": w.feature,
