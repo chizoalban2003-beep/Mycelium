@@ -36,6 +36,16 @@ class SweepCfg:
     buffer_gain: float
     buffer_min_mult: float
     buffer_enabled: bool
+    field_enabled: bool
+    field_alpha: float
+    field_start_cycle: int
+    field_coupling: str
+    field_alpha_exp_decay: float
+    multibuffer_enabled: bool
+    multibuffer_q_low: float
+    multibuffer_q_high: float
+    multibuffer_low_visc: float
+    multibuffer_high_alpha_mult: float
 
 
 def _eval_one(cfg: SweepCfg, *, seed: int, train_fraction: float) -> dict[str, float | str]:
@@ -66,6 +76,37 @@ def _eval_one(cfg: SweepCfg, *, seed: int, train_fraction: float) -> dict[str, f
         "cycle_learning_rate_exp_decay": float(cfg.decay),
         "cycle_learning_rate_min_multiplier": 0.02,
     }
+
+    if cfg.field_enabled:
+        call_kwargs.update(
+            {
+                "field_effect_enabled": True,
+                "field_effect_alpha": float(cfg.field_alpha),
+                "field_effect_start_cycle": int(cfg.field_start_cycle),
+                "field_effect_use_abs_corr": True,
+                "field_effect_coupling": str(cfg.field_coupling),
+                "field_effect_alpha_exp_decay": float(cfg.field_alpha_exp_decay),
+            }
+        )
+    else:
+        call_kwargs.update({"field_effect_enabled": False})
+
+    if cfg.multibuffer_enabled:
+        call_kwargs.update(
+            {
+                "multibuffer_enabled": True,
+                "multibuffer_q_low": float(cfg.multibuffer_q_low),
+                "multibuffer_q_high": float(cfg.multibuffer_q_high),
+                "multibuffer_low_viscosity_multiplier": float(cfg.multibuffer_low_visc),
+                "multibuffer_mid_viscosity_multiplier": 1.0,
+                "multibuffer_high_viscosity_multiplier": 1.0,
+                "multibuffer_low_field_alpha_multiplier": 1.0,
+                "multibuffer_mid_field_alpha_multiplier": 1.0,
+                "multibuffer_high_field_alpha_multiplier": float(cfg.multibuffer_high_alpha_mult),
+            }
+        )
+    else:
+        call_kwargs.update({"multibuffer_enabled": False})
 
     if cfg.buffer_enabled:
         call_kwargs.update(
@@ -101,6 +142,16 @@ def _eval_one(cfg: SweepCfg, *, seed: int, train_fraction: float) -> dict[str, f
         "buffer_enabled": "1" if cfg.buffer_enabled else "0",
         "buffer_gain": float(cfg.buffer_gain),
         "buffer_min_mult": float(cfg.buffer_min_mult),
+        "field_enabled": "1" if cfg.field_enabled else "0",
+        "field_alpha": float(cfg.field_alpha),
+        "field_start_cycle": int(cfg.field_start_cycle),
+        "field_coupling": str(cfg.field_coupling),
+        "field_alpha_exp_decay": float(cfg.field_alpha_exp_decay),
+        "multibuffer_enabled": "1" if cfg.multibuffer_enabled else "0",
+        "multibuffer_q_low": float(cfg.multibuffer_q_low),
+        "multibuffer_q_high": float(cfg.multibuffer_q_high),
+        "multibuffer_low_visc": float(cfg.multibuffer_low_visc),
+        "multibuffer_high_alpha_mult": float(cfg.multibuffer_high_alpha_mult),
         "mae": mae,
         "rmse": rmse,
         "r2": r2,
@@ -123,7 +174,9 @@ def _frange(start: float, stop: float, step: float) -> list[float]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Deep Freeze sweep (100c gas) over LR+exp_decay+buffer shift; prioritizes RMSE")
+    parser = argparse.ArgumentParser(
+        description="Deep Freeze sweep (100c gas) over LR+exp_decay+buffer shift (+ optional Field-Effect coupling); prioritizes RMSE"
+    )
     parser.add_argument("--path", default="tmp_eval/job_salary_prediction_dataset.csv")
     parser.add_argument("--nrows", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=42)
@@ -149,6 +202,56 @@ def main() -> int:
 
     parser.add_argument("--include-buffer-off", action="store_true", help="Also evaluate buffer_disabled configs (gain/min ignored)")
 
+    # Field-Effect sweep knobs (v4.5+). These are multiplied onto the Deep Freeze grid.
+    parser.add_argument("--field-enabled", action="store_true", help="Include Field-Effect configs in the sweep")
+    parser.add_argument("--field-alpha-start", type=float, default=0.01)
+    parser.add_argument("--field-alpha-stop", type=float, default=0.25)
+    parser.add_argument("--field-alpha-step", type=float, default=0.03)
+    parser.add_argument("--field-start-start", type=int, default=40)
+    parser.add_argument("--field-start-stop", type=int, default=90)
+    parser.add_argument("--field-start-step", type=int, default=10)
+    parser.add_argument(
+        "--field-coupling-types",
+        default="linear,r_squared",
+        help="Comma-separated: linear,r_squared",
+    )
+    parser.add_argument(
+        "--field-alpha-exp-decay-values",
+        default="1.0",
+        help="Comma-separated floats; 1.0=constant, <1.0 decays, >1.0 grows after activation",
+    )
+    parser.add_argument(
+        "--field-decay-values",
+        dest="field_alpha_exp_decay_values",
+        default=None,
+        help="Alias for --field-alpha-exp-decay-values (interpreted as per-cycle multiplier after activation)",
+    )
+    parser.add_argument(
+        "--include-field-off",
+        action="store_true",
+        help="Also include field_disabled rows even when --field-enabled is set",
+    )
+
+    # Multi-Buffer (v4.6) sweep knobs. These are multiplied onto the grid.
+    parser.add_argument("--multibuffer-enabled", action="store_true", help="Include Multi-Buffer configs in the sweep")
+    parser.add_argument("--multibuffer-q-low", type=float, default=0.33)
+    parser.add_argument("--multibuffer-q-high", type=float, default=0.67)
+    parser.add_argument(
+        "--multibuffer-low-visc-values",
+        default="1.0,1.1,1.2",
+        help="Comma-separated floats; low-zone viscosity multiplier (>1 slows low-salary updates)",
+    )
+    parser.add_argument(
+        "--multibuffer-high-alpha-values",
+        default="1.0,1.1,1.2,1.3",
+        help="Comma-separated floats; high-zone field-alpha multiplier (>1 strengthens coupling for high-salary rows)",
+    )
+    parser.add_argument(
+        "--include-multibuffer-off",
+        action="store_true",
+        help="Also include multibuffer_disabled rows even when --multibuffer-enabled is set",
+    )
+
     args = parser.parse_args()
 
     csv_path = str(Path(args.path))
@@ -160,14 +263,115 @@ def main() -> int:
     gains = _frange(args.buffer_gain_start, args.buffer_gain_stop, args.buffer_gain_step)
     mins = _frange(args.buffer_min_start, args.buffer_min_stop, args.buffer_min_step)
 
+    # Allow alias flag to override when provided.
+    if args.field_alpha_exp_decay_values is None:
+        args.field_alpha_exp_decay_values = "1.0"
+
+    field_alphas: list[float] = []
+    field_starts: list[int] = []
+    field_couplings: list[str] = []
+    field_decay_vals: list[float] = []
+    if bool(args.field_enabled):
+        field_alphas = _frange(args.field_alpha_start, args.field_alpha_stop, args.field_alpha_step)
+        field_starts = list(range(int(args.field_start_start), int(args.field_start_stop) + 1, int(args.field_start_step)))
+        raw_types = [t.strip().lower() for t in str(args.field_coupling_types).split(",") if t.strip()]
+        field_couplings = [t for t in raw_types if t in ("linear", "r_squared")]
+        if not field_couplings:
+            field_couplings = ["linear"]
+        raw_decays = [x.strip() for x in str(args.field_alpha_exp_decay_values).split(",") if x.strip()]
+        for x in raw_decays:
+            try:
+                v = float(x)
+            except Exception:
+                continue
+            if math.isfinite(v) and v > 0:
+                field_decay_vals.append(v)
+        if not field_decay_vals:
+            field_decay_vals = [1.0]
+
+    mb_q_low = float(args.multibuffer_q_low)
+    mb_q_high = float(args.multibuffer_q_high)
+    if not math.isfinite(mb_q_low):
+        mb_q_low = 0.33
+    if not math.isfinite(mb_q_high):
+        mb_q_high = 0.67
+    mb_low_visc_vals: list[float] = []
+    mb_high_alpha_vals: list[float] = []
+    if bool(args.multibuffer_enabled):
+        for x in [s.strip() for s in str(args.multibuffer_low_visc_values).split(",") if s.strip()]:
+            try:
+                v = float(x)
+            except Exception:
+                continue
+            if math.isfinite(v) and v > 0:
+                mb_low_visc_vals.append(v)
+        for x in [s.strip() for s in str(args.multibuffer_high_alpha_values).split(",") if s.strip()]:
+            try:
+                v = float(x)
+            except Exception:
+                continue
+            if math.isfinite(v) and v > 0:
+                mb_high_alpha_vals.append(v)
+        if not mb_low_visc_vals:
+            mb_low_visc_vals = [1.0]
+        if not mb_high_alpha_vals:
+            mb_high_alpha_vals = [1.0]
+
     cfgs: list[SweepCfg] = []
     for lr in lrs:
         for d in decays:
+            buffer_cfgs: list[tuple[bool, float, float]] = []
             if bool(args.include_buffer_off):
-                cfgs.append(SweepCfg(lr=lr, decay=d, buffer_gain=0.0, buffer_min_mult=0.75, buffer_enabled=False))
+                buffer_cfgs.append((False, 0.0, 0.75))
             for g in gains:
                 for m in mins:
-                    cfgs.append(SweepCfg(lr=lr, decay=d, buffer_gain=g, buffer_min_mult=m, buffer_enabled=True))
+                    buffer_cfgs.append((True, float(g), float(m)))
+
+            field_cfgs: list[tuple[bool, float, int, str, float]] = []
+            if bool(args.field_enabled):
+                if bool(args.include_field_off):
+                    field_cfgs.append((False, 0.0, 0, "linear", 1.0))
+                for a in field_alphas:
+                    for s in field_starts:
+                        for t in field_couplings:
+                            for fd in field_decay_vals:
+                                field_cfgs.append((True, float(a), int(s), str(t), float(fd)))
+            else:
+                field_cfgs.append((False, 0.0, 0, "linear", 1.0))
+
+            mb_cfgs: list[tuple[bool, float, float, float, float]] = []
+            # (enabled, q_low, q_high, low_visc, high_alpha_mult)
+            if bool(args.multibuffer_enabled):
+                if bool(args.include_multibuffer_off):
+                    mb_cfgs.append((False, float(mb_q_low), float(mb_q_high), 1.0, 1.0))
+                for lv in mb_low_visc_vals:
+                    for ha in mb_high_alpha_vals:
+                        mb_cfgs.append((True, float(mb_q_low), float(mb_q_high), float(lv), float(ha)))
+            else:
+                mb_cfgs.append((False, float(mb_q_low), float(mb_q_high), 1.0, 1.0))
+
+            for buf_enabled, buf_gain, buf_min in buffer_cfgs:
+                for f_enabled, f_alpha, f_start, f_type, f_decay in field_cfgs:
+                    for mb_enabled0, mbql, mbqh, mblv, mbha in mb_cfgs:
+                        cfgs.append(
+                            SweepCfg(
+                                lr=lr,
+                                decay=d,
+                                buffer_gain=float(buf_gain),
+                                buffer_min_mult=float(buf_min),
+                                buffer_enabled=bool(buf_enabled),
+                                field_enabled=bool(f_enabled),
+                                field_alpha=float(f_alpha),
+                                field_start_cycle=int(f_start),
+                                field_coupling=str(f_type),
+                                field_alpha_exp_decay=float(f_decay),
+                                multibuffer_enabled=bool(mb_enabled0),
+                                multibuffer_q_low=float(mbql),
+                                multibuffer_q_high=float(mbqh),
+                                multibuffer_low_visc=float(mblv),
+                                multibuffer_high_alpha_mult=float(mbha),
+                            )
+                        )
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -186,6 +390,16 @@ def main() -> int:
         "buffer_enabled",
         "buffer_gain",
         "buffer_min_mult",
+        "field_enabled",
+        "field_alpha",
+        "field_start_cycle",
+        "field_coupling",
+        "field_alpha_exp_decay",
+        "multibuffer_enabled",
+        "multibuffer_q_low",
+        "multibuffer_q_high",
+        "multibuffer_low_visc",
+        "multibuffer_high_alpha_mult",
         "mae",
         "rmse",
         "r2",
@@ -250,11 +464,32 @@ def main() -> int:
     def _fmt_best(tag: str, r: dict[str, float | str] | None) -> None:
         if not r:
             return
+        f_enabled = str(r.get("field_enabled", "0"))
+        if f_enabled == "1":
+            field_txt = (
+                f" field=1 a={float(r.get('field_alpha', 0.0)):.3f} "
+                f"start={int(float(r.get('field_start_cycle', 0)))} "
+                f"type={str(r.get('field_coupling', 'linear'))} "
+                f"fdecay={float(r.get('field_alpha_exp_decay', 1.0)):.4f}"
+            )
+        else:
+            field_txt = " field=0"
+
+        mb_txt = ""
+        if str(r.get("multibuffer_enabled", "0")) == "1":
+            mb_txt = (
+                f" mb=1 q=({float(r.get('multibuffer_q_low', 0.33)):.2f},{float(r.get('multibuffer_q_high', 0.67)):.2f})"
+                f" low_visc={float(r.get('multibuffer_low_visc', 1.0)):.3f}"
+                f" high_alpha={float(r.get('multibuffer_high_alpha_mult', 1.0)):.3f}"
+            )
+        else:
+            mb_txt = " mb=0"
+
         print(
-            f"{tag}: RMSE={float(r['rmse']):.2f}  MAE={float(r['mae']):.2f}  R2={float(r['r2']):.6f}  "
+            f"{tag}: RMSE={float(r['rmse']):.2f} MAE={float(r['mae']):.2f} R2={float(r['r2']):.6f} "
             f"lr={float(r['lr']):.3f} decay={float(r['decay']):.3f} "
-            f"buf={r['buffer_enabled']} g={float(r['buffer_gain']):.2f} min={float(r['buffer_min_mult']):.2f} "
-            f"t={float(r['seconds']):.2f}s"
+            f"buf={r['buffer_enabled']} g={float(r['buffer_gain']):.2f} min={float(r['buffer_min_mult']):.2f}"
+            f"{field_txt}{mb_txt} t={float(r['seconds']):.2f}s"
         )
 
     _fmt_best("BEST_RMSE", best_rmse)

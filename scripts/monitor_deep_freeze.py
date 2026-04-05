@@ -19,6 +19,11 @@ class BestRow:
     buffer_enabled: str
     buffer_gain: float
     buffer_min_mult: float
+    field_enabled: str = "0"
+    field_alpha: float = 0.0
+    field_start_cycle: int = 0
+    field_coupling: str = "linear"
+    field_alpha_exp_decay: float = 1.0
 
 
 def _latest_csv(pattern: str) -> Path | None:
@@ -46,6 +51,11 @@ def _parse_best(csv_path: Path) -> tuple[int, BestRow | None]:
                 buffer_enabled = str(row["buffer_enabled"])
                 buffer_gain = float(row["buffer_gain"])
                 buffer_min_mult = float(row["buffer_min_mult"])
+                field_enabled = str(row.get("field_enabled", "0"))
+                field_alpha = float(row.get("field_alpha", 0.0))
+                field_start_cycle = int(float(row.get("field_start_cycle", 0)))
+                field_coupling = str(row.get("field_coupling", "linear"))
+                field_alpha_exp_decay = float(row.get("field_alpha_exp_decay", 1.0))
             except Exception:
                 continue
 
@@ -59,6 +69,11 @@ def _parse_best(csv_path: Path) -> tuple[int, BestRow | None]:
                     buffer_enabled=buffer_enabled,
                     buffer_gain=buffer_gain,
                     buffer_min_mult=buffer_min_mult,
+                    field_enabled=field_enabled,
+                    field_alpha=field_alpha,
+                    field_start_cycle=field_start_cycle,
+                    field_coupling=field_coupling,
+                    field_alpha_exp_decay=field_alpha_exp_decay,
                 )
 
     return completed, best
@@ -101,11 +116,17 @@ def main() -> int:
         eta_txt = f"~{eta/60:.1f} min" if math.isfinite(eta) else "(warming up)"
         print(time.strftime("%H:%M:%S"), f"{completed}/{total} ({rate:.2f} cfg/s) ETA {eta_txt}")
         if best:
+            field_txt = ""
+            if str(best.field_enabled) == "1":
+                field_txt = (
+                    f" field=1 a={best.field_alpha:.3f} start={int(best.field_start_cycle)} "
+                    f"type={best.field_coupling} fdecay={best.field_alpha_exp_decay:.4f}"
+                )
             print(
                 "  best_by_RMSE: "
                 f"RMSE={best.rmse:.2f} MAE={best.mae:.2f} R2={best.r2:.6f} "
                 f"lr={best.lr:.3f} decay={best.decay:.3f} buf={best.buffer_enabled} "
-                f"g={best.buffer_gain:.2f} min={best.buffer_min_mult:.2f}"
+                f"g={best.buffer_gain:.2f} min={best.buffer_min_mult:.2f}{field_txt}"
             )
         else:
             print("  best_by_RMSE: (none yet)")

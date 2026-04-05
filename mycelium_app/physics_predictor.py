@@ -1432,6 +1432,8 @@ def run_physics_prediction(
     field_effect_alpha: float = 0.0,
     field_effect_start_cycle: int = 0,
     field_effect_use_abs_corr: bool = True,
+    field_effect_coupling: Literal["linear", "r_squared"] = "linear",
+    field_effect_alpha_exp_decay: float = 1.0,
     # Optional convergence control: stop early if the predicted distribution stabilizes.
     early_stop_patience: int = 0,
     early_stop_tol: float = 1e-4,
@@ -1446,6 +1448,18 @@ def run_physics_prediction(
     target_induced_viscosity_gain: float = 0.0,
     target_induced_viscosity_min_multiplier: float = 0.50,
     target_induced_viscosity_max_multiplier: float = 1.00,
+    # Multi-Buffer / zone-specific chemistry (v4.6 experiment, numeric targets):
+    # compute low/mid/high zones from current predictions using train-quantile thresholds,
+    # then scale viscosity and Field-Effect coupling by zone.
+    multibuffer_enabled: bool = False,
+    multibuffer_q_low: float = 0.33,
+    multibuffer_q_high: float = 0.67,
+    multibuffer_low_viscosity_multiplier: float = 1.10,
+    multibuffer_mid_viscosity_multiplier: float = 1.00,
+    multibuffer_high_viscosity_multiplier: float = 1.00,
+    multibuffer_low_field_alpha_multiplier: float = 1.00,
+    multibuffer_mid_field_alpha_multiplier: float = 1.00,
+    multibuffer_high_field_alpha_multiplier: float = 1.15,
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
@@ -1652,8 +1666,29 @@ def run_physics_prediction(
         field_start = 0
     field_abs = bool(field_effect_use_abs_corr)
 
+    field_coupling = str(field_effect_coupling).lower().strip()
+    if field_coupling not in ("linear", "r_squared"):
+        field_coupling = "linear"
+
+    field_alpha_decay = float(field_effect_alpha_exp_decay)
+    if not math.isfinite(field_alpha_decay) or field_alpha_decay <= 0.0:
+        field_alpha_decay = 1.0
+
     def _field_active(global_cycle_1based: int) -> bool:
         return bool(field_enabled and field_alpha > 0.0 and field_start > 0 and int(global_cycle_1based) >= field_start)
+
+    def _field_alpha_at(global_cycle_1based: int) -> float:
+        if not _field_active(global_cycle_1based):
+            return 0.0
+        # Effective alpha can slowly grow (>1) or decay (<1) after activation.
+        k = max(0, int(global_cycle_1based) - int(field_start))
+        try:
+            a_eff = float(field_alpha) * float(field_alpha_decay) ** float(k)
+        except Exception:
+            a_eff = float(field_alpha)
+        if not math.isfinite(a_eff) or a_eff <= 0.0:
+            return 0.0
+        return float(a_eff)
 
     tiv_enabled = bool(target_induced_viscosity_enabled)
     tiv_gain = float(target_induced_viscosity_gain)
@@ -1682,6 +1717,38 @@ def run_physics_prediction(
         if not math.isfinite(mult):
             mult = 1.0
         return float(np.clip(mult, tiv_min, tiv_max))
+
+    mb_enabled = bool(multibuffer_enabled)
+    mb_q_low = float(multibuffer_q_low)
+    mb_q_high = float(multibuffer_q_high)
+    if not math.isfinite(mb_q_low):
+        mb_q_low = 0.33
+    if not math.isfinite(mb_q_high):
+        mb_q_high = 0.67
+    mb_q_low = float(np.clip(mb_q_low, 0.01, 0.99))
+    mb_q_high = float(np.clip(mb_q_high, 0.01, 0.99))
+    if mb_q_low >= mb_q_high:
+        mb_q_low, mb_q_high = 0.33, 0.67
+
+    mb_visc_low = float(multibuffer_low_viscosity_multiplier)
+    mb_visc_mid = float(multibuffer_mid_viscosity_multiplier)
+    mb_visc_high = float(multibuffer_high_viscosity_multiplier)
+    if not math.isfinite(mb_visc_low) or mb_visc_low <= 0.0:
+        mb_visc_low = 1.10
+    if not math.isfinite(mb_visc_mid) or mb_visc_mid <= 0.0:
+        mb_visc_mid = 1.00
+    if not math.isfinite(mb_visc_high) or mb_visc_high <= 0.0:
+        mb_visc_high = 1.00
+
+    mb_alpha_low = float(multibuffer_low_field_alpha_multiplier)
+    mb_alpha_mid = float(multibuffer_mid_field_alpha_multiplier)
+    mb_alpha_high = float(multibuffer_high_field_alpha_multiplier)
+    if not math.isfinite(mb_alpha_low) or mb_alpha_low <= 0.0:
+        mb_alpha_low = 1.00
+    if not math.isfinite(mb_alpha_mid) or mb_alpha_mid <= 0.0:
+        mb_alpha_mid = 1.00
+    if not math.isfinite(mb_alpha_high) or mb_alpha_high <= 0.0:
+        mb_alpha_high = 1.15
 
     target_series = df[target_col]
     target_kind = infer_target_kind(target_series)
@@ -2022,6 +2089,73 @@ def run_physics_prediction(
 
         # Baseline predictor: train mean.
         pred = np.full(df.shape[0], y_mean, dtype="float64")
+
+        # Multi-Buffer thresholds are derived from TRAIN target distribution only.
+        # Zones are assigned per-row using the model's current predictions (avoids leakage).
+        mb_t_low: float | None = None
+        mb_t_high: float | None = None
+        multibuffer_diag: dict[str, Any] | None = None
+        if mb_enabled:
+            try:
+                y_train_f = y_train[np.isfinite(y_train)]
+                if y_train_f.size >= 16:
+                    mb_t_low = float(np.nanquantile(y_train_f, mb_q_low))
+                    mb_t_high = float(np.nanquantile(y_train_f, mb_q_high))
+                    if not (math.isfinite(mb_t_low) and math.isfinite(mb_t_high) and mb_t_low < mb_t_high):
+                        mb_t_low = None
+                        mb_t_high = None
+                else:
+                    mb_t_low = None
+                    mb_t_high = None
+            except Exception:
+                mb_t_low = None
+                mb_t_high = None
+
+            if mb_t_low is None or mb_t_high is None:
+                mb_enabled = False
+            else:
+                multibuffer_diag = {
+                    "enabled": True,
+                    "q_low": float(mb_q_low),
+                    "q_high": float(mb_q_high),
+                    "t_low": float(mb_t_low),
+                    "t_high": float(mb_t_high),
+                    "viscosity_multipliers": {
+                        "low": float(mb_visc_low),
+                        "mid": float(mb_visc_mid),
+                        "high": float(mb_visc_high),
+                    },
+                    "field_alpha_multipliers": {
+                        "low": float(mb_alpha_low),
+                        "mid": float(mb_alpha_mid),
+                        "high": float(mb_alpha_high),
+                    },
+                }
+
+        def _multibuffer_multipliers(pred_now: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+            # Returns (viscosity_multiplier_vec, field_alpha_multiplier_vec).
+            # Default behavior is neutral (all ones).
+            n = int(pred_now.shape[0])
+            if not mb_enabled or mb_t_low is None or mb_t_high is None:
+                ones = np.ones(n, dtype="float64")
+                return ones, ones
+
+            zone = np.full(n, 1, dtype="int8")  # default mid
+            finite = np.isfinite(pred_now)
+            if bool(np.any(finite)):
+                p = pred_now
+                zone[(finite) & (p < float(mb_t_low))] = 0
+                zone[(finite) & (p >= float(mb_t_high))] = 2
+
+            visc = np.ones(n, dtype="float64")
+            alpha = np.ones(n, dtype="float64")
+            visc[zone == 0] = float(mb_visc_low)
+            visc[zone == 1] = float(mb_visc_mid)
+            visc[zone == 2] = float(mb_visc_high)
+            alpha[zone == 0] = float(mb_alpha_low)
+            alpha[zone == 1] = float(mb_alpha_mid)
+            alpha[zone == 2] = float(mb_alpha_high)
+            return visc, alpha
         baseline_mae, baseline_rmse = _numeric_metrics(y[test_mask], pred[test_mask])
         if target_kind == "datetime":
             baseline_mae /= 1e9
@@ -2043,7 +2177,7 @@ def run_physics_prediction(
         field_features = [w.feature for w in weights_used]
         field_pos = {f: i for i, f in enumerate(field_features)}
         field_Z: np.ndarray | None = None
-        field_M: np.ndarray | None = None
+        field_C: np.ndarray | None = None
         if field_enabled and len(field_features) >= 2:
             try:
                 field_Z = np.column_stack([z_by_feature[f] for f in field_features]).astype("float64", copy=False)
@@ -2051,13 +2185,15 @@ def run_physics_prediction(
                 C = np.corrcoef(Zt, rowvar=False)
                 if field_abs:
                     C = np.abs(C)
+                if field_coupling == "r_squared":
+                    # Weight strong correlations disproportionately; keep sign if abs_corr is disabled.
+                    C = np.sign(C) * (C**2)
                 C = np.nan_to_num(C, nan=0.0, posinf=0.0, neginf=0.0)
                 np.fill_diagonal(C, 0.0)
-                I = np.eye(int(C.shape[0]), dtype="float64")
-                field_M = I + float(field_alpha) * C
+                field_C = C.astype("float64", copy=False)
             except Exception:
                 field_Z = None
-                field_M = None
+                field_C = None
 
         # Keep PCR amps only for the used features.
         if pcr_amp_by_feature:
@@ -2084,6 +2220,10 @@ def run_physics_prediction(
             if not math.isfinite(residual_std) or residual_std <= 1e-12:
                 residual_std = 1.0
             eta_scale = _target_induced_viscosity_multiplier(residual_train, residual_std)
+
+            mb_visc_vec, mb_alpha_vec = _multibuffer_multipliers(pred)
+            eta_scale_vec = np.asarray(mb_visc_vec, dtype="float64") * float(eta_scale)
+            eta_scale_vec = np.clip(eta_scale_vec, 1e-6, 1e9)
 
             update_score = np.zeros(df.shape[0], dtype="float64")
             denom = 0.0
@@ -2150,12 +2290,22 @@ def run_physics_prediction(
                 amp = float(pcr_amp_by_feature.get(col, 1.0))
                 a[i_w] = float(amp * v)
 
-            if field_Z is not None and field_M is not None and _field_active(cycle):
-                try:
-                    a_eff = field_M @ a
-                    update_score = field_Z @ a_eff
-                except Exception:
-                    update_score = np.zeros(df.shape[0], dtype="float64")
+            if field_Z is not None and field_C is not None and _field_active(cycle):
+                a_eff_alpha = _field_alpha_at(cycle)
+                if a_eff_alpha > 0.0:
+                    try:
+                        base_score = field_Z @ a
+                        coupled_score = field_Z @ (field_C @ a)
+                        if mb_enabled:
+                            alpha_vec = float(a_eff_alpha) * np.asarray(mb_alpha_vec, dtype="float64")
+                            update_score = base_score + (alpha_vec * coupled_score)
+                        else:
+                            update_score = base_score + float(a_eff_alpha) * coupled_score
+                    except Exception:
+                        update_score = np.zeros(df.shape[0], dtype="float64")
+                        for i_w, wi in enumerate(weights_used):
+                            update_score += float(a[i_w]) * z_by_feature[wi.feature]
+                else:
                     for i_w, wi in enumerate(weights_used):
                         update_score += float(a[i_w]) * z_by_feature[wi.feature]
             else:
@@ -2164,7 +2314,7 @@ def run_physics_prediction(
 
             if denom <= 1e-12:
                 denom = 1.0
-            pred = pred + (lr / max(1e-9, float(eta_scale))) * (update_score / denom) * residual_std
+            pred = pred + (lr * residual_std / denom) * (update_score / eta_scale_vec)
 
             mae, rmse = _numeric_metrics(y[test_mask], pred[test_mask])
             if target_kind == "datetime":
@@ -2214,6 +2364,10 @@ def run_physics_prediction(
                 if not math.isfinite(residual_std) or residual_std <= 1e-12:
                     residual_std = 1.0
                 eta_scale = _target_induced_viscosity_multiplier(residual_train, residual_std)
+
+                mb_visc_vec, mb_alpha_vec = _multibuffer_multipliers(pred)
+                eta_scale_vec = np.asarray(mb_visc_vec, dtype="float64") * float(eta_scale)
+                eta_scale_vec = np.clip(eta_scale_vec, 1e-6, 1e9)
 
                 update_score = np.zeros(df.shape[0], dtype="float64")
                 denom = 0.0
@@ -2280,12 +2434,19 @@ def run_physics_prediction(
                     amp = float(pcr_amp_by_feature.get(col, 1.0))
                     zone_a[i_c] = float(amp * v)
 
-                if field_Z is not None and field_M is not None and _field_active(gcycle) and len(zone_cols) >= 2:
+                if field_Z is not None and field_C is not None and _field_active(gcycle) and len(zone_cols) >= 2:
                     try:
                         idx = [field_pos[c] for c in zone_cols]
                         Zsub = field_Z[:, idx]
-                        Msub = field_M[np.ix_(idx, idx)]
-                        update_score = Zsub @ (Msub @ zone_a)
+                        Csub = field_C[np.ix_(idx, idx)]
+                        a_eff_alpha = _field_alpha_at(gcycle)
+                        base_score = Zsub @ zone_a
+                        coupled_score = Zsub @ (Csub @ zone_a)
+                        if mb_enabled:
+                            alpha_vec = float(a_eff_alpha) * np.asarray(mb_alpha_vec, dtype="float64")
+                            update_score = base_score + (alpha_vec * coupled_score)
+                        else:
+                            update_score = base_score + float(a_eff_alpha) * coupled_score
                     except Exception:
                         update_score = np.zeros(df.shape[0], dtype="float64")
                         for i_c, col in enumerate(zone_cols):
@@ -2296,7 +2457,7 @@ def run_physics_prediction(
 
                 if denom <= 1e-12:
                     denom = 1.0
-                pred = pred + (lr2 / max(1e-9, float(eta_scale))) * (update_score / denom) * residual_std
+                pred = pred + (lr2 * residual_std / denom) * (update_score / eta_scale_vec)
 
                 mae, rmse = _numeric_metrics(y[test_mask], pred[test_mask])
                 if target_kind == "datetime":
@@ -2343,6 +2504,11 @@ def run_physics_prediction(
                     residual_std = float(np.nanstd(residual_train))
                     if not math.isfinite(residual_std) or residual_std <= 1e-12:
                         residual_std = 1.0
+
+                    eta_scale = _target_induced_viscosity_multiplier(residual_train, residual_std)
+                    mb_visc_vec, mb_alpha_vec = _multibuffer_multipliers(pred)
+                    eta_scale_vec = np.asarray(mb_visc_vec, dtype="float64") * float(eta_scale)
+                    eta_scale_vec = np.clip(eta_scale_vec, 1e-6, 1e9)
 
                     update_score = np.zeros(df.shape[0], dtype="float64")
                     denom = 0.0
@@ -2400,12 +2566,19 @@ def run_physics_prediction(
                         amp = float(pcr_amp_by_feature.get(col, 1.0))
                         waste_a[i_c] = float(amp * v)
 
-                    if field_Z is not None and field_M is not None and _field_active(gcycle) and len(waste_cols) >= 2:
+                    if field_Z is not None and field_C is not None and _field_active(gcycle) and len(waste_cols) >= 2:
                         try:
                             idx = [field_pos[c] for c in waste_cols]
                             Zsub = field_Z[:, idx]
-                            Msub = field_M[np.ix_(idx, idx)]
-                            update_score = Zsub @ (Msub @ waste_a)
+                            Csub = field_C[np.ix_(idx, idx)]
+                            a_eff_alpha = _field_alpha_at(gcycle)
+                            base_score = Zsub @ waste_a
+                            coupled_score = Zsub @ (Csub @ waste_a)
+                            if mb_enabled:
+                                alpha_vec = float(a_eff_alpha) * np.asarray(mb_alpha_vec, dtype="float64")
+                                update_score = base_score + (alpha_vec * coupled_score)
+                            else:
+                                update_score = base_score + float(a_eff_alpha) * coupled_score
                         except Exception:
                             # fallback: already accumulated or can recompute
                             if not np.any(update_score):
@@ -2418,7 +2591,7 @@ def run_physics_prediction(
 
                     if denom <= 1e-12:
                         denom = 1.0
-                    pred = pred + lr3 * (update_score / denom) * residual_std
+                    pred = pred + (lr3 * residual_std / denom) * (update_score / eta_scale_vec)
 
                     mae, rmse = _numeric_metrics(y[test_mask], pred[test_mask])
                     if target_kind == "datetime":
@@ -2536,6 +2709,7 @@ def run_physics_prediction(
             iteration_gains=iteration_gains,
             metrics=metrics,
             preview_rows=preview,
+            diagnostics=None if multibuffer_diag is None else {"multibuffer": multibuffer_diag},
             test_row_indices=test_row_indices,
             test_actual=test_actual,
             test_predicted=test_predicted,

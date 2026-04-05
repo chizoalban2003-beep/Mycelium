@@ -6,6 +6,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass
+import csv
 
 
 # Allow running as `python scripts/benchmark_salary_models.py` without installing the package.
@@ -102,6 +103,20 @@ def build_preprocessor(df: pd.DataFrame, feature_cols: list[str]) -> ColumnTrans
     )
 
 
+def _frange(start: float, stop: float, step: float) -> list[float]:
+    vals: list[float] = []
+    x = float(start)
+    stopf = float(stop)
+    stepf = float(step)
+    if stepf <= 0:
+        raise ValueError("step must be > 0")
+    # inclusive stop
+    while x <= stopf + 1e-12:
+        vals.append(float(round(x, 6)))
+        x += stepf
+    return vals
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Benchmark Mycelium v4 vs DecisionTree vs RandomForest vs Gradient Boosting vs Neural Net (MLP) on the salary CSV"
@@ -136,6 +151,66 @@ def main() -> int:
     parser.add_argument("--mlp-max-iter", type=int, default=80)
     parser.add_argument("--plane", default="liquid", choices=["solid", "liquid", "gas"])
 
+    parser.add_argument(
+        "--mycelium-cycles",
+        type=int,
+        default=None,
+        help="Mycelium electrophoresis cycles (default: 30 without Field-Effect, 100 with Field-Effect; sweep auto-sizes)",
+    )
+
+    # Optional: sweep only Mycelium configs (skip sklearn baselines).
+    parser.add_argument(
+        "--mycelium-sweep",
+        action="store_true",
+        help="Grid-search Mycelium Field-Effect knobs (alpha/start/type/decay) and report best configs",
+    )
+    parser.add_argument(
+        "--mycelium-sweep-out",
+        default="",
+        help="Optional CSV path to write sweep rows (default: don't write)",
+    )
+    parser.add_argument(
+        "--mycelium-sweep-top",
+        type=int,
+        default=15,
+        help="How many best configs to print for MAE and RMSE",
+    )
+
+    # Sweep ranges (mirrors scripts/deep_freeze_sweep.py defaults).
+    parser.add_argument("--mycelium-field-alpha-start", type=float, default=0.01)
+    parser.add_argument("--mycelium-field-alpha-stop", type=float, default=0.25)
+    parser.add_argument("--mycelium-field-alpha-step", type=float, default=0.03)
+    parser.add_argument("--mycelium-field-start-start", type=int, default=40)
+    parser.add_argument("--mycelium-field-start-stop", type=int, default=90)
+    parser.add_argument("--mycelium-field-start-step", type=int, default=10)
+    parser.add_argument(
+        "--mycelium-field-coupling-types",
+        default="linear,r_squared",
+        help="Comma-separated: linear,r_squared",
+    )
+    parser.add_argument(
+        "--mycelium-field-decay-values",
+        default="1.0",
+        help="Comma-separated floats; 1.0=constant, <1.0 decays, >1.0 grows after activation",
+    )
+    parser.add_argument(
+        "--mycelium-sweep-include-field-off",
+        action="store_true",
+        help="Also include a field_disabled row in the sweep",
+    )
+
+    # Mycelium Field-Effect (v4.5+): optional late-cycle coupling.
+    parser.add_argument("--mycelium-field", action="store_true", help="Enable Field-Effect coupling for Mycelium")
+    parser.add_argument("--mycelium-field-alpha", type=float, default=0.10)
+    parser.add_argument("--mycelium-field-start", type=int, default=80)
+    parser.add_argument("--mycelium-field-coupling", default="linear", choices=["linear", "r_squared"])
+    parser.add_argument(
+        "--mycelium-field-alpha-exp-decay",
+        type=float,
+        default=1.0,
+        help="1.0=constant; <1.0 decays after start; >1.0 grows after start",
+    )
+
     args = parser.parse_args()
 
     nrows = None if int(args.nrows) == 0 else int(args.nrows)
@@ -168,6 +243,149 @@ def main() -> int:
 
     train_mask, test_mask = train_test_split_mask(len(df), args.train_fraction, args.seed)
 
+    if bool(args.mycelium_sweep):
+        # Mycelium-only sweep: vary Field-Effect parameters.
+        alphas = _frange(args.mycelium_field_alpha_start, args.mycelium_field_alpha_stop, args.mycelium_field_alpha_step)
+        starts = list(range(int(args.mycelium_field_start_start), int(args.mycelium_field_start_stop) + 1, int(args.mycelium_field_start_step)))
+        raw_types = [t.strip().lower() for t in str(args.mycelium_field_coupling_types).split(",") if t.strip()]
+        types = [t for t in raw_types if t in ("linear", "r_squared")] or ["linear"]
+        raw_decays = [x.strip() for x in str(args.mycelium_field_decay_values).split(",") if x.strip()]
+        decays: list[float] = []
+        for x in raw_decays:
+            try:
+                v = float(x)
+            except Exception:
+                continue
+            if math.isfinite(v) and v > 0:
+                decays.append(v)
+        if not decays:
+            decays = [1.0]
+
+        # Pick cycle budget.
+        cycles = int(args.mycelium_cycles) if args.mycelium_cycles is not None else 0
+        if cycles <= 0:
+            cycles = max(100, int(max(starts) if starts else 100) + 5)
+
+        sweep_cfgs: list[tuple[bool, float, int, str, float]] = []
+        if bool(args.mycelium_sweep_include_field_off):
+            sweep_cfgs.append((False, 0.0, 0, "linear", 1.0))
+        for a in alphas:
+            for s in starts:
+                for t in types:
+                    for d in decays:
+                        sweep_cfgs.append((True, float(a), int(s), str(t), float(d)))
+
+        out_csv = str(args.mycelium_sweep_out).strip()
+        writer: csv.DictWriter | None = None
+        out_fh = None
+        if out_csv:
+            out_fh = open(out_csv, "w", newline="")
+            writer = csv.DictWriter(
+                out_fh,
+                fieldnames=[
+                    "field_enabled",
+                    "field_alpha",
+                    "field_start_cycle",
+                    "field_coupling",
+                    "field_decay",
+                    "mae",
+                    "rmse",
+                    "seconds",
+                ],
+            )
+            writer.writeheader()
+
+        results: list[dict[str, float | str]] = []
+        try:
+            print("Mycelium sweep configs:", len(sweep_cfgs))
+            print("Dataset:", args.csv)
+            print("Rows:", len(df), "Train/Test:", int(train_mask.sum()), "/", int(test_mask.sum()), "Seed:", args.seed)
+            print("Target:", target)
+            print()
+
+            for i, (enabled, alpha, start, coupling, decay) in enumerate(sweep_cfgs, start=1):
+                t0 = time.time()
+                pred = run_physics_prediction(
+                    df,
+                    target_col=target,
+                    plane=PhysicsPlane(args.plane),
+                    train_fraction=float(args.train_fraction),
+                    random_seed=int(args.seed),
+                    n_cycles=int(cycles),
+                    cascade_enabled=True,
+                    competitive_inhibition=True,
+                    thermal_noise=True,
+                    field_effect_enabled=bool(enabled),
+                    field_effect_alpha=float(alpha),
+                    field_effect_start_cycle=int(start),
+                    field_effect_use_abs_corr=True,
+                    field_effect_coupling=str(coupling),
+                    field_effect_alpha_exp_decay=float(decay),
+                    return_predictions=True,
+                )
+                seconds = float(time.time() - t0)
+
+                mae = float(pred.metrics.mae or float("nan"))
+                rmse = float(pred.metrics.rmse or float("nan"))
+                row: dict[str, float | str] = {
+                    "field_enabled": "1" if enabled else "0",
+                    "field_alpha": float(alpha),
+                    "field_start_cycle": int(start),
+                    "field_coupling": str(coupling),
+                    "field_decay": float(decay),
+                    "mae": mae,
+                    "rmse": rmse,
+                    "seconds": seconds,
+                }
+                results.append(row)
+                if writer is not None:
+                    writer.writerow(row)
+
+                if i % 20 == 0 or i == len(sweep_cfgs):
+                    print(f"  {i}/{len(sweep_cfgs)} done")
+        finally:
+            if out_fh is not None:
+                out_fh.close()
+
+        top_n = int(args.mycelium_sweep_top)
+        if top_n <= 0:
+            top_n = 10
+        best_mae = sorted(results, key=lambda r: (float(r["mae"]), float(r["rmse"])))[:top_n]
+        best_rmse = sorted(results, key=lambda r: (float(r["rmse"]), float(r["mae"])))[:top_n]
+
+        def _print(tag: str, rows0: list[dict[str, float | str]]) -> None:
+            print(tag)
+            print("field  alpha   start type       decay     MAE      RMSE   time(s)")
+            for r in rows0:
+                print(
+                    f"{r['field_enabled']:>5s} "
+                    f"{float(r['field_alpha']):>6.3f} "
+                    f"{int(r['field_start_cycle']):>5d} "
+                    f"{str(r['field_coupling']):<10s} "
+                    f"{float(r['field_decay']):>7.4f} "
+                    f"{float(r['mae']):>8.2f} "
+                    f"{float(r['rmse']):>8.2f} "
+                    f"{float(r['seconds']):>7.2f}"
+                )
+            print()
+
+        _print("BEST_BY_MAE", best_mae)
+        _print("BEST_BY_RMSE", best_rmse)
+
+        if out_csv:
+            print("Wrote sweep CSV:", out_csv)
+        return 0
+
+    # Choose cycle budget for the single Mycelium run.
+    myc_cycles = int(args.mycelium_cycles) if args.mycelium_cycles is not None else 0
+    if myc_cycles <= 0:
+        myc_cycles = 100 if bool(args.mycelium_field) else 30
+    if bool(args.mycelium_field) and int(args.mycelium_field_start) > int(myc_cycles):
+        print(
+            f"WARNING: Field-Effect start cycle ({int(args.mycelium_field_start)}) > mycelium cycles ({int(myc_cycles)}); "
+            "Field-Effect will not activate. Consider --mycelium-cycles 100 (or higher)."
+        )
+
     # Mycelium v4
     t0 = time.time()
     myc = run_physics_prediction(
@@ -176,9 +394,16 @@ def main() -> int:
         plane=PhysicsPlane(args.plane),
         train_fraction=float(args.train_fraction),
         random_seed=int(args.seed),
+        n_cycles=int(myc_cycles),
         cascade_enabled=True,
         competitive_inhibition=True,
         thermal_noise=True,
+        field_effect_enabled=bool(args.mycelium_field),
+        field_effect_alpha=float(args.mycelium_field_alpha),
+        field_effect_start_cycle=int(args.mycelium_field_start),
+        field_effect_use_abs_corr=True,
+        field_effect_coupling=str(args.mycelium_field_coupling),
+        field_effect_alpha_exp_decay=float(args.mycelium_field_alpha_exp_decay),
     )
     t_my = time.time() - t0
 
