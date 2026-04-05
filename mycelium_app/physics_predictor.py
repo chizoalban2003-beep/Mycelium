@@ -1419,6 +1419,19 @@ def run_physics_prediction(
     inhibition_strength: float = 0.7,
     scavenger_cycles: int = 1,
     stage2_shatter_complexes: bool = False,
+    # Shatter-Reload (v4.4 experiment): after a chosen global cycle, "shatter" remaining
+    # multicollinearity complexes (undo complex drag + remove coupling bond factor), then
+    # optionally force a very low learning rate for the remaining cycles.
+    shatter_reload_cycle: int = 0,
+    shatter_reload_learning_rate: float = 0.0,
+    shatter_reload_mode: Literal["drag_and_bond", "drag_only", "bond_only"] = "drag_and_bond",
+    # Field-Effect coupling (v4.5 experiment, numeric targets): after a chosen global
+    # cycle, apply a covariance-weighted pull across active features so updates are
+    # influenced by correlated neighbors (Ridge-like global negotiation).
+    field_effect_enabled: bool = False,
+    field_effect_alpha: float = 0.0,
+    field_effect_start_cycle: int = 0,
+    field_effect_use_abs_corr: bool = True,
     # Optional convergence control: stop early if the predicted distribution stabilizes.
     early_stop_patience: int = 0,
     early_stop_tol: float = 1e-4,
@@ -1587,6 +1600,60 @@ def run_physics_prediction(
         if not math.isfinite(base) or base < 0.0:
             base = 0.0
         return base * _schedule_multiplier(cycle_1based, total_cycles, kind=shear_schedule, min_multiplier=shear_min_mult)
+
+    shatter_cycle = int(shatter_reload_cycle)
+    if shatter_cycle < 0:
+        shatter_cycle = 0
+    shatter_lr = float(shatter_reload_learning_rate)
+    if not math.isfinite(shatter_lr) or shatter_lr <= 0.0:
+        shatter_lr = 0.0
+
+    shatter_mode = str(shatter_reload_mode).lower().strip()
+    if shatter_mode not in ("drag_and_bond", "drag_only", "bond_only"):
+        shatter_mode = "drag_and_bond"
+
+    def _lr_effective(global_cycle_1based: int, total_cycles: int) -> float:
+        lr0 = float(_lr_at(global_cycle_1based, total_cycles))
+        if shatter_cycle > 0 and shatter_lr > 0.0 and int(global_cycle_1based) > shatter_cycle:
+            return float(shatter_lr)
+        return lr0
+
+    def _complex_shattered(global_cycle_1based: int) -> bool:
+        return bool(shatter_cycle > 0 and int(global_cycle_1based) > shatter_cycle)
+
+    def _apply_shatter_to_feature(
+        *,
+        global_cycle_1based: int,
+        medium: MigrationInfo,
+        col: str,
+        bond_factor: float,
+        eta_base: float,
+    ) -> tuple[float, float]:
+        if not _complex_shattered(global_cycle_1based):
+            return bond_factor, eta_base
+        if medium.complex_size is None or int(medium.complex_size) < 2:
+            return bond_factor, eta_base
+
+        bf = float(bond_factor)
+        eb = float(eta_base)
+        if shatter_mode in ("drag_and_bond", "bond_only"):
+            bf = 1.0
+        if shatter_mode in ("drag_and_bond", "drag_only"):
+            eb = max(1e-6, eb / float(complex_drag_by_feature.get(col, 1.0)))
+        return bf, eb
+
+    field_enabled = bool(field_effect_enabled)
+    field_alpha = float(field_effect_alpha)
+    if not math.isfinite(field_alpha) or field_alpha <= 0.0:
+        field_alpha = 0.0
+        field_enabled = False
+    field_start = int(field_effect_start_cycle)
+    if field_start < 0:
+        field_start = 0
+    field_abs = bool(field_effect_use_abs_corr)
+
+    def _field_active(global_cycle_1based: int) -> bool:
+        return bool(field_enabled and field_alpha > 0.0 and field_start > 0 and int(global_cycle_1based) >= field_start)
 
     tiv_enabled = bool(target_induced_viscosity_enabled)
     tiv_gain = float(target_induced_viscosity_gain)
@@ -1972,6 +2039,26 @@ def run_physics_prediction(
             )
             z_by_feature[wi.feature] = _zscore_with_train_stats(x_raw, train_mask)
 
+        # Field-Effect coupling matrix (train-derived z-correlation among active features).
+        field_features = [w.feature for w in weights_used]
+        field_pos = {f: i for i, f in enumerate(field_features)}
+        field_Z: np.ndarray | None = None
+        field_M: np.ndarray | None = None
+        if field_enabled and len(field_features) >= 2:
+            try:
+                field_Z = np.column_stack([z_by_feature[f] for f in field_features]).astype("float64", copy=False)
+                Zt = field_Z[train_mask]
+                C = np.corrcoef(Zt, rowvar=False)
+                if field_abs:
+                    C = np.abs(C)
+                C = np.nan_to_num(C, nan=0.0, posinf=0.0, neginf=0.0)
+                np.fill_diagonal(C, 0.0)
+                I = np.eye(int(C.shape[0]), dtype="float64")
+                field_M = I + float(field_alpha) * C
+            except Exception:
+                field_Z = None
+                field_M = None
+
         # Keep PCR amps only for the used features.
         if pcr_amp_by_feature:
             pcr_amp_by_feature = {k: v for k, v in pcr_amp_by_feature.items() if k in z_by_feature}
@@ -1989,7 +2076,7 @@ def run_physics_prediction(
         total_schedule_cycles = int(max(1, total_schedule_cycles))
 
         for cycle in range(1, n_cycles_eff + 1):
-            lr = float(_lr_at(cycle, total_schedule_cycles))
+            lr = float(_lr_effective(cycle, total_schedule_cycles))
             shear_eff = float(_shear_at(cycle, total_schedule_cycles))
             residual = y - pred
             residual_train = residual[train_mask]
@@ -2001,7 +2088,10 @@ def run_physics_prediction(
             update_score = np.zeros(df.shape[0], dtype="float64")
             denom = 0.0
 
-            for wi in weights_used:
+            # Collect per-feature velocities to optionally apply a Field-Effect coupling.
+            a = np.zeros(len(weights_used), dtype="float64")
+
+            for i_w, wi in enumerate(weights_used):
                 col = wi.feature
                 z = z_by_feature[col]
                 charge = _pearson_corr(z[train_mask], residual_train)
@@ -2013,6 +2103,13 @@ def run_physics_prediction(
                 certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                 density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
                 eta_base = max(1e-6, medium.viscosity)
+                bond_factor, eta_base = _apply_shatter_to_feature(
+                    global_cycle_1based=cycle,
+                    medium=medium,
+                    col=col,
+                    bond_factor=bond_factor,
+                    eta_base=eta_base,
+                )
                 eta_dynamic = max(1e-6, eta_base / (1.0 + shear_eff * abs(charge) * bond_factor))
 
                 inhibition = 0.0
@@ -2051,7 +2148,19 @@ def run_physics_prediction(
 
                 denom += abs(v)
                 amp = float(pcr_amp_by_feature.get(col, 1.0))
-                update_score += (amp * v) * z
+                a[i_w] = float(amp * v)
+
+            if field_Z is not None and field_M is not None and _field_active(cycle):
+                try:
+                    a_eff = field_M @ a
+                    update_score = field_Z @ a_eff
+                except Exception:
+                    update_score = np.zeros(df.shape[0], dtype="float64")
+                    for i_w, wi in enumerate(weights_used):
+                        update_score += float(a[i_w]) * z_by_feature[wi.feature]
+            else:
+                for i_w, wi in enumerate(weights_used):
+                    update_score += float(a[i_w]) * z_by_feature[wi.feature]
 
             if denom <= 1e-12:
                 denom = 1.0
@@ -2097,7 +2206,7 @@ def run_physics_prediction(
 
             for stage_cycle in range(1, max(1, int(stage2_cycles)) + 1):
                 gcycle = int(n_cycles_eff + stage_cycle)
-                lr2 = float(_lr_at(gcycle, total_schedule_cycles)) * 0.6
+                lr2 = float(_lr_effective(gcycle, total_schedule_cycles)) * 0.6
                 shear_eff = float(_shear_at(gcycle, total_schedule_cycles))
                 residual = y - pred
                 residual_train = residual[train_mask]
@@ -2109,7 +2218,11 @@ def run_physics_prediction(
                 update_score = np.zeros(df.shape[0], dtype="float64")
                 denom = 0.0
 
-                for col in zone1_features:
+                # Stage-2 Field-Effect coupling among zone features.
+                zone_cols = sorted(zone1_features)
+                zone_a = np.zeros(len(zone_cols), dtype="float64")
+
+                for i_c, col in enumerate(zone_cols):
                     z = z_by_feature[col]
                     charge = _pearson_corr(z[train_mask], residual_train)
                     if not math.isfinite(charge) or abs(charge) < 1e-8:
@@ -2120,6 +2233,13 @@ def run_physics_prediction(
                     certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                     density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
                     eta_base = max(1e-6, medium.viscosity)
+                    bond_factor, eta_base = _apply_shatter_to_feature(
+                        global_cycle_1based=gcycle,
+                        medium=medium,
+                        col=col,
+                        bond_factor=bond_factor,
+                        eta_base=eta_base,
+                    )
                     eta_dynamic = max(1e-6, eta_base / (1.0 + shear_eff * abs(charge) * bond_factor))
 
                     inhibition = 0.0
@@ -2158,7 +2278,21 @@ def run_physics_prediction(
 
                     denom += abs(v)
                     amp = float(pcr_amp_by_feature.get(col, 1.0))
-                    update_score += (amp * v) * z
+                    zone_a[i_c] = float(amp * v)
+
+                if field_Z is not None and field_M is not None and _field_active(gcycle) and len(zone_cols) >= 2:
+                    try:
+                        idx = [field_pos[c] for c in zone_cols]
+                        Zsub = field_Z[:, idx]
+                        Msub = field_M[np.ix_(idx, idx)]
+                        update_score = Zsub @ (Msub @ zone_a)
+                    except Exception:
+                        update_score = np.zeros(df.shape[0], dtype="float64")
+                        for i_c, col in enumerate(zone_cols):
+                            update_score += float(zone_a[i_c]) * z_by_feature[col]
+                else:
+                    for i_c, col in enumerate(zone_cols):
+                        update_score += float(zone_a[i_c]) * z_by_feature[col]
 
                 if denom <= 1e-12:
                     denom = 1.0
@@ -2202,7 +2336,7 @@ def run_physics_prediction(
                 rng_scav = np.random.default_rng(int(random_seed) + 51017)
                 for sc_cycle in range(1, int(scavenger_cycles) + 1):
                     gcycle = int(n_cycles_eff + max(1, int(stage2_cycles)) + sc_cycle)
-                    lr3 = float(_lr_at(gcycle, total_schedule_cycles)) * 0.25
+                    lr3 = float(_lr_effective(gcycle, total_schedule_cycles)) * 0.25
                     shear_eff = float(_shear_at(gcycle, total_schedule_cycles))
                     residual = y - pred
                     residual_train = residual[train_mask]
@@ -2212,7 +2346,10 @@ def run_physics_prediction(
 
                     update_score = np.zeros(df.shape[0], dtype="float64")
                     denom = 0.0
-                    for col in waste_features:
+
+                    waste_cols = list(waste_features)
+                    waste_a = np.zeros(len(waste_cols), dtype="float64")
+                    for i_c, col in enumerate(waste_cols):
                         z = z_by_feature[col]
                         charge = _pearson_corr(z[train_mask], residual_train)
                         if not math.isfinite(charge) or abs(charge) < 1e-8:
@@ -2223,6 +2360,13 @@ def run_physics_prediction(
                         certainty = 1.0 / (1.0 + max(0.0, medium.standard_error))
                         density = (1.0 + max(0.0, medium.kl_divergence)) * certainty
                         eta_base = max(1e-6, medium.viscosity)
+                        bond_factor, eta_base = _apply_shatter_to_feature(
+                            global_cycle_1based=gcycle,
+                            medium=medium,
+                            col=col,
+                            bond_factor=bond_factor,
+                            eta_base=eta_base,
+                        )
                         eta_dynamic = max(1e-6, eta_base / (1.0 + shear_eff * abs(charge) * bond_factor))
                         if thermal_noise and sc_cycle <= int(thermal_noise_cycles):
                             eta_dynamic = max(
@@ -2254,7 +2398,23 @@ def run_physics_prediction(
 
                         denom += abs(v)
                         amp = float(pcr_amp_by_feature.get(col, 1.0))
-                        update_score += (amp * v) * z
+                        waste_a[i_c] = float(amp * v)
+
+                    if field_Z is not None and field_M is not None and _field_active(gcycle) and len(waste_cols) >= 2:
+                        try:
+                            idx = [field_pos[c] for c in waste_cols]
+                            Zsub = field_Z[:, idx]
+                            Msub = field_M[np.ix_(idx, idx)]
+                            update_score = Zsub @ (Msub @ waste_a)
+                        except Exception:
+                            # fallback: already accumulated or can recompute
+                            if not np.any(update_score):
+                                for i_c, col in enumerate(waste_cols):
+                                    update_score += float(waste_a[i_c]) * z_by_feature[col]
+                    else:
+                        if not np.any(update_score):
+                            for i_c, col in enumerate(waste_cols):
+                                update_score += float(waste_a[i_c]) * z_by_feature[col]
 
                     if denom <= 1e-12:
                         denom = 1.0

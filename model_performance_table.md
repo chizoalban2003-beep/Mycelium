@@ -4,7 +4,7 @@ Dataset: tmp_eval/job_salary_prediction_dataset.csv (nrows=8000)
 Seed=42 | train_fraction=0.8
 
 Note on PCR Stimulation: PCR 4c amplifies classification bands, increasing coverage (+4.4%) and selective accuracy (0.3739 → 0.4309) by reinforcing dominant categorical signals.
-Regression is turbulence-sensitive: PCR 4c degrades MAE/RMSE; micro-PCR (1c, gain=0.20) slightly helps the tuned 50c run but still fails to improve the 100c sweep-best (and primer-threshold tightening did not help). Buffer shift (target-induced viscosity scaling) did not improve the 100c sweep-best by itself; on tuned 50c it roughly matches micro-PCR. Cooling (exp LR decay) + buffer shift produces a small but real improvement in the 100c regime; the full Deep Freeze sweep’s best-by-RMSE is recorded below.
+Regression is turbulence-sensitive: PCR 4c degrades MAE/RMSE; micro-PCR (1c, gain=0.20) slightly helps the tuned 50c run but still fails to improve the 100c sweep-best (and primer-threshold tightening did not help). Buffer shift (target-induced viscosity scaling) did not improve the 100c sweep-best by itself; on tuned 50c it roughly matches micro-PCR. Cooling (exp LR decay) + buffer shift produces a small but real improvement in the 100c regime; the full Deep Freeze sweep’s best-by-RMSE is recorded below. A v4.5 Field-Effect (covariance-weighted coupling in cycles 80+) improves slightly again; freezing LR during the coupling phase did not help.
 
 Forced prediction (classification; apples-to-apples with sklearn):
 Target: remote_work
@@ -31,6 +31,7 @@ Target: salary
 |---|---|---|---|---|
 | HistGB | 5117.52 | 6460.61 | 0.9692 | 0.79 |
 | Ridge | 5353.88 | 7042.21 | 0.9634 | 0.20 |
+| Mycelium (v4.5 field-effect: gas 100c, exp_decay lr=0.25, decay=0.995 + buffer shift g=0.60 min=0.70 + field α=0.10 @ cycle≥80) | 5566.94 | 7232.28 | 0.9614 | 2.13 |
 | Mycelium (deep-freeze best: gas 100c, exp_decay lr=0.25, decay=0.995 + buffer shift g=0.60 min=0.70) | 5567.26 | 7232.82 | 0.9614 | 3.13 |
 | Mycelium (sweep best: plane=gas, cycles=100, lr=0.25, shear=1.60) | 5568.86 | 7234.75 | 0.9614 | 2.19 |
 | Mycelium (tuned gas, n=50) | 5581.93 | 7241.46 | 0.9613 | 2.46 |
