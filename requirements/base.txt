@@ -13,7 +13,8 @@ aiofiles==24.1.0
 # Prediction/analytics
 numpy>=1.26,<3
 pandas>=2.2,<3
+scipy>=1.12,<2
+feature-engine>=1.7,<2
 
 # Optional extras (not required to run the app):
-# - scipy + feature-engine: `pip install -r requirements/optional-analytics.txt`
-# - sklearn benchmarks:     `pip install -r requirements/benchmarks.txt`
+# - sklearn benchmarks: `pip install -r requirements/benchmarks.txt`

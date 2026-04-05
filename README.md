@@ -24,9 +24,10 @@ python -m pip install -r requirements/base.txt
 ```
 
 Notes:
+- `requirements/base.txt` includes `scipy` + `feature-engine` to support optional outlier capping backends (`cleaning_outlier_strategy=feature_engine`).
 - Optional dependencies live in `requirements/`:
-	- `requirements/optional-analytics.txt` enables `scipy` stats + the `feature-engine` outlier backend (`cleaning_outlier_strategy=feature_engine`).
 	- `requirements/benchmarks.txt` is only needed for the `scripts/benchmark_*.py` scripts.
+	- `requirements/optional-analytics.txt` duplicates the pinned `scipy` + `feature-engine` installs (handy if you want an explicit “analytics extras” install).
 
 3) Run the app:
 

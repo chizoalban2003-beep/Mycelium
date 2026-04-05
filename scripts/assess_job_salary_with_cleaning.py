@@ -138,8 +138,12 @@ def _fmt(x: float) -> str:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Assess tabular regression under Mycelium cleaning/outlier strategies")
-    p.add_argument("--data", required=True, help="Path to a CSV dataset")
+    p = argparse.ArgumentParser(description="Assess job salary regression under Mycelium cleaning/outlier strategies")
+    p.add_argument(
+        "--data",
+        default="tmp_eval/job_salary_prediction_dataset.csv",
+        help="Path to a CSV dataset (default: tmp_eval/job_salary_prediction_dataset.csv)",
+    )
     p.add_argument("--target", default="salary", help="Regression target column name (default: salary)")
     p.add_argument("--nrows", type=int, default=8000)
     p.add_argument("--seed", type=int, default=42)
@@ -165,9 +169,7 @@ def main() -> int:
 
     data_path = Path(args.data)
     if not data_path.exists():
-        raise SystemExit(
-            f"Data not found: {data_path}. Provide a dataset path via --data (the repo no longer ships the old job-salary dataset)."
-        )
+        raise SystemExit(f"Data not found: {data_path}. Provide a dataset path via --data.")
 
     df = _load_df(data_path, args.nrows)
 
