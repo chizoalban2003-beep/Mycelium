@@ -530,6 +530,12 @@
             {% if result.metrics.rmse is not none %}
               <div><span class="text-slate-400">RMSE:</span> {{ result.metrics.rmse }}{% if result.target_kind == 'datetime' %} seconds{% endif %}</div>
             {% endif %}
+            {% if result.metrics.r2 is not none %}
+              <div><span class="text-slate-400">R2:</span> {{ result.metrics.r2 }}</div>
+            {% endif %}
+            {% if result.metrics.elapsed_s is not none %}
+              <div><span class="text-slate-400">Time:</span> {{ result.metrics.elapsed_s }}s</div>
+            {% endif %}
 
             {% if result.diagnostics and (result.diagnostics.cleaning or result.diagnostics.multibuffer) %}
               <div class="pt-2 border-t border-slate-800"></div>

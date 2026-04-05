@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import math
+import time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi import File, UploadFile
@@ -31,6 +33,34 @@ from mycelium_app.settings import settings
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter(include_in_schema=False)
+
+
+def _r2_from_actual_pred(actual: list[object] | None, predicted: list[object] | None) -> float | None:
+    if not actual or not predicted:
+        return None
+    pairs: list[tuple[float, float]] = []
+    for a, b in zip(actual, predicted, strict=False):
+        if a is None or b is None:
+            continue
+        try:
+            af = float(a)
+            bf = float(b)
+        except Exception:
+            continue
+        if math.isfinite(af) and math.isfinite(bf):
+            pairs.append((af, bf))
+
+    if len(pairs) < 2:
+        return None
+
+    y_true = [p[0] for p in pairs]
+    y_pred = [p[1] for p in pairs]
+    y_bar = sum(y_true) / float(len(y_true))
+    ss_res = sum((a - b) ** 2 for a, b in zip(y_true, y_pred, strict=False))
+    ss_tot = sum((a - y_bar) ** 2 for a in y_true)
+    if ss_tot <= 0.0:
+        return 0.0
+    return 1.0 - (ss_res / ss_tot)
 
 
 def _get_web_user(request: Request, session: Session) -> User | None:
@@ -784,7 +814,13 @@ async def predict_action(
             base_kwargs["plane"] = PhysicsPlane(str(PRODUCTION_REGRESSION_KWARGS.get("plane", "gas")))
             preset_applied = PRODUCTION_REGRESSION_PRESET_NAME
 
+        t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
+        elapsed_s = float(time.perf_counter() - t0)
+
+        r2 = None
+        if pred.target_kind == "numeric":
+            r2 = _r2_from_actual_pred(getattr(pred, "test_actual", None), getattr(pred, "test_predicted", None))
 
         result = {
             "production_preset": preset_applied,
@@ -883,12 +919,14 @@ async def predict_action(
                 else round(float(pred.metrics.buffer_normality_p), 8),
                 "mae": None if pred.metrics.mae is None else round(float(pred.metrics.mae), 6),
                 "rmse": None if pred.metrics.rmse is None else round(float(pred.metrics.rmse), 6),
+                "r2": None if r2 is None else round(float(r2), 6),
                 "baseline_mae": None
                 if pred.metrics.baseline_mae is None
                 else round(float(pred.metrics.baseline_mae), 6),
                 "baseline_rmse": None
                 if pred.metrics.baseline_rmse is None
                 else round(float(pred.metrics.baseline_rmse), 6),
+                "elapsed_s": round(float(elapsed_s), 6),
                 "accuracy": None if pred.metrics.accuracy is None else round(float(pred.metrics.accuracy), 6),
                 "baseline_accuracy": None
                 if pred.metrics.baseline_accuracy is None
