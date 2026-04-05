@@ -8,3 +8,6 @@ __pycache__/
 
 storage/
 .env
+
+# Local experiment outputs / benchmark datasets (not part of the app)
+tmp_eval/

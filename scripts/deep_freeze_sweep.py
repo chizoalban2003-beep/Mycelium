@@ -182,7 +182,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Deep Freeze sweep (100c gas) over LR+exp_decay+buffer shift (+ optional Field-Effect coupling); prioritizes RMSE"
     )
-    parser.add_argument("--path", default="tmp_eval/job_salary_prediction_dataset.csv")
+    parser.add_argument("--path", required=True, help="Path to a CSV dataset")
     parser.add_argument("--nrows", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--train-fraction", type=float, default=0.8)

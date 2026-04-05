@@ -6,8 +6,8 @@ from typing import Any
 PRODUCTION_REGRESSION_PRESET_NAME = "v4.7_soft_multibuffer_20260405"
 
 # Locked production hyperparameters for numeric regression.
-# These are tuned on tmp_eval/job_salary_prediction_dataset.csv (nrows=8000, seed=42) but
-# intended as a strong general-purpose default for numeric targets.
+# These were tuned on an internal tabular regression benchmark, but are intended as a strong
+# general-purpose default for numeric targets.
 PRODUCTION_REGRESSION_KWARGS: dict[str, Any] = {
     # Deep Freeze backbone (gas plane, 100 cycles)
     "plane": "gas",

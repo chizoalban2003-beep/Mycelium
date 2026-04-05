@@ -119,10 +119,14 @@ def _frange(start: float, stop: float, step: float) -> list[float]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Benchmark Mycelium v4 vs DecisionTree vs RandomForest vs Gradient Boosting vs Neural Net (MLP) on the salary CSV"
+        description="Benchmark Mycelium vs sklearn regressors on a tabular CSV"
     )
-    parser.add_argument("--csv", default="tmp_eval/job_salary_prediction_dataset.csv")
-    parser.add_argument("--target", default="salary", help="Regression target column name, or 'random' to pick a numeric column")
+    parser.add_argument("--csv", required=True, help="Path to a CSV dataset")
+    parser.add_argument(
+        "--target",
+        default="salary",
+        help="Regression target column name (default: salary), or 'random' to pick a numeric column",
+    )
     parser.add_argument("--train-fraction", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--nrows", type=int, default=50_000, help="Rows to load (default 50k for speed). Use 0 for all.")
@@ -212,6 +216,11 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+
+    if not os.path.exists(args.csv):
+        raise SystemExit(
+            f"CSV not found: {args.csv}. Provide a dataset path via --csv (the repo no longer ships the old job-salary dataset)."
+        )
 
     nrows = None if int(args.nrows) == 0 else int(args.nrows)
     df = pd.read_csv(args.csv, nrows=nrows)

@@ -23,6 +23,11 @@ source .venv/bin/activate
 python -m pip install -r requirements/base.txt
 ```
 
+Notes:
+- Optional dependencies live in `requirements/`:
+	- `requirements/optional-analytics.txt` enables `scipy` stats + the `feature-engine` outlier backend (`cleaning_outlier_strategy=feature_engine`).
+	- `requirements/benchmarks.txt` is only needed for the `scripts/benchmark_*.py` scripts.
+
 3) Run the app:
 
 ```bash
@@ -48,3 +53,6 @@ Option B (API): `POST /api/auth/register`
 
 - SQLite DB is stored in `storage/mycelium.db` (created automatically).
 - `storage/` is ignored by git.
+
+Benchmarks / scratch data:
+- `tmp_eval/` is ignored by git (local outputs + datasets).

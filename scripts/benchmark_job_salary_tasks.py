@@ -713,8 +713,8 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark Mycelium vs sklearn on job_salary_prediction_dataset")
-    parser.add_argument("--path", default="tmp_eval/job_salary_prediction_dataset.csv")
+    parser = argparse.ArgumentParser(description="Benchmark Mycelium vs sklearn on a tabular CSV")
+    parser.add_argument("--path", required=True, help="Path to a CSV dataset")
     parser.add_argument("--nrows", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--train-fraction", type=float, default=0.8)
@@ -756,6 +756,8 @@ def main() -> int:
     args = parser.parse_args()
 
     path = Path(args.path)
+    if not path.exists():
+        raise SystemExit(f"Data not found: {path}. Provide a dataset path via --path.")
     df = pd.read_csv(path, nrows=int(args.nrows) if int(args.nrows) > 0 else None)
 
     print("Dataset:", str(path), f"(nrows={df.shape[0]})")

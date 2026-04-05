@@ -83,7 +83,7 @@ def _print_run(name: str, pred, seconds: float) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark selective + secondary ionization (cascade expansion)")
-    parser.add_argument("--path", default="tmp_eval/job_salary_prediction_dataset.csv")
+    parser.add_argument("--path", required=True, help="Path to a CSV dataset")
     parser.add_argument("--nrows", type=int, default=8000)
     parser.add_argument("--target", default="remote_work")
     parser.add_argument("--plane", default="gas", choices=["solid", "liquid", "gas"])
@@ -155,6 +155,9 @@ def main() -> int:
     parser.add_argument("--sec-sieve-update-max", type=float, default=0.003)
 
     args = parser.parse_args()
+
+    if not Path(args.path).exists():
+        raise SystemExit(f"Data not found: {args.path}. Provide a dataset path via --path.")
 
     df = pd.read_csv(args.path, nrows=int(args.nrows) if int(args.nrows) > 0 else None)
 
