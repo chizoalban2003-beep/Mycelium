@@ -45,7 +45,9 @@ class SweepCfg:
     multibuffer_q_low: float
     multibuffer_q_high: float
     multibuffer_low_visc: float
+    multibuffer_high_visc: float
     multibuffer_high_alpha_mult: float
+    multibuffer_transition_frac: float
 
 
 def _eval_one(cfg: SweepCfg, *, seed: int, train_fraction: float) -> dict[str, float | str]:
@@ -99,10 +101,11 @@ def _eval_one(cfg: SweepCfg, *, seed: int, train_fraction: float) -> dict[str, f
                 "multibuffer_q_high": float(cfg.multibuffer_q_high),
                 "multibuffer_low_viscosity_multiplier": float(cfg.multibuffer_low_visc),
                 "multibuffer_mid_viscosity_multiplier": 1.0,
-                "multibuffer_high_viscosity_multiplier": 1.0,
+                "multibuffer_high_viscosity_multiplier": float(cfg.multibuffer_high_visc),
                 "multibuffer_low_field_alpha_multiplier": 1.0,
                 "multibuffer_mid_field_alpha_multiplier": 1.0,
                 "multibuffer_high_field_alpha_multiplier": float(cfg.multibuffer_high_alpha_mult),
+                "multibuffer_transition_frac": float(cfg.multibuffer_transition_frac),
             }
         )
     else:
@@ -151,7 +154,9 @@ def _eval_one(cfg: SweepCfg, *, seed: int, train_fraction: float) -> dict[str, f
         "multibuffer_q_low": float(cfg.multibuffer_q_low),
         "multibuffer_q_high": float(cfg.multibuffer_q_high),
         "multibuffer_low_visc": float(cfg.multibuffer_low_visc),
+        "multibuffer_high_visc": float(cfg.multibuffer_high_visc),
         "multibuffer_high_alpha_mult": float(cfg.multibuffer_high_alpha_mult),
+        "multibuffer_transition_frac": float(cfg.multibuffer_transition_frac),
         "mae": mae,
         "rmse": rmse,
         "r2": r2,
@@ -234,17 +239,37 @@ def main() -> int:
 
     # Multi-Buffer (v4.6) sweep knobs. These are multiplied onto the grid.
     parser.add_argument("--multibuffer-enabled", action="store_true", help="Include Multi-Buffer configs in the sweep")
-    parser.add_argument("--multibuffer-q-low", type=float, default=0.33)
-    parser.add_argument("--multibuffer-q-high", type=float, default=0.67)
+    parser.add_argument("--multibuffer-q-low", type=float, default=0.33, help="Single q_low value (overridden by --multibuffer-q-low-values)")
+    parser.add_argument("--multibuffer-q-high", type=float, default=0.67, help="Single q_high value (overridden by --multibuffer-q-high-values)")
+    parser.add_argument(
+        "--multibuffer-q-low-values",
+        default="",
+        help="Comma-separated floats; sweep q_low values (e.g., 0.20,0.25,0.33,0.40)",
+    )
+    parser.add_argument(
+        "--multibuffer-q-high-values",
+        default="",
+        help="Comma-separated floats; sweep q_high values (e.g., 0.60,0.67,0.75,0.80)",
+    )
     parser.add_argument(
         "--multibuffer-low-visc-values",
         default="1.0,1.1,1.2",
         help="Comma-separated floats; low-zone viscosity multiplier (>1 slows low-salary updates)",
     )
     parser.add_argument(
+        "--multibuffer-high-visc-values",
+        default="1.0",
+        help="Comma-separated floats; high-zone viscosity multiplier (<1 speeds high-salary updates)",
+    )
+    parser.add_argument(
         "--multibuffer-high-alpha-values",
         default="1.0,1.1,1.2,1.3",
         help="Comma-separated floats; high-zone field-alpha multiplier (>1 strengthens coupling for high-salary rows)",
+    )
+    parser.add_argument(
+        "--multibuffer-transition-frac-values",
+        default="0.0",
+        help="Comma-separated floats; soft-zone transition width as fraction of (t_high-t_low). 0.0=hard zones.",
     )
     parser.add_argument(
         "--include-multibuffer-off",
@@ -289,33 +314,65 @@ def main() -> int:
         if not field_decay_vals:
             field_decay_vals = [1.0]
 
-    mb_q_low = float(args.multibuffer_q_low)
-    mb_q_high = float(args.multibuffer_q_high)
-    if not math.isfinite(mb_q_low):
-        mb_q_low = 0.33
-    if not math.isfinite(mb_q_high):
-        mb_q_high = 0.67
+    def _parse_csv_floats(raw: str) -> list[float]:
+        vals: list[float] = []
+        for x in [s.strip() for s in str(raw).split(",") if s.strip()]:
+            try:
+                v = float(x)
+            except Exception:
+                continue
+            if math.isfinite(v):
+                vals.append(float(v))
+        return vals
+
+    mb_q_low_single = float(args.multibuffer_q_low)
+    mb_q_high_single = float(args.multibuffer_q_high)
+    if not math.isfinite(mb_q_low_single):
+        mb_q_low_single = 0.33
+    if not math.isfinite(mb_q_high_single):
+        mb_q_high_single = 0.67
+
+    mb_q_low_vals = [v for v in _parse_csv_floats(str(args.multibuffer_q_low_values)) if 0.0 < v < 1.0]
+    mb_q_high_vals = [v for v in _parse_csv_floats(str(args.multibuffer_q_high_values)) if 0.0 < v < 1.0]
+    if not mb_q_low_vals:
+        mb_q_low_vals = [float(mb_q_low_single)]
+    if not mb_q_high_vals:
+        mb_q_high_vals = [float(mb_q_high_single)]
+
+    mb_q_pairs: list[tuple[float, float]] = []
+    for ql in mb_q_low_vals:
+        for qh in mb_q_high_vals:
+            ql2 = float(np.clip(float(ql), 0.01, 0.99))
+            qh2 = float(np.clip(float(qh), 0.01, 0.99))
+            if ql2 < qh2:
+                mb_q_pairs.append((ql2, qh2))
+    if not mb_q_pairs:
+        mb_q_pairs = [(0.33, 0.67)]
     mb_low_visc_vals: list[float] = []
+    mb_high_visc_vals: list[float] = []
     mb_high_alpha_vals: list[float] = []
+    mb_transition_fracs: list[float] = []
     if bool(args.multibuffer_enabled):
-        for x in [s.strip() for s in str(args.multibuffer_low_visc_values).split(",") if s.strip()]:
-            try:
-                v = float(x)
-            except Exception:
-                continue
+        for v in _parse_csv_floats(str(args.multibuffer_low_visc_values)):
             if math.isfinite(v) and v > 0:
-                mb_low_visc_vals.append(v)
-        for x in [s.strip() for s in str(args.multibuffer_high_alpha_values).split(",") if s.strip()]:
-            try:
-                v = float(x)
-            except Exception:
-                continue
+                mb_low_visc_vals.append(float(v))
+        for v in _parse_csv_floats(str(args.multibuffer_high_visc_values)):
             if math.isfinite(v) and v > 0:
-                mb_high_alpha_vals.append(v)
+                mb_high_visc_vals.append(float(v))
+        for v in _parse_csv_floats(str(args.multibuffer_high_alpha_values)):
+            if math.isfinite(v) and v > 0:
+                mb_high_alpha_vals.append(float(v))
+        for v in _parse_csv_floats(str(args.multibuffer_transition_frac_values)):
+            if math.isfinite(v) and v >= 0:
+                mb_transition_fracs.append(float(v))
         if not mb_low_visc_vals:
             mb_low_visc_vals = [1.0]
+        if not mb_high_visc_vals:
+            mb_high_visc_vals = [1.0]
         if not mb_high_alpha_vals:
             mb_high_alpha_vals = [1.0]
+        if not mb_transition_fracs:
+            mb_transition_fracs = [0.0]
 
     cfgs: list[SweepCfg] = []
     for lr in lrs:
@@ -339,20 +396,27 @@ def main() -> int:
             else:
                 field_cfgs.append((False, 0.0, 0, "linear", 1.0))
 
-            mb_cfgs: list[tuple[bool, float, float, float, float]] = []
-            # (enabled, q_low, q_high, low_visc, high_alpha_mult)
+            mb_cfgs: list[tuple[bool, float, float, float, float, float, float]] = []
+            # (enabled, q_low, q_high, low_visc, high_visc, high_alpha_mult, transition_frac)
             if bool(args.multibuffer_enabled):
                 if bool(args.include_multibuffer_off):
-                    mb_cfgs.append((False, float(mb_q_low), float(mb_q_high), 1.0, 1.0))
-                for lv in mb_low_visc_vals:
-                    for ha in mb_high_alpha_vals:
-                        mb_cfgs.append((True, float(mb_q_low), float(mb_q_high), float(lv), float(ha)))
+                    ql0, qh0 = mb_q_pairs[0]
+                    mb_cfgs.append((False, float(ql0), float(qh0), 1.0, 1.0, 1.0, 0.0))
+                for ql0, qh0 in mb_q_pairs:
+                    for lv in mb_low_visc_vals:
+                        for hv in mb_high_visc_vals:
+                            for ha in mb_high_alpha_vals:
+                                for tf in mb_transition_fracs:
+                                    mb_cfgs.append(
+                                        (True, float(ql0), float(qh0), float(lv), float(hv), float(ha), float(tf))
+                                    )
             else:
-                mb_cfgs.append((False, float(mb_q_low), float(mb_q_high), 1.0, 1.0))
+                ql0, qh0 = mb_q_pairs[0]
+                mb_cfgs.append((False, float(ql0), float(qh0), 1.0, 1.0, 1.0, 0.0))
 
             for buf_enabled, buf_gain, buf_min in buffer_cfgs:
                 for f_enabled, f_alpha, f_start, f_type, f_decay in field_cfgs:
-                    for mb_enabled0, mbql, mbqh, mblv, mbha in mb_cfgs:
+                    for mb_enabled0, mbql, mbqh, mblv, mbhv, mbha, mbtf in mb_cfgs:
                         cfgs.append(
                             SweepCfg(
                                 lr=lr,
@@ -369,7 +433,9 @@ def main() -> int:
                                 multibuffer_q_low=float(mbql),
                                 multibuffer_q_high=float(mbqh),
                                 multibuffer_low_visc=float(mblv),
+                                multibuffer_high_visc=float(mbhv),
                                 multibuffer_high_alpha_mult=float(mbha),
+                                multibuffer_transition_frac=float(mbtf),
                             )
                         )
 
@@ -399,7 +465,9 @@ def main() -> int:
         "multibuffer_q_low",
         "multibuffer_q_high",
         "multibuffer_low_visc",
+        "multibuffer_high_visc",
         "multibuffer_high_alpha_mult",
+        "multibuffer_transition_frac",
         "mae",
         "rmse",
         "r2",
@@ -480,7 +548,9 @@ def main() -> int:
             mb_txt = (
                 f" mb=1 q=({float(r.get('multibuffer_q_low', 0.33)):.2f},{float(r.get('multibuffer_q_high', 0.67)):.2f})"
                 f" low_visc={float(r.get('multibuffer_low_visc', 1.0)):.3f}"
+                f" high_visc={float(r.get('multibuffer_high_visc', 1.0)):.3f}"
                 f" high_alpha={float(r.get('multibuffer_high_alpha_mult', 1.0)):.3f}"
+                f" tf={float(r.get('multibuffer_transition_frac', 0.0)):.3f}"
             )
         else:
             mb_txt = " mb=0"

@@ -12,7 +12,17 @@ import pandas as pd
 
 from mycelium_app.db import get_session
 from mycelium_app.models import Project, ProjectMember, ProjectRole, TreeNode, User
-from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, run_physics_prediction
+from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
+from mycelium_app.presets import (
+    PRODUCTION_CLASSIFICATION_BALANCED_KWARGS,
+    PRODUCTION_CLASSIFICATION_BALANCED_PRESET_NAME,
+    PRODUCTION_CLASSIFICATION_MAX_ACCURACY_KWARGS,
+    PRODUCTION_CLASSIFICATION_MAX_ACCURACY_PRESET_NAME,
+    PRODUCTION_CLASSIFICATION_MAX_COVERAGE_KWARGS,
+    PRODUCTION_CLASSIFICATION_MAX_COVERAGE_PRESET_NAME,
+    PRODUCTION_REGRESSION_KWARGS,
+    PRODUCTION_REGRESSION_PRESET_NAME,
+)
 from mycelium_app.security import create_access_token
 from mycelium_app.security import decode_token
 from mycelium_app.settings import settings
@@ -271,6 +281,7 @@ def predict_page(
             "low_confidence_secondary_sieve_instability_min": 0.65,
             "low_confidence_secondary_sieve_conf_delta_max": 0.002,
             "low_confidence_secondary_sieve_update_norm_max": 0.003,
+            "classification_goal": "balanced",
         },
     )
 
@@ -343,6 +354,7 @@ async def predict_action(
     low_confidence_secondary_sieve_instability_min: float = Form(0.65),
     low_confidence_secondary_sieve_conf_delta_max: float = Form(0.002),
     low_confidence_secondary_sieve_update_norm_max: float = Form(0.003),
+    classification_goal: str = Form("balanced"),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -629,72 +641,96 @@ async def predict_action(
         competitive_inhibition_bool = bool(competitive_inhibition)
         thermal_noise_bool = bool(thermal_noise)
 
-        pred = run_physics_prediction(
-            df,
-            target_col=target_col,
-            plane=plane_enum,
-            train_fraction=float(train_ratio),
-            random_seed=int(random_seed),
-            top_k_weights=top_k,
-            n_cycles=n_cycles,
-            cycle_learning_rate=cycle_learning_rate,
-            cascade_enabled=cascade_enabled_bool,
-            competitive_inhibition=competitive_inhibition_bool,
-            thermal_noise=thermal_noise_bool,
-            stage2_cycles=stage2_cycles,
-            stage2_trigger_cycle=stage2_trigger_cycle,
-            inhibition_strength=inhibition_strength,
-            scavenger_cycles=scavenger_cycles,
-            stage2_shatter_complexes=bool(stage2_shatter_complexes),
-            low_confidence_mode=low_confidence_mode,
-            low_confidence_threshold=low_confidence_threshold,
-            low_confidence_entropy_threshold=low_confidence_entropy_threshold,
-            low_confidence_smear_metric=low_confidence_smear_metric,
-            low_confidence_combine_rule=low_confidence_combine_rule,
-            low_confidence_auto_conf_quantile=low_confidence_auto_conf_quantile,
-            low_confidence_auto_smear_quantile=low_confidence_auto_smear_quantile,
-            low_confidence_require_ionized=low_confidence_require_ionized_bool,
-            low_confidence_ionization_pvalue=low_confidence_ionization_pvalue,
-            low_confidence_ionization_z_min=low_confidence_ionization_z_min,
-            low_confidence_confirmatory_enabled=low_confidence_confirmatory_enabled_bool,
-            low_confidence_confirmatory_conf_min=low_confidence_confirmatory_conf_min,
-            low_confidence_confirmatory_conf_max=low_confidence_confirmatory_conf_max,
-            low_confidence_confirmatory_consensus_threshold=low_confidence_confirmatory_consensus_threshold,
-            low_confidence_confirmatory_min_ion_hits=low_confidence_confirmatory_min_ion_hits,
-            low_confidence_secondary_enabled=low_confidence_secondary_enabled_bool,
-            low_confidence_secondary_cycles=low_confidence_secondary_cycles,
-            low_confidence_secondary_viscosity_multiplier=low_confidence_secondary_viscosity_multiplier,
-            low_confidence_secondary_viscosity_anneal=low_confidence_secondary_viscosity_anneal_bool,
-            low_confidence_secondary_viscosity_multiplier_start=low_confidence_secondary_viscosity_multiplier_start,
-            low_confidence_secondary_inhibition_multiplier=low_confidence_secondary_inhibition_multiplier,
-            low_confidence_secondary_shear_multiplier=low_confidence_secondary_shear_multiplier,
-            low_confidence_secondary_relax_ionization_gate=low_confidence_secondary_relax_ionization_gate_bool,
-            low_confidence_secondary_ionization_z_min=low_confidence_secondary_ionization_z_min,
-            low_confidence_secondary_relaxed_ion_conf_min=low_confidence_secondary_relaxed_ion_conf_min,
-            low_confidence_secondary_use_spearman=low_confidence_secondary_use_spearman_bool,
-            low_confidence_secondary_spearman_min_abs=low_confidence_secondary_spearman_min_abs,
-            low_confidence_secondary_spearman_margin=low_confidence_secondary_spearman_margin,
-            low_confidence_secondary_promote_min_zone_votes=low_confidence_secondary_promote_min_zone_votes,
-            low_confidence_secondary_promote_z_min=low_confidence_secondary_promote_z_min,
-            low_confidence_secondary_promote_conf_min=low_confidence_secondary_promote_conf_min,
-            low_confidence_primary_sieve_enabled=low_confidence_primary_sieve_enabled_bool,
-            low_confidence_primary_sieve_cycle_a=low_confidence_primary_sieve_cycle_a,
-            low_confidence_primary_sieve_cycle_b=low_confidence_primary_sieve_cycle_b,
-            low_confidence_primary_sieve_shake_cycles=low_confidence_primary_sieve_shake_cycles,
-            low_confidence_primary_sieve_reverse_multiplier=low_confidence_primary_sieve_reverse_multiplier,
-            low_confidence_primary_sieve_noise_std=low_confidence_primary_sieve_noise_std,
-            low_confidence_primary_sieve_instability_min=low_confidence_primary_sieve_instability_min,
-            low_confidence_primary_sieve_conf_delta_max=low_confidence_primary_sieve_conf_delta_max,
-            low_confidence_secondary_sieve_enabled=low_confidence_secondary_sieve_enabled_bool,
-            low_confidence_secondary_sieve_cycles=low_confidence_secondary_sieve_cycles,
-            low_confidence_secondary_sieve_reverse_multiplier=low_confidence_secondary_sieve_reverse_multiplier,
-            low_confidence_secondary_sieve_noise_std=low_confidence_secondary_sieve_noise_std,
-            low_confidence_secondary_sieve_instability_min=low_confidence_secondary_sieve_instability_min,
-            low_confidence_secondary_sieve_conf_delta_max=low_confidence_secondary_sieve_conf_delta_max,
-            low_confidence_secondary_sieve_update_norm_max=low_confidence_secondary_sieve_update_norm_max,
-        )
+        base_kwargs: dict[str, object] = (lambda: {
+            "target_col": target_col,
+            "plane": plane_enum,
+            "train_fraction": float(train_ratio),
+            "random_seed": int(random_seed),
+            "top_k_weights": top_k,
+            "n_cycles": n_cycles,
+            "cycle_learning_rate": cycle_learning_rate,
+            "cascade_enabled": cascade_enabled_bool,
+            "competitive_inhibition": competitive_inhibition_bool,
+            "thermal_noise": thermal_noise_bool,
+            "stage2_cycles": stage2_cycles,
+            "stage2_trigger_cycle": stage2_trigger_cycle,
+            "inhibition_strength": inhibition_strength,
+            "scavenger_cycles": scavenger_cycles,
+            "stage2_shatter_complexes": bool(stage2_shatter_complexes),
+            "low_confidence_mode": low_confidence_mode,
+            "low_confidence_threshold": low_confidence_threshold,
+            "low_confidence_entropy_threshold": low_confidence_entropy_threshold,
+            "low_confidence_smear_metric": low_confidence_smear_metric,
+            "low_confidence_combine_rule": low_confidence_combine_rule,
+            "low_confidence_auto_conf_quantile": low_confidence_auto_conf_quantile,
+            "low_confidence_auto_smear_quantile": low_confidence_auto_smear_quantile,
+            "low_confidence_require_ionized": low_confidence_require_ionized_bool,
+            "low_confidence_ionization_pvalue": low_confidence_ionization_pvalue,
+            "low_confidence_ionization_z_min": low_confidence_ionization_z_min,
+            "low_confidence_confirmatory_enabled": low_confidence_confirmatory_enabled_bool,
+            "low_confidence_confirmatory_conf_min": low_confidence_confirmatory_conf_min,
+            "low_confidence_confirmatory_conf_max": low_confidence_confirmatory_conf_max,
+            "low_confidence_confirmatory_consensus_threshold": low_confidence_confirmatory_consensus_threshold,
+            "low_confidence_confirmatory_min_ion_hits": low_confidence_confirmatory_min_ion_hits,
+            "low_confidence_secondary_enabled": low_confidence_secondary_enabled_bool,
+            "low_confidence_secondary_cycles": low_confidence_secondary_cycles,
+            "low_confidence_secondary_viscosity_multiplier": low_confidence_secondary_viscosity_multiplier,
+            "low_confidence_secondary_viscosity_anneal": low_confidence_secondary_viscosity_anneal_bool,
+            "low_confidence_secondary_viscosity_multiplier_start": low_confidence_secondary_viscosity_multiplier_start,
+            "low_confidence_secondary_inhibition_multiplier": low_confidence_secondary_inhibition_multiplier,
+            "low_confidence_secondary_shear_multiplier": low_confidence_secondary_shear_multiplier,
+            "low_confidence_secondary_relax_ionization_gate": low_confidence_secondary_relax_ionization_gate_bool,
+            "low_confidence_secondary_ionization_z_min": low_confidence_secondary_ionization_z_min,
+            "low_confidence_secondary_relaxed_ion_conf_min": low_confidence_secondary_relaxed_ion_conf_min,
+            "low_confidence_secondary_use_spearman": low_confidence_secondary_use_spearman_bool,
+            "low_confidence_secondary_spearman_min_abs": low_confidence_secondary_spearman_min_abs,
+            "low_confidence_secondary_spearman_margin": low_confidence_secondary_spearman_margin,
+            "low_confidence_secondary_promote_min_zone_votes": low_confidence_secondary_promote_min_zone_votes,
+            "low_confidence_secondary_promote_z_min": low_confidence_secondary_promote_z_min,
+            "low_confidence_secondary_promote_conf_min": low_confidence_secondary_promote_conf_min,
+            "low_confidence_primary_sieve_enabled": low_confidence_primary_sieve_enabled_bool,
+            "low_confidence_primary_sieve_cycle_a": low_confidence_primary_sieve_cycle_a,
+            "low_confidence_primary_sieve_cycle_b": low_confidence_primary_sieve_cycle_b,
+            "low_confidence_primary_sieve_shake_cycles": low_confidence_primary_sieve_shake_cycles,
+            "low_confidence_primary_sieve_reverse_multiplier": low_confidence_primary_sieve_reverse_multiplier,
+            "low_confidence_primary_sieve_noise_std": low_confidence_primary_sieve_noise_std,
+            "low_confidence_primary_sieve_instability_min": low_confidence_primary_sieve_instability_min,
+            "low_confidence_primary_sieve_conf_delta_max": low_confidence_primary_sieve_conf_delta_max,
+            "low_confidence_secondary_sieve_enabled": low_confidence_secondary_sieve_enabled_bool,
+            "low_confidence_secondary_sieve_cycles": low_confidence_secondary_sieve_cycles,
+            "low_confidence_secondary_sieve_reverse_multiplier": low_confidence_secondary_sieve_reverse_multiplier,
+            "low_confidence_secondary_sieve_noise_std": low_confidence_secondary_sieve_noise_std,
+            "low_confidence_secondary_sieve_instability_min": low_confidence_secondary_sieve_instability_min,
+            "low_confidence_secondary_sieve_conf_delta_max": low_confidence_secondary_sieve_conf_delta_max,
+            "low_confidence_secondary_sieve_update_norm_max": low_confidence_secondary_sieve_update_norm_max,
+        })()
+
+        preset_applied: str | None = None
+        try:
+            tk = infer_target_kind(df[target_col])
+        except Exception:
+            tk = "numeric"
+        if tk == "categorical" and settings.predictor_lock_production_classification_preset:
+            goal = str(classification_goal or "balanced").strip().lower()
+            if goal in ("max_accuracy", "accuracy", "precise"):
+                base_kwargs.update(PRODUCTION_CLASSIFICATION_MAX_ACCURACY_KWARGS)
+                preset_applied = PRODUCTION_CLASSIFICATION_MAX_ACCURACY_PRESET_NAME
+            elif goal in ("max_coverage", "coverage", "broad"):
+                base_kwargs.update(PRODUCTION_CLASSIFICATION_MAX_COVERAGE_KWARGS)
+                preset_applied = PRODUCTION_CLASSIFICATION_MAX_COVERAGE_PRESET_NAME
+            else:
+                base_kwargs.update(PRODUCTION_CLASSIFICATION_BALANCED_KWARGS)
+                preset_applied = PRODUCTION_CLASSIFICATION_BALANCED_PRESET_NAME
+        elif settings.predictor_lock_production_regression_preset and tk in ("numeric", "datetime"):
+            # Override base kwargs with locked production regression settings.
+            base_kwargs.update(PRODUCTION_REGRESSION_KWARGS)
+            base_kwargs["plane"] = PhysicsPlane(str(PRODUCTION_REGRESSION_KWARGS.get("plane", "gas")))
+            preset_applied = PRODUCTION_REGRESSION_PRESET_NAME
+
+        pred = run_physics_prediction(df, **base_kwargs)
 
         result = {
+            "production_preset": preset_applied,
             "target": pred.target,
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,
@@ -928,5 +964,6 @@ async def predict_action(
             "low_confidence_secondary_sieve_instability_min": low_confidence_secondary_sieve_instability_min,
             "low_confidence_secondary_sieve_conf_delta_max": low_confidence_secondary_sieve_conf_delta_max,
             "low_confidence_secondary_sieve_update_norm_max": low_confidence_secondary_sieve_update_norm_max,
+            "classification_goal": classification_goal,
         },
     )

@@ -13,5 +13,13 @@ class Settings(BaseSettings):
     cookie_name: str = "mycelium_access_token"
     cookie_secure: bool = False
 
+    # When true, numeric targets (regression/datetime) will use the locked production
+    # preset hyperparameters unless explicitly overridden in code.
+    predictor_lock_production_regression_preset: bool = True
+
+    # When true, categorical targets (classification) will use the locked production
+    # preset hyperparameters unless explicitly overridden in code.
+    predictor_lock_production_classification_preset: bool = True
+
 
 settings = Settings()

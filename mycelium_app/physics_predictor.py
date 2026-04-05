@@ -1460,6 +1460,7 @@ def run_physics_prediction(
     multibuffer_low_field_alpha_multiplier: float = 1.00,
     multibuffer_mid_field_alpha_multiplier: float = 1.00,
     multibuffer_high_field_alpha_multiplier: float = 1.15,
+    multibuffer_transition_frac: float = 0.0,
     low_confidence_mode: Literal["none", "flag", "abstain"] = "none",
     low_confidence_threshold: float = 0.0,
     low_confidence_entropy_threshold: float = 0.0,
@@ -1749,6 +1750,11 @@ def run_physics_prediction(
         mb_alpha_mid = 1.00
     if not math.isfinite(mb_alpha_high) or mb_alpha_high <= 0.0:
         mb_alpha_high = 1.15
+
+    mb_transition_frac = float(multibuffer_transition_frac)
+    if not math.isfinite(mb_transition_frac) or mb_transition_frac <= 0.0:
+        mb_transition_frac = 0.0
+    mb_transition_frac = float(np.clip(mb_transition_frac, 0.0, 0.50))
 
     target_series = df[target_col]
     target_kind = infer_target_kind(target_series)
@@ -2094,6 +2100,7 @@ def run_physics_prediction(
         # Zones are assigned per-row using the model's current predictions (avoids leakage).
         mb_t_low: float | None = None
         mb_t_high: float | None = None
+        mb_transition_width: float = 0.0
         multibuffer_diag: dict[str, Any] | None = None
         if mb_enabled:
             try:
@@ -2114,12 +2121,17 @@ def run_physics_prediction(
             if mb_t_low is None or mb_t_high is None:
                 mb_enabled = False
             else:
+                mb_transition_width = float(mb_transition_frac) * float(mb_t_high - mb_t_low)
+                if not math.isfinite(mb_transition_width) or mb_transition_width <= 0.0:
+                    mb_transition_width = 0.0
                 multibuffer_diag = {
                     "enabled": True,
                     "q_low": float(mb_q_low),
                     "q_high": float(mb_q_high),
                     "t_low": float(mb_t_low),
                     "t_high": float(mb_t_high),
+                    "transition_frac": float(mb_transition_frac),
+                    "transition_width": float(mb_transition_width),
                     "viscosity_multipliers": {
                         "low": float(mb_visc_low),
                         "mid": float(mb_visc_mid),
@@ -2140,22 +2152,51 @@ def run_physics_prediction(
                 ones = np.ones(n, dtype="float64")
                 return ones, ones
 
-            zone = np.full(n, 1, dtype="int8")  # default mid
             finite = np.isfinite(pred_now)
-            if bool(np.any(finite)):
-                p = pred_now
-                zone[(finite) & (p < float(mb_t_low))] = 0
-                zone[(finite) & (p >= float(mb_t_high))] = 2
+            if mb_transition_width <= 0.0:
+                zone = np.full(n, 1, dtype="int8")  # default mid
+                if bool(np.any(finite)):
+                    p = pred_now
+                    zone[(finite) & (p < float(mb_t_low))] = 0
+                    zone[(finite) & (p >= float(mb_t_high))] = 2
 
-            visc = np.ones(n, dtype="float64")
-            alpha = np.ones(n, dtype="float64")
-            visc[zone == 0] = float(mb_visc_low)
-            visc[zone == 1] = float(mb_visc_mid)
-            visc[zone == 2] = float(mb_visc_high)
-            alpha[zone == 0] = float(mb_alpha_low)
-            alpha[zone == 1] = float(mb_alpha_mid)
-            alpha[zone == 2] = float(mb_alpha_high)
-            return visc, alpha
+                visc = np.ones(n, dtype="float64")
+                alpha = np.ones(n, dtype="float64")
+                visc[zone == 0] = float(mb_visc_low)
+                visc[zone == 1] = float(mb_visc_mid)
+                visc[zone == 2] = float(mb_visc_high)
+                alpha[zone == 0] = float(mb_alpha_low)
+                alpha[zone == 1] = float(mb_alpha_mid)
+                alpha[zone == 2] = float(mb_alpha_high)
+                return visc, alpha
+
+            # Soft (sigmoidal) transitions to reduce boundary oscillation.
+            p = pred_now.astype("float64", copy=False)
+            p = np.where(finite, p, 0.5 * (float(mb_t_low) + float(mb_t_high)))
+
+            w = float(mb_transition_width)
+            z_low = (p - float(mb_t_low)) / w
+            z_high = (p - float(mb_t_high)) / w
+            z_low = np.clip(z_low, -60.0, 60.0)
+            z_high = np.clip(z_high, -60.0, 60.0)
+            s_low = 1.0 / (1.0 + np.exp(-z_low))
+            s_high = 1.0 / (1.0 + np.exp(-z_high))
+
+            w_low = 1.0 - s_low
+            w_high = s_high
+            w_mid = np.clip(s_low - s_high, 0.0, 1.0)
+
+            w_sum = w_low + w_mid + w_high
+            w_sum = np.where(w_sum > 1e-12, w_sum, 1.0)
+            w_low = w_low / w_sum
+            w_mid = w_mid / w_sum
+            w_high = w_high / w_sum
+
+            visc = w_low * float(mb_visc_low) + w_mid * float(mb_visc_mid) + w_high * float(mb_visc_high)
+            alpha = w_low * float(mb_alpha_low) + w_mid * float(mb_alpha_mid) + w_high * float(mb_alpha_high)
+            visc = np.clip(visc, 1e-6, 1e9)
+            alpha = np.clip(alpha, 1e-6, 1e9)
+            return visc.astype("float64", copy=False), alpha.astype("float64", copy=False)
         baseline_mae, baseline_rmse = _numeric_metrics(y[test_mask], pred[test_mask])
         if target_kind == "datetime":
             baseline_mae /= 1e9
