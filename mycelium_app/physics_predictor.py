@@ -138,6 +138,307 @@ class PredictorError(ValueError):
     pass
 
 
+def _missing_like_mask(series: pd.Series) -> np.ndarray:
+    """Return a boolean mask of values that should be treated as missing.
+
+    Applies a pragmatic definition that catches NaN/NA and common string sentinels.
+    """
+
+    s = series
+    base = s.isna().to_numpy(dtype=bool)
+    try:
+        s_str = s.astype("string")
+        lowered = s_str.str.strip().str.lower()
+        sent = lowered.isin(["", "nan", "none", "null", "nat", "<na>"])
+        base = base | sent.fillna(False).to_numpy(dtype=bool)
+    except Exception:
+        # If string casting fails, keep NaN-only behavior.
+        pass
+    return base
+
+
+def _clean_dataframe_for_prediction(
+    df: pd.DataFrame,
+    *,
+    target_col: str,
+    train_mask: np.ndarray | None = None,
+    drop_duplicates: bool = True,
+    drop_missing_target: bool = True,
+    impute_missing: bool = True,
+    clip_numeric_outliers: bool = True,
+    outlier_strategy: Literal["winsorize", "iqr", "gaussian", "mad", "arbitrary", "feature_engine", "none"] = "winsorize",
+    outlier_fold: float = 1.5,
+    outlier_q_low: float = 0.005,
+    outlier_q_high: float = 0.995,
+    arbitrary_min: float | None = None,
+    arbitrary_max: float | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    diag: dict[str, Any] = {
+        "drop_duplicates": bool(drop_duplicates),
+        "drop_missing_target": bool(drop_missing_target),
+        "impute_missing": bool(impute_missing),
+        "clip_numeric_outliers": bool(clip_numeric_outliers),
+        "outlier_strategy": str(outlier_strategy),
+        "outlier_fold": float(outlier_fold),
+        "outlier_q_low": float(outlier_q_low),
+        "outlier_q_high": float(outlier_q_high),
+        "arbitrary_min": arbitrary_min,
+        "arbitrary_max": arbitrary_max,
+    }
+
+    n0 = int(df.shape[0])
+    diag["n_rows_in"] = n0
+
+    out = df
+    if drop_duplicates:
+        n_before = int(out.shape[0])
+        out = out.drop_duplicates()
+        diag["dropped_duplicates"] = int(n_before - int(out.shape[0]))
+
+    if drop_missing_target:
+        if target_col in out.columns:
+            n_before = int(out.shape[0])
+            missing_tgt = _missing_like_mask(out[target_col])
+            if missing_tgt.any():
+                out = out.loc[~missing_tgt]
+            diag["dropped_missing_target"] = int(n_before - int(out.shape[0]))
+        else:
+            diag["dropped_missing_target"] = 0
+
+    # If we changed row count, ensure dense row indices for downstream preview/test indexing.
+    if int(out.shape[0]) != n0:
+        out = out.reset_index(drop=True)
+
+    if train_mask is None:
+        diag["n_rows_out"] = int(out.shape[0])
+        return out, diag
+
+    # Feature-level imputation/outlier clipping using TRAIN stats only.
+    n_imputed_total = 0
+    n_clipped_total = 0
+    clipped_cols: list[str] = []
+
+    strategy = str(outlier_strategy or "winsorize").strip().lower()
+    if strategy not in ("winsorize", "iqr", "gaussian", "mad", "arbitrary", "feature_engine", "none"):
+        strategy = "winsorize"
+
+    use_feature_engine_backend = bool(clip_numeric_outliers) and strategy == "feature_engine"
+
+    feature_cols = [c for c in out.columns if c != target_col]
+    for col in feature_cols:
+        s = out[col]
+
+        # Bool columns: impute missing with train mode, keep as bool-ish.
+        if pd.api.types.is_bool_dtype(s):
+            if not impute_missing:
+                continue
+            s0 = s.astype("object")
+            miss = s0.isna().to_numpy(dtype=bool)
+            if int(miss.sum()) == 0:
+                continue
+            train_vals = s0.to_numpy(copy=False)[train_mask]
+            train_vals = train_vals[pd.notna(train_vals)]
+            fill = bool(train_vals[0]) if train_vals.size else False
+            n_imputed_total += int(miss.sum())
+            out[col] = s0.fillna(fill).astype(bool)
+            continue
+
+        # Numeric columns: coerce to float, impute median, optionally clip outliers.
+        if pd.api.types.is_numeric_dtype(s):
+            x_all = pd.to_numeric(s, errors="coerce").to_numpy(dtype="float64")
+            x_train = x_all[train_mask]
+            finite_train = x_train[np.isfinite(x_train)]
+            fill = float(np.nanmedian(finite_train)) if finite_train.size else 0.0
+            if not math.isfinite(fill):
+                fill = 0.0
+
+            missing_mask = ~np.isfinite(x_all)
+            if impute_missing and int(missing_mask.sum()) > 0:
+                n_imputed_total += int(missing_mask.sum())
+                x_all = np.where(missing_mask, fill, x_all)
+
+            if clip_numeric_outliers and strategy != "none" and not use_feature_engine_backend:
+                # Need a minimum number of finite train points to define robust caps.
+                if finite_train.size >= 16:
+                    lo: float | None = None
+                    hi: float | None = None
+
+                    if strategy == "winsorize":
+                        ql = float(max(0.0, min(0.499, float(outlier_q_low))))
+                        qh = float(max(0.501, min(1.0, float(outlier_q_high))))
+                        lo = float(np.quantile(finite_train, ql))
+                        hi = float(np.quantile(finite_train, qh))
+                    elif strategy == "iqr":
+                        q1 = float(np.quantile(finite_train, 0.25))
+                        q3 = float(np.quantile(finite_train, 0.75))
+                        iqr = float(q3 - q1)
+                        f = float(outlier_fold)
+                        if not math.isfinite(f) or f <= 0:
+                            f = 1.5
+                        lo = q1 - f * iqr
+                        hi = q3 + f * iqr
+                    elif strategy == "gaussian":
+                        mu = float(np.mean(finite_train))
+                        sd = float(np.std(finite_train))
+                        f = float(outlier_fold)
+                        if not math.isfinite(f) or f <= 0:
+                            f = 3.0
+                        lo = mu - f * sd
+                        hi = mu + f * sd
+                    elif strategy == "mad":
+                        med = float(np.median(finite_train))
+                        mad = float(np.median(np.abs(finite_train - med)))
+                        # Consistent MAD estimate of sigma.
+                        mad_sigma = 1.4826 * mad
+                        f = float(outlier_fold)
+                        if not math.isfinite(f) or f <= 0:
+                            f = 3.5
+                        lo = med - f * mad_sigma
+                        hi = med + f * mad_sigma
+                    elif strategy == "arbitrary":
+                        lo = None if arbitrary_min is None else float(arbitrary_min)
+                        hi = None if arbitrary_max is None else float(arbitrary_max)
+
+                    if lo is not None and not math.isfinite(float(lo)):
+                        lo = None
+                    if hi is not None and not math.isfinite(float(hi)):
+                        hi = None
+                    if lo is None and hi is None:
+                        lo = None
+                        hi = None
+
+                    if lo is not None and hi is not None and float(hi) < float(lo):
+                        lo, hi = hi, lo
+
+                    if lo is not None or hi is not None:
+                        # np.clip requires both; emulate with where if one side missing.
+                        before = x_all
+                        if lo is not None and hi is not None:
+                            x_all = np.clip(x_all, float(lo), float(hi))
+                        elif lo is not None:
+                            x_all = np.where(x_all < float(lo), float(lo), x_all)
+                        elif hi is not None:
+                            x_all = np.where(x_all > float(hi), float(hi), x_all)
+                        clipped_mask = np.isfinite(before) & np.isfinite(x_all) & (before != x_all)
+                        if int(clipped_mask.sum()) > 0:
+                            n_clipped_total += int(clipped_mask.sum())
+                            clipped_cols.append(str(col))
+
+            out[col] = x_all
+            continue
+
+        # Datetime columns: impute missing with train median timestamp.
+        if pd.api.types.is_datetime64_any_dtype(s):
+            if impute_missing:
+                x_all = s.view("int64").to_numpy(dtype="int64", copy=True)
+                # pandas uses NaT == min int
+                nat = np.iinfo(np.int64).min
+                x_train = x_all[train_mask]
+                finite_train = x_train[x_train != nat]
+                fill = int(np.median(finite_train)) if finite_train.size else 0
+                missing = x_all == nat
+                if int(missing.sum()) > 0:
+                    n_imputed_total += int(missing.sum())
+                    x_all[missing] = fill
+                    out[col] = pd.to_datetime(x_all)
+            continue
+
+        # Everything else: treat as categorical-like; impute missing tokens.
+        if impute_missing:
+            miss = _missing_like_mask(s)
+            if int(miss.sum()) > 0:
+                n_imputed_total += int(miss.sum())
+                s_str = s.astype("string").fillna("__MISSING__")
+                try:
+                    s_str = s_str.mask(miss, "__MISSING__")
+                except Exception:
+                    pass
+                out[col] = s_str
+            else:
+                # Normalize to string for consistent downstream handling.
+                try:
+                    out[col] = s.astype("string")
+                except Exception:
+                    pass
+
+    diag["n_rows_out"] = int(out.shape[0])
+    diag["imputed_values"] = int(n_imputed_total)
+    diag["clipped_outliers"] = int(n_clipped_total)
+    diag["clipped_columns"] = sorted(set(clipped_cols))[:50]
+
+    if use_feature_engine_backend:
+        try:
+            from feature_engine.outliers import Winsorizer  # type: ignore
+
+            numeric_cols = [
+                c
+                for c in feature_cols
+                if pd.api.types.is_numeric_dtype(out[c]) and not pd.api.types.is_bool_dtype(out[c])
+            ]
+            if numeric_cols:
+                fe_train = out.loc[train_mask, numeric_cols].copy()
+                fe_all = out[numeric_cols].copy()
+                wins = Winsorizer(
+                    capping_method="iqr",
+                    tail="both",
+                    fold=float(outlier_fold),
+                    variables=numeric_cols,
+                )
+                wins.fit(fe_train)
+                fe_all2 = wins.transform(fe_all)
+                for c in numeric_cols:
+                    before = pd.to_numeric(out[c], errors="coerce").to_numpy(dtype="float64")
+                    after = pd.to_numeric(fe_all2[c], errors="coerce").to_numpy(dtype="float64")
+                    changed = np.isfinite(before) & np.isfinite(after) & (before != after)
+                    if int(changed.sum()) > 0:
+                        n_clipped_total += int(changed.sum())
+                        clipped_cols.append(str(c))
+                    out[c] = after
+                diag["feature_engine"] = {"ok": True, "method": "winsorizer_iqr"}
+                diag["clipped_outliers"] = int(n_clipped_total)
+                diag["clipped_columns"] = sorted(set(clipped_cols))[:50]
+            else:
+                diag["feature_engine"] = {"ok": True, "method": "winsorizer_iqr", "note": "no numeric columns"}
+        except Exception as e:
+            diag["feature_engine"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    return out, diag
+
+
+def clean_tabular_dataframe(
+    df: pd.DataFrame,
+    *,
+    target_col: str,
+    train_mask: np.ndarray | None = None,
+    drop_duplicates: bool = True,
+    drop_missing_target: bool = True,
+    impute_missing: bool = True,
+    clip_numeric_outliers: bool = True,
+    outlier_strategy: Literal["winsorize", "iqr", "gaussian", "mad", "arbitrary", "feature_engine", "none"] = "winsorize",
+    outlier_fold: float = 1.5,
+    outlier_q_low: float = 0.005,
+    outlier_q_high: float = 0.995,
+    arbitrary_min: float | None = None,
+    arbitrary_max: float | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Public wrapper for the predictor cleaning pass."""
+
+    return _clean_dataframe_for_prediction(
+        df,
+        target_col=target_col,
+        train_mask=train_mask,
+        drop_duplicates=drop_duplicates,
+        drop_missing_target=drop_missing_target,
+        impute_missing=impute_missing,
+        clip_numeric_outliers=clip_numeric_outliers,
+        outlier_strategy=outlier_strategy,
+        outlier_fold=outlier_fold,
+        outlier_q_low=outlier_q_low,
+        outlier_q_high=outlier_q_high,
+        arbitrary_min=arbitrary_min,
+        arbitrary_max=arbitrary_max,
+    )
+
+
 def _primer_strength_from_p(
     p_value: float | None,
     *,
@@ -1538,16 +1839,64 @@ def run_physics_prediction(
     pcr_strength_cap: float = 2.5,
     pcr_amp_cap: float = 3.5,
     pcr_require_stable: bool = True,
+    cleaning_enabled: bool = True,
+    cleaning_drop_duplicates: bool = True,
+    cleaning_drop_missing_target: bool = True,
+    cleaning_impute_missing: bool = True,
+    cleaning_clip_numeric_outliers: bool = True,
+    cleaning_outlier_strategy: Literal["winsorize", "iqr", "gaussian", "mad", "arbitrary", "feature_engine", "none"] = "winsorize",
+    cleaning_outlier_fold: float = 1.5,
+    cleaning_outlier_q_low: float = 0.005,
+    cleaning_outlier_q_high: float = 0.995,
+    cleaning_arbitrary_min: float | None = None,
+    cleaning_arbitrary_max: float | None = None,
     return_predictions: bool = False,
 ) -> PredictionResult:
-    _require_scipy()
     if target_col not in df.columns:
         raise PredictorError(f"Target column '{target_col}' not found. Columns: {list(df.columns)}")
+
+    # Basic cleaning (dedupe + drop missing target) BEFORE split, so masks align with cleaned df.
+    cleaning_diag: dict[str, Any] | None = None
+    if bool(cleaning_enabled):
+        df, cleaning_diag = _clean_dataframe_for_prediction(
+            df,
+            target_col=target_col,
+            train_mask=None,
+            drop_duplicates=bool(cleaning_drop_duplicates),
+            drop_missing_target=bool(cleaning_drop_missing_target),
+            impute_missing=False,
+            clip_numeric_outliers=False,
+        )
 
     if df.shape[0] < 3:
         raise PredictorError("Need at least 3 rows")
 
     train_mask, test_mask = _train_test_split_mask(int(df.shape[0]), train_fraction, random_seed)
+
+    # Train-stat cleaning (impute + outlier clip) AFTER split, using TRAIN stats only.
+    if bool(cleaning_enabled):
+        df, cleaning_diag2 = _clean_dataframe_for_prediction(
+            df,
+            target_col=target_col,
+            train_mask=train_mask,
+            drop_duplicates=False,
+            drop_missing_target=False,
+            impute_missing=bool(cleaning_impute_missing),
+            clip_numeric_outliers=bool(cleaning_clip_numeric_outliers),
+            outlier_strategy=str(cleaning_outlier_strategy),
+            outlier_fold=float(cleaning_outlier_fold),
+            outlier_q_low=float(cleaning_outlier_q_low),
+            outlier_q_high=float(cleaning_outlier_q_high),
+            arbitrary_min=cleaning_arbitrary_min,
+            arbitrary_max=cleaning_arbitrary_max,
+        )
+        # Merge per-phase diagnostics (prefer post-split flags/stats).
+        if cleaning_diag is None:
+            cleaning_diag = cleaning_diag2
+        else:
+            cleaning_diag = {**cleaning_diag, **cleaning_diag2}
+
+    _require_scipy()
 
     vib_enabled = bool(vibrational_viscosity_enabled)
     vib_period = int(vibrational_viscosity_period)
@@ -2750,7 +3099,14 @@ def run_physics_prediction(
             iteration_gains=iteration_gains,
             metrics=metrics,
             preview_rows=preview,
-            diagnostics=None if multibuffer_diag is None else {"multibuffer": multibuffer_diag},
+            diagnostics=(
+                None
+                if (cleaning_diag is None and multibuffer_diag is None)
+                else {
+                    **({} if cleaning_diag is None else {"cleaning": cleaning_diag}),
+                    **({} if multibuffer_diag is None else {"multibuffer": multibuffer_diag}),
+                }
+            ),
             test_row_indices=test_row_indices,
             test_actual=test_actual,
             test_predicted=test_predicted,
@@ -4151,7 +4507,14 @@ def run_physics_prediction(
         iteration_gains=iteration_gains,
         metrics=metrics,
         preview_rows=preview,
-        diagnostics=None if selective_diagnostics is None else {"selective": selective_diagnostics},
+        diagnostics=(
+            None
+            if (cleaning_diag is None and selective_diagnostics is None)
+            else {
+                **({} if cleaning_diag is None else {"cleaning": cleaning_diag}),
+                **({} if selective_diagnostics is None else {"selective": selective_diagnostics}),
+            }
+        ),
         test_row_indices=test_row_indices,
         test_actual=test_actual,
         test_predicted=test_predicted,

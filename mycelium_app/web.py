@@ -282,6 +282,13 @@ def predict_page(
             "low_confidence_secondary_sieve_conf_delta_max": 0.002,
             "low_confidence_secondary_sieve_update_norm_max": 0.003,
             "classification_goal": "balanced",
+            "cleaning_enabled": True,
+            "cleaning_outlier_strategy": "winsorize",
+            "cleaning_outlier_fold": 1.5,
+            "cleaning_outlier_q_low": 0.005,
+            "cleaning_outlier_q_high": 0.995,
+            "cleaning_arbitrary_min": None,
+            "cleaning_arbitrary_max": None,
         },
     )
 
@@ -355,6 +362,13 @@ async def predict_action(
     low_confidence_secondary_sieve_conf_delta_max: float = Form(0.002),
     low_confidence_secondary_sieve_update_norm_max: float = Form(0.003),
     classification_goal: str = Form("balanced"),
+    cleaning_enabled: str | None = Form(None),
+    cleaning_outlier_strategy: str = Form("winsorize"),
+    cleaning_outlier_fold: float = Form(1.5),
+    cleaning_outlier_q_low: float = Form(0.005),
+    cleaning_outlier_q_high: float = Form(0.995),
+    cleaning_arbitrary_min: float | None = Form(None),
+    cleaning_arbitrary_max: float | None = Form(None),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -376,6 +390,7 @@ async def predict_action(
     low_confidence_secondary_use_spearman_bool = bool(low_confidence_secondary_use_spearman)
     low_confidence_secondary_sieve_enabled_bool = bool(low_confidence_secondary_sieve_enabled)
     low_confidence_primary_sieve_enabled_bool = bool(low_confidence_primary_sieve_enabled)
+    cleaning_enabled_bool = bool(cleaning_enabled)
 
     try:
         plane_enum = PhysicsPlane(plane)
@@ -637,6 +652,36 @@ async def predict_action(
             low_confidence_secondary_sieve_update_norm_max = 0.003
         low_confidence_secondary_sieve_update_norm_max = max(0.0, min(10.0, low_confidence_secondary_sieve_update_norm_max))
 
+        # Cleaning/outlier controls
+        cleaning_outlier_strategy = str(cleaning_outlier_strategy or "winsorize").strip().lower()
+        if cleaning_outlier_strategy not in ("winsorize", "iqr", "gaussian", "mad", "arbitrary", "feature_engine", "none"):
+            cleaning_outlier_strategy = "winsorize"
+        try:
+            cleaning_outlier_fold = float(cleaning_outlier_fold)
+        except Exception:
+            cleaning_outlier_fold = 1.5
+        cleaning_outlier_fold = max(0.01, min(50.0, cleaning_outlier_fold))
+        try:
+            cleaning_outlier_q_low = float(cleaning_outlier_q_low)
+        except Exception:
+            cleaning_outlier_q_low = 0.005
+        try:
+            cleaning_outlier_q_high = float(cleaning_outlier_q_high)
+        except Exception:
+            cleaning_outlier_q_high = 0.995
+        cleaning_outlier_q_low = max(0.0, min(0.49, cleaning_outlier_q_low))
+        cleaning_outlier_q_high = max(0.51, min(1.0, cleaning_outlier_q_high))
+        if cleaning_arbitrary_min is not None:
+            try:
+                cleaning_arbitrary_min = float(cleaning_arbitrary_min)
+            except Exception:
+                cleaning_arbitrary_min = None
+        if cleaning_arbitrary_max is not None:
+            try:
+                cleaning_arbitrary_max = float(cleaning_arbitrary_max)
+            except Exception:
+                cleaning_arbitrary_max = None
+
         cascade_enabled_bool = bool(cascade_enabled)
         competitive_inhibition_bool = bool(competitive_inhibition)
         thermal_noise_bool = bool(thermal_noise)
@@ -703,6 +748,13 @@ async def predict_action(
             "low_confidence_secondary_sieve_instability_min": low_confidence_secondary_sieve_instability_min,
             "low_confidence_secondary_sieve_conf_delta_max": low_confidence_secondary_sieve_conf_delta_max,
             "low_confidence_secondary_sieve_update_norm_max": low_confidence_secondary_sieve_update_norm_max,
+            "cleaning_enabled": cleaning_enabled_bool,
+            "cleaning_outlier_strategy": cleaning_outlier_strategy,
+            "cleaning_outlier_fold": cleaning_outlier_fold,
+            "cleaning_outlier_q_low": cleaning_outlier_q_low,
+            "cleaning_outlier_q_high": cleaning_outlier_q_high,
+            "cleaning_arbitrary_min": cleaning_arbitrary_min,
+            "cleaning_arbitrary_max": cleaning_arbitrary_max,
         })()
 
         preset_applied: str | None = None
@@ -881,6 +933,9 @@ async def predict_action(
         # Predictor-level diagnostics (e.g. abstain reason breakdown).
         try:
             if getattr(pred, "diagnostics", None):
+                cleaning = (pred.diagnostics or {}).get("cleaning")
+                if cleaning:
+                    result.setdefault("diagnostics", {})["cleaning"] = cleaning
                 sel = (pred.diagnostics or {}).get("selective")
                 if sel:
                     result.setdefault("diagnostics", {})["abstain_breakdown"] = sel
@@ -965,5 +1020,12 @@ async def predict_action(
             "low_confidence_secondary_sieve_conf_delta_max": low_confidence_secondary_sieve_conf_delta_max,
             "low_confidence_secondary_sieve_update_norm_max": low_confidence_secondary_sieve_update_norm_max,
             "classification_goal": classification_goal,
+            "cleaning_enabled": cleaning_enabled_bool,
+            "cleaning_outlier_strategy": cleaning_outlier_strategy,
+            "cleaning_outlier_fold": cleaning_outlier_fold,
+            "cleaning_outlier_q_low": cleaning_outlier_q_low,
+            "cleaning_outlier_q_high": cleaning_outlier_q_high,
+            "cleaning_arbitrary_min": cleaning_arbitrary_min,
+            "cleaning_arbitrary_max": cleaning_arbitrary_max,
         },
     )

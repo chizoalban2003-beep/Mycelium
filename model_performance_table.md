@@ -3,6 +3,13 @@ Model performance (regression) — sweep winners vs baselines
 Dataset: tmp_eval/job_salary_prediction_dataset.csv (nrows=8000)
 Seed=42 | train_fraction=0.8 | target=salary
 
+Preprocessing (new default): enabled.
+- Pre-split: drop duplicate rows + drop missing target rows
+- Post-split: impute missing + cap numeric outliers using TRAIN stats only
+- Default outlier strategy: winsorize quantiles q_low=0.005, q_high=0.995
+
+Note: on this particular 8k salary slice, the default cleaning pass reports `imputed_values=0` and `clipped_outliers=0`, so the metrics are unchanged versus the prior (pre-cleaning) benchmark.
+
 Key result: Soft Multi-Buffer (v4.7 “Liquid-Crystal” probe: sigmoidal zone transitions) breaks the 5k MAE mark on this 8k slice (MAE 5568.80 → 4981.64; RMSE 7231.86 → 6361.90). Field-Effect coupling remains a safe additive.
 
 Interpretation (as of April 5, 2026): the Field-Effect sweep suggests the model benefits from an earlier, long-range attraction phase (start=40) with slightly increasing coupling strength (field_decay=1.01). The Multi-Buffer results indicate the larger remaining error was not just “more cycles”, but heterogeneous dynamics: low-salary rows benefit from higher effective viscosity (slower updates) while high-salary rows benefit from lower viscosity (faster settling). Adding a soft (sigmoidal) transition reduces boundary oscillation and gives another meaningful accuracy step.

@@ -80,6 +80,13 @@ async def electrophoresis_predict(
     low_confidence_secondary_sieve_conf_delta_max: float = Form(0.002),
     low_confidence_secondary_sieve_update_norm_max: float = Form(0.003),
     classification_goal: str = Form("balanced"),
+    cleaning_enabled: bool = Form(True),
+    cleaning_outlier_strategy: str = Form("winsorize"),
+    cleaning_outlier_fold: float = Form(1.5),
+    cleaning_outlier_q_low: float = Form(0.005),
+    cleaning_outlier_q_high: float = Form(0.995),
+    cleaning_arbitrary_min: float | None = Form(None),
+    cleaning_arbitrary_max: float | None = Form(None),
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -159,6 +166,13 @@ async def electrophoresis_predict(
             "low_confidence_secondary_sieve_instability_min": float(low_confidence_secondary_sieve_instability_min),
             "low_confidence_secondary_sieve_conf_delta_max": float(low_confidence_secondary_sieve_conf_delta_max),
             "low_confidence_secondary_sieve_update_norm_max": float(low_confidence_secondary_sieve_update_norm_max),
+            "cleaning_enabled": bool(cleaning_enabled),
+            "cleaning_outlier_strategy": str(cleaning_outlier_strategy),
+            "cleaning_outlier_fold": float(cleaning_outlier_fold),
+            "cleaning_outlier_q_low": float(cleaning_outlier_q_low),
+            "cleaning_outlier_q_high": float(cleaning_outlier_q_high),
+            "cleaning_arbitrary_min": cleaning_arbitrary_min,
+            "cleaning_arbitrary_max": cleaning_arbitrary_max,
         }
 
         preset_applied: str | None = None

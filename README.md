@@ -23,6 +23,9 @@ source .venv/bin/activate
 python -m pip install -r requirements/base.txt
 ```
 
+Notes:
+- `requirements/base.txt` includes `feature-engine` to support optional outlier capping backends (`cleaning_outlier_strategy=feature_engine`).
+
 3) Run the app:
 
 ```bash
