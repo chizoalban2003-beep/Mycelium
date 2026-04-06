@@ -67,9 +67,13 @@ New API surface for "observe → propose → approve → execute":
 - `GET /api/nexus/tasks/replicas/recent`
 - `POST /api/nexus/tasks/replicas/{replica_id}/decision`
 - `POST /api/nexus/tasks/replicas/{replica_id}/ack`
+- `POST /api/nexus/tasks/replicas/{replica_id}/verify` (reports real focus outcome)
 
 Approved replicas are queued into the existing device action outbox for local
 companion execution.
+
+Verification updates the directive confidence and stores evidence in GrowthLedger
+(`domain=task_replica_focus`, `metric=adherence`).
 
 ### Child trajectory capture: manual first, auto optional
 

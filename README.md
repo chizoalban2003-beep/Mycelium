@@ -163,6 +163,16 @@ Optional: auto-capture trajectories from child app-open transitions:
 - `CHILD_BEARER_TOKEN=<access-token>` (or `CHILD_EMAIL` + `CHILD_PASSWORD`)
 - Run `./scripts/run_child.sh`
 
+Success verification loop (recommended):
+
+- `POST /api/nexus/tasks/replicas/{id}/verify`
+
+Helper script:
+
+- `python3 scripts/report_task_replica_focus.py --base-url <url> --token <token> --replica-id <id> --planned-minutes 45 --focused-minutes 45 --completed`
+
+This updates directive confidence and records a growth-ledger outcome for learning.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

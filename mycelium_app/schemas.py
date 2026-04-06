@@ -496,6 +496,25 @@ class TaskReplicaAckResponse(BaseModel):
     status: str
 
 
+class TaskReplicaVerifyRequest(BaseModel):
+    planned_minutes: int = 45
+    focused_minutes: int = 0
+    completed: bool = False
+    closed_early: bool = False
+    interruption_count: int = 0
+    notes: str = ""
+
+
+class TaskReplicaVerifyResponse(BaseModel):
+    ok: bool = True
+    replica_id: int
+    adherence: float
+    accepted: bool
+    reward_delta: float
+    updated_species_confidence: float
+    growth_entry_id: int | None = None
+
+
 class TaskBootstrapWorkSessionRequest(BaseModel):
     project_id: int | None = None
     device_id: str | None = None

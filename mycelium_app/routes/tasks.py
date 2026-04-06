@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import HiveOutboxMessage, ProjectMember, ProjectRole, TaskReplica, TaskTrajectory, User
+from mycelium_app.models import GrowthLedgerEntry, HiveOutboxMessage, ProjectMember, ProjectRole, TaskReplica, TaskTrajectory, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
     TaskBootstrapWorkSessionRequest,
@@ -22,6 +22,8 @@ from mycelium_app.schemas import (
     TaskReplicaProposeRequest,
     TaskReplicaProposeResponse,
     TaskReplicaPublic,
+    TaskReplicaVerifyRequest,
+    TaskReplicaVerifyResponse,
     TaskTrajectoryRecordRequest,
     TaskTrajectoryRecordResponse,
 )
@@ -379,3 +381,96 @@ def replica_ack(
     session.commit()
 
     return TaskReplicaAckResponse(ok=True, replica_id=int(row.id or 0), status=status)
+
+
+@router.post("/replicas/{replica_id}/verify", response_model=TaskReplicaVerifyResponse)
+def replica_verify(
+    replica_id: int,
+    payload: TaskReplicaVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Report post-execution outcomes so directives can self-tune over time."""
+
+    user_id = int(current_user.id or 0)
+    row = session.exec(
+        select(TaskReplica).where(TaskReplica.id == int(replica_id), TaskReplica.created_by_user_id == user_id)
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Replica not found")
+
+    planned = max(1, min(int(payload.planned_minutes), 24 * 60))
+    focused = max(0, min(int(payload.focused_minutes), 24 * 60))
+    interruptions = max(0, min(int(payload.interruption_count), 10_000))
+    adherence = max(0.0, min(float(focused) / float(planned), 1.0))
+
+    accepted = bool(payload.completed) and (adherence >= 0.80) and (not bool(payload.closed_early))
+
+    # Conservative reward shaping for confidence updates.
+    base_delta = 0.05 if accepted else -0.05
+    scale = (0.50 + (0.50 * adherence)) if accepted else (0.50 + (0.50 * (1.0 - adherence)))
+    reward_delta = float(base_delta * scale)
+
+    old_conf = max(0.0, min(float(row.species_confidence or 0.0), 1.0))
+    new_conf = max(0.0, min(old_conf + reward_delta, 1.0))
+
+    row.species_confidence = float(new_conf)
+    row.updated_at = datetime.utcnow()
+    if accepted and str(row.status or "") in {"approved", "executed"}:
+        row.status = "executed"
+    elif not accepted and str(row.status or "") not in {"executed", "failed", "rejected"}:
+        row.status = "failed"
+
+    verify_note = (
+        f"verify: planned={planned} focused={focused} adherence={adherence:.3f} "
+        f"completed={bool(payload.completed)} closed_early={bool(payload.closed_early)} interruptions={interruptions}"
+    )
+    note_extra = str(payload.notes or "").strip()[:500]
+    if note_extra:
+        verify_note = f"{verify_note}; note={note_extra}"
+    prev = str(row.notes or "").strip()
+    row.notes = (f"{prev}\n{verify_note}" if prev else verify_note)[:1000]
+    session.add(row)
+
+    growth = GrowthLedgerEntry(
+        created_by_user_id=user_id,
+        project_id=row.project_id,
+        device_id=str(row.device_id or settings.nexus_device_id or "local")[:64],
+        domain="task_replica_focus",
+        metric="adherence",
+        score=float(adherence),
+        accepted=bool(accepted),
+        proposal_json=_dumps(
+            {
+                "replica_id": int(row.id or 0),
+                "trajectory_key": str(row.trajectory_key or ""),
+                "capability": str(row.capability or ""),
+            }
+        ),
+        outcome_json=_dumps(
+            {
+                "planned_minutes": planned,
+                "focused_minutes": focused,
+                "completed": bool(payload.completed),
+                "closed_early": bool(payload.closed_early),
+                "interruption_count": interruptions,
+                "old_species_confidence": old_conf,
+                "new_species_confidence": new_conf,
+                "reward_delta": reward_delta,
+            }
+        ),
+        notes="Task replica verification feedback",
+    )
+    session.add(growth)
+    session.commit()
+    session.refresh(growth)
+
+    return TaskReplicaVerifyResponse(
+        ok=True,
+        replica_id=int(row.id or 0),
+        adherence=float(round(adherence, 6)),
+        accepted=bool(accepted),
+        reward_delta=float(round(reward_delta, 6)),
+        updated_species_confidence=float(round(new_conf, 6)),
+        growth_entry_id=int(growth.id or 0),
+    )
