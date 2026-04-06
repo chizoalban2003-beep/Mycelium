@@ -55,6 +55,33 @@ Option B (API): `POST /api/auth/register`
 - SQLite DB is stored in `storage/mycelium.db` (created automatically).
 - `storage/` is ignored by git.
 
+## Passive Telemetry (Silent-24)
+
+This repo includes a best-effort Linux PassiveTelemetry daemon that posts `app_open` signals into the Nexus telemetry ledger.
+
+Requirements:
+- X11 session (needs `DISPLAY`)
+- `xprop` installed (Debian/Ubuntu: `sudo apt-get install x11-utils`)
+
+Run (logs in to get a token, then starts posting app changes):
+
+```bash
+python scripts/passive_telemetry_daemon.py \
+	--base-url http://127.0.0.1:8000 \
+	--email you@example.com \
+	--password "change-me" \
+	--device-id local \
+	--poll-seconds 2
+```
+
+Dry-run (prints events, does not POST):
+
+```bash
+python scripts/passive_telemetry_daemon.py --dry-run
+```
+
+Note: Wayland support is not implemented yet.
+
 Benchmarks / scratch data:
 - `tmp_eval/` is ignored by git (local outputs + datasets). This repo no longer ships the benchmark dataset.
 - Use your own CSV when running benchmark scripts, e.g. `python scripts/benchmark_salary_models.py --csv /path/to/data.csv --target salary`.
