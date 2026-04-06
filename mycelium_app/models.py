@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+from uuid import uuid4
 
 from sqlmodel import Field, SQLModel
 
@@ -92,3 +93,64 @@ class PhysicsLedgerEntry(SQLModel, table=True):
     applied_kwargs_json: str = "{}"
     score_metric: str = Field(default="", index=True)
     score_value: float = 0.0
+
+
+class ExperienceBufferEntry(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+
+    # Stable identifier for export/import across devices.
+    entry_uuid: str = Field(default_factory=lambda: uuid4().hex, index=True, unique=True)
+
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    device_id: str = Field(default="", index=True)
+    source: str = Field(default="text", index=True)  # e.g. text,file,api
+    modality: str = Field(default="auto", index=True)  # e.g. finance,style,grammar
+
+    raw_text: str = ""
+    extracted_json: str = "{}"  # JSON payload (ionized atoms / style profile / etc.)
+    physics_used_json: str = "{}"  # optional: physics knobs used during an action
+
+    confidence: float | None = Field(default=None, index=True)
+    feedback: str = ""  # optional human feedback (thumbs-up/down notes)
+    tags_json: str = "[]"
+
+
+class NexusPolicy(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True, unique=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    policy_json: str = "{}"
+
+
+class HiveOutboxReport(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    device_id: str = Field(default="", index=True)
+    report_json: str = "{}"  # anonymized aggregates only
+    submitted_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class HiveGlobalUpdate(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    update_uuid: str = Field(default_factory=lambda: uuid4().hex, index=True, unique=True)
+    source: str = Field(default="manual_import", index=True)
+    version: str = Field(default="", index=True)
+    update_json: str = "{}"  # e.g. recommended knobs, safe allowlisted fields
+
+
+class SignalLedgerEvent(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    device_id: str = Field(default="", index=True)
+    signal_type: str = Field(default="", index=True)  # e.g. screen,onoff,app,network,text_sample
+    payload_json: str = "{}"  # JSON dict; must never contain raw secrets by policy

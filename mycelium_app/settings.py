@@ -32,5 +32,16 @@ class Settings(BaseSettings):
     predictor_physics_ledger_min_accuracy_to_store: float = 0.55
     predictor_physics_ledger_min_gel_confidence_mean_to_store: float = 0.95
 
+    # Proofgrid Nexus (assistant) settings.
+    nexus_device_id: str = "local"
+
+    # Nexus parental defaults (can be overridden per-user via /api/nexus/policy).
+    nexus_intro_mode: str = "observe"  # ask | observe
+    nexus_observe_hours: int = 24
+
+    # Proofgrid HiveSync (federated learning) MVP toggles.
+    hive_enabled: bool = False
+    hive_export_enabled_default: bool = False
+
 
 settings = Settings()

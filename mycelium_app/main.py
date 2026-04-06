@@ -6,8 +6,11 @@ from fastapi.staticfiles import StaticFiles
 from mycelium_app.db import create_db_and_tables
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.game import router as game_router
+from mycelium_app.routes.hive import router as hive_router
+from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.predict import router as predict_router
 from mycelium_app.routes.projects import router as projects_router
+from mycelium_app.routes.telemetry import router as telemetry_router
 from mycelium_app.routes.tree import router as tree_router
 from mycelium_app.settings import settings
 from mycelium_app.web import router as web_router
@@ -28,6 +31,9 @@ def health():
 
 app.include_router(auth_router)
 app.include_router(game_router)
+app.include_router(hive_router)
+app.include_router(nexus_router)
+app.include_router(telemetry_router)
 app.include_router(predict_router)
 app.include_router(projects_router)
 app.include_router(tree_router)
