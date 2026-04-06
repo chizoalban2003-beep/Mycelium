@@ -10,10 +10,12 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.growth import compute_growth_stage
-from mycelium_app.models import GrowthLedgerEntry, ProjectMember, SignalLedgerEvent, User
+from mycelium_app.models import GrowthLedgerEntry, NexusNudge, ProjectMember, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.schemas import (
+    TelemetryAssistantActionRequest,
+    TelemetryAssistantActionResponse,
     TelemetryDeepFreezeSweepRequest,
     TelemetryDeepFreezeSweepResponse,
     TelemetryAssistantTickResponse,
@@ -382,3 +384,124 @@ def assistant_tick(
         created = False
 
     return TelemetryAssistantTickResponse(ok=True, created=bool(created))
+
+
+def _loads_dict(s: str | None) -> dict:
+    if not s:
+        return {}
+    try:
+        v = json.loads(s)
+        return v if isinstance(v, dict) else {}
+    except Exception:
+        return {}
+
+
+@router.post("/assistant/action", response_model=TelemetryAssistantActionResponse)
+def assistant_action(
+    payload: TelemetryAssistantActionRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Approve/reject a telemetry assistant proposed action.
+
+    Safety: actions execute only after explicit user approval.
+    """
+
+    user_id = int(current_user.id or 0)
+    nudge = session.exec(
+        select(NexusNudge).where(
+            NexusNudge.id == int(payload.nudge_id),
+            NexusNudge.created_by_user_id == user_id,
+        )
+    ).first()
+    if not nudge:
+        raise HTTPException(status_code=404, detail="Nudge not found")
+
+    decision = str(payload.decision or "approve").strip().lower()
+    if decision not in {"approve", "reject"}:
+        raise HTTPException(status_code=400, detail="decision must be approve|reject")
+
+    action_id = str(payload.action_id or "").strip()[:64]
+    if not action_id:
+        raise HTTPException(status_code=400, detail="action_id is required")
+
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    actions_enabled = bool(actions_cfg.get("enabled", False))
+    require_confirm = bool(actions_cfg.get("require_confirm", True))
+    if not actions_enabled:
+        raise HTTPException(status_code=403, detail="Device actions disabled by parental policy")
+
+    # Confirm this action is one of the proposed actions in nudge payload.
+    nudge_payload = _loads_dict(nudge.payload_json)
+    actions = nudge_payload.get("actions") if isinstance(nudge_payload.get("actions"), list) else []
+    allowed_ids = {
+        str(a.get("action_id") or "").strip()
+        for a in actions
+        if isinstance(a, dict) and str(a.get("action_id") or "").strip()
+    }
+    if action_id not in allowed_ids:
+        raise HTTPException(status_code=400, detail="Action not proposed by this nudge")
+
+    if decision == "reject":
+        if nudge.seen_at is None:
+            nudge.seen_at = datetime.utcnow()
+            session.add(nudge)
+            session.commit()
+        return TelemetryAssistantActionResponse(
+            ok=True,
+            executed=False,
+            action_id=action_id,
+            decision=decision,
+            detail="Action rejected by user.",
+            sweep_entry_id=None,
+        )
+
+    if require_confirm is False:
+        # For safety we still require explicit call to this endpoint; this branch simply documents policy state.
+        pass
+
+    sweep_entry_id: int | None = None
+    detail = ""
+
+    if action_id == "run_deep_freeze_sweep":
+        req = TelemetryDeepFreezeSweepRequest(
+            project_id=nudge.project_id,
+            device_id=(None if not isinstance(nudge_payload.get("device_id"), str) else str(nudge_payload.get("device_id"))),
+            window_hours=int(nudge_payload.get("window_hours", 24) or 24),
+            min_pairs=30,
+            accept_r2_threshold=0.90,
+        )
+        res = deep_freeze_sweep(payload=req, current_user=current_user, session=session)
+        sweep_entry_id = int(res.entry_id)
+        detail = f"Deep Freeze sweep executed (r2={res.r2}, accuracy={res.accuracy})."
+    elif action_id == "suggest_focus_zone":
+        followup = NexusNudge(
+            created_by_user_id=user_id,
+            project_id=nudge.project_id,
+            kind="telemetry_focus_zone",
+            title="Focus Zone ready",
+            message=(
+                "I prepared a Focus-Zone suggestion from your recent signals. "
+                "Try a 45-minute deep-work block and then confirm/correct this recommendation."
+            ),
+            payload_json=_dumps({"source_nudge_id": int(nudge.id or 0), "action_id": action_id}),
+        )
+        session.add(followup)
+        detail = "Focus-Zone suggestion queued."
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported action_id")
+
+    if nudge.seen_at is None:
+        nudge.seen_at = datetime.utcnow()
+        session.add(nudge)
+    session.commit()
+
+    return TelemetryAssistantActionResponse(
+        ok=True,
+        executed=True,
+        action_id=action_id,
+        decision=decision,
+        detail=detail,
+        sweep_entry_id=sweep_entry_id,
+    )

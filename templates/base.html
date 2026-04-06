@@ -35,6 +35,7 @@
           <div>
             <div id="nudgeTitle" class="font-semibold text-slate-100"></div>
             <div id="nudgeMessage" class="text-sm text-slate-300 mt-1"></div>
+            <div id="nudgeActions" class="hidden mt-3"></div>
             <div id="nudgeHints" class="hidden mt-3"></div>
             <div id="nudgeHintStatus" class="hidden mt-2 text-xs text-slate-400"></div>
           </div>
@@ -84,10 +85,11 @@
         const banner = document.getElementById('nudgeBanner');
         const titleEl = document.getElementById('nudgeTitle');
         const msgEl = document.getElementById('nudgeMessage');
+        const actionsEl = document.getElementById('nudgeActions');
         const hintsEl = document.getElementById('nudgeHints');
         const statusEl = document.getElementById('nudgeHintStatus');
         const dismissBtn = document.getElementById('nudgeDismiss');
-        if (!banner || !titleEl || !msgEl || !dismissBtn || !hintsEl || !statusEl) return;
+        if (!banner || !titleEl || !msgEl || !actionsEl || !dismissBtn || !hintsEl || !statusEl) return;
 
         try {
           const r = await fetch('/api/nexus/nudges/recent?limit=1&unseen_only=true', { credentials: 'same-origin' });
@@ -112,10 +114,84 @@
 
           // Render any Hive hints (curiosity tags) with confirm/correct actions.
           const hints = (n.payload && Array.isArray(n.payload.curiosity_hints)) ? n.payload.curiosity_hints : [];
+          const actions = (n.payload && Array.isArray(n.payload.actions)) ? n.payload.actions : [];
+          actionsEl.innerHTML = '';
+          actionsEl.classList.add('hidden');
           hintsEl.innerHTML = '';
           hintsEl.classList.add('hidden');
           statusEl.textContent = '';
           statusEl.classList.add('hidden');
+
+          if (actions.length) {
+            const header = document.createElement('div');
+            header.className = 'text-xs text-slate-400';
+            header.textContent = 'Assistant actions:';
+            actionsEl.appendChild(header);
+
+            actions.slice(0, 4).forEach((a) => {
+              const actionId = String((a && a.action_id) || '').slice(0, 64);
+              if (!actionId) return;
+
+              const row = document.createElement('div');
+              row.className = 'mt-2 flex flex-wrap items-center gap-2';
+
+              const label = document.createElement('span');
+              label.className = 'text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700';
+              label.textContent = String((a && a.title) || actionId).slice(0, 72);
+              row.appendChild(label);
+
+              const btnApprove = document.createElement('button');
+              btnApprove.className = 'text-xs px-2 py-1 rounded bg-emerald-900/50 hover:bg-emerald-800/60 border border-emerald-700';
+              btnApprove.textContent = 'Approve';
+
+              const btnReject = document.createElement('button');
+              btnReject.className = 'text-xs px-2 py-1 rounded bg-rose-900/40 hover:bg-rose-800/50 border border-rose-700';
+              btnReject.textContent = 'Reject';
+
+              async function runAction(decision) {
+                btnApprove.disabled = true;
+                btnReject.disabled = true;
+                statusEl.textContent = '';
+                statusEl.classList.add('hidden');
+                try {
+                  const r3 = await fetch('/api/nexus/telemetry/assistant/action', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      nudge_id: n.id,
+                      action_id: actionId,
+                      decision: String(decision || 'approve')
+                    })
+                  });
+                  const d3 = await r3.json().catch(() => ({}));
+                  if (!r3.ok) {
+                    statusEl.textContent = (d3 && d3.detail) ? String(d3.detail) : 'Action failed.';
+                    statusEl.classList.remove('hidden');
+                    return;
+                  }
+                  statusEl.textContent = String((d3 && d3.detail) || 'Action recorded.');
+                  statusEl.classList.remove('hidden');
+                  await loadNudgeBanner();
+                } catch (e) {
+                  statusEl.textContent = 'Action failed.';
+                  statusEl.classList.remove('hidden');
+                } finally {
+                  btnApprove.disabled = false;
+                  btnReject.disabled = false;
+                }
+              }
+
+              btnApprove.onclick = () => runAction('approve');
+              btnReject.onclick = () => runAction('reject');
+              row.appendChild(btnApprove);
+              row.appendChild(btnReject);
+
+              actionsEl.appendChild(row);
+            });
+
+            actionsEl.classList.remove('hidden');
+          }
 
           if (hints.length) {
             const header = document.createElement('div');

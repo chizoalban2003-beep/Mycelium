@@ -358,6 +358,21 @@ class TelemetryAssistantTickResponse(BaseModel):
     created: bool = False
 
 
+class TelemetryAssistantActionRequest(BaseModel):
+    nudge_id: int
+    action_id: str
+    decision: str = "approve"  # approve|reject
+
+
+class TelemetryAssistantActionResponse(BaseModel):
+    ok: bool = True
+    executed: bool = False
+    action_id: str
+    decision: str
+    detail: str = ""
+    sweep_entry_id: int | None = None
+
+
 class TelemetryDeepFreezeSweepRequest(BaseModel):
     project_id: int | None = None
     device_id: str | None = None
