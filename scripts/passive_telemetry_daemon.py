@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -9,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections import deque
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -202,6 +204,44 @@ def _post_app_open(
         raise RuntimeError(f"telemetry ingest failed ({res.status}): {parsed}")
 
 
+def _slug_app_token(app_token: str) -> str:
+    s = str(app_token or "").strip().lower()
+    s = re.sub(r"[^a-z0-9._-]+", "_", s)
+    return s[:96]
+
+
+def _post_trajectory_record(
+    *,
+    base_url: str,
+    token: str,
+    project_id: int | None,
+    device_id: str | None,
+    sequence: list[str],
+    app_state: dict[str, object],
+    input_vector: dict[str, object],
+    confidence: float,
+    dry_run: bool,
+) -> None:
+    body: dict[str, object] = {
+        "project_id": project_id,
+        "device_id": device_id,
+        "sequence": sequence,
+        "app_state": app_state,
+        "input_vector": input_vector,
+        "confidence": max(0.0, min(float(confidence), 1.0)),
+        "support_count": 1,
+    }
+    if dry_run:
+        print(json.dumps({"would_post_trajectory": body}, ensure_ascii=False))
+        return
+
+    url = base_url.rstrip("/") + "/api/nexus/tasks/trajectory/record"
+    res = _request("POST", url, token=token, json_body=body)
+    if res.status != 200:
+        parsed = _parse_json_maybe(res.body_text)
+        raise RuntimeError(f"trajectory record failed ({res.status}): {parsed}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
@@ -215,6 +255,28 @@ def main() -> int:
     parser.add_argument("--project-id", type=int, default=None)
     parser.add_argument("--poll-seconds", type=float, default=2.0)
     parser.add_argument("--dry-run", action="store_true", help="Print events but do not POST")
+    parser.add_argument(
+        "--trajectory-capture-enabled",
+        action="store_true",
+        help="Also infer and POST trajectory sequences from app-open transitions.",
+    )
+    parser.add_argument(
+        "--trajectory-window-size",
+        type=int,
+        default=3,
+        help="How many recent app transitions to include in inferred sequence (2..8).",
+    )
+    parser.add_argument(
+        "--trajectory-cooldown-seconds",
+        type=int,
+        default=600,
+        help="Minimum interval between identical inferred trajectory posts.",
+    )
+    parser.add_argument(
+        "--trajectory-must-include-csv",
+        default="mycelium",
+        help="Comma-separated app token fragments; at least one must appear in the window.",
+    )
 
     auth = parser.add_argument_group("auth")
     auth.add_argument("--token", default=None, help="Bearer token (preferred)")
@@ -240,6 +302,13 @@ def main() -> int:
         raise SystemExit("Missing dependency: xprop (install package 'x11-utils' on Debian/Ubuntu)")
 
     poll = max(0.25, min(float(args.poll_seconds), 30.0))
+    traj_window = max(2, min(int(args.trajectory_window_size), 8))
+    traj_cooldown = max(10, min(int(args.trajectory_cooldown_seconds), 86_400))
+    must_include = {
+        p.strip().lower()
+        for p in str(args.trajectory_must_include_csv or "").split(",")
+        if p.strip()
+    }
 
     stop = {"value": False}
 
@@ -251,6 +320,8 @@ def main() -> int:
 
     last_app: str | None = None
     last_window: str | None = None
+    app_roll: deque[str] = deque(maxlen=traj_window)
+    last_traj_sent_at: dict[str, float] = {}
 
     print(
         json.dumps(
@@ -290,6 +361,42 @@ def main() -> int:
                         dry_run=bool(args.dry_run),
                     )
                     print(json.dumps({"event": "app_open", "app": app, "at": _utc_now_iso()}, ensure_ascii=False))
+
+                    if bool(args.trajectory_capture_enabled):
+                        app_roll.append(app)
+                        if len(app_roll) >= traj_window:
+                            lowered = [str(x).strip().lower() for x in app_roll]
+                            if must_include and not any(any(m in a for m in must_include) for a in lowered):
+                                pass
+                            else:
+                                seq = [f"open_app:{_slug_app_token(x)}" for x in app_roll]
+                                sig = hashlib.sha256("|".join(seq).encode("utf-8")).hexdigest()[:32]
+                                now_ts = time.time()
+                                prev = float(last_traj_sent_at.get(sig, 0.0) or 0.0)
+                                if (now_ts - prev) >= float(traj_cooldown):
+                                    _post_trajectory_record(
+                                        base_url=str(args.base_url),
+                                        token=str(token or ""),
+                                        project_id=args.project_id,
+                                        device_id=args.device_id,
+                                        sequence=seq,
+                                        app_state={"backend": "x11", "window_size": int(traj_window)},
+                                        input_vector={"source": "passive_telemetry", "signal_type": "app_open"},
+                                        confidence=0.60,
+                                        dry_run=bool(args.dry_run),
+                                    )
+                                    last_traj_sent_at[sig] = now_ts
+                                    print(
+                                        json.dumps(
+                                            {
+                                                "event": "trajectory_recorded",
+                                                "trajectory_sig": sig,
+                                                "sequence": seq,
+                                                "at": _utc_now_iso(),
+                                            },
+                                            ensure_ascii=False,
+                                        )
+                                    )
                 except Exception as e:
                     print(json.dumps({"error": str(e), "at": _utc_now_iso()}, ensure_ascii=False), file=sys.stderr)
 

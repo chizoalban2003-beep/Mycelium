@@ -71,6 +71,22 @@ New API surface for "observe → propose → approve → execute":
 Approved replicas are queued into the existing device action outbox for local
 companion execution.
 
+### Child trajectory capture: manual first, auto optional
+
+Recommended rollout:
+
+1) Manual-quality phase: record trajectories intentionally for a few sessions.
+2) Optional auto phase: let child passively infer trajectories from app-open patterns.
+
+`run_child.sh` now supports opt-in auto capture:
+
+- `CHILD_AUTO_CAPTURE_TRAJECTORIES=true`
+- `CHILD_BEARER_TOKEN=<access-token>` or `CHILD_EMAIL` + `CHILD_PASSWORD`
+- Optional tuning:
+  - `CHILD_TRAJECTORY_WINDOW_SIZE=3`
+  - `CHILD_TRAJECTORY_COOLDOWN_SECONDS=600`
+  - `CHILD_TRAJECTORY_MUST_INCLUDE_CSV=mycelium`
+
 ---
 
 This repo already runs as a local “Parent Hub” + “Child” model.

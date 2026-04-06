@@ -157,6 +157,12 @@ Quick start (recommended first directive):
 This seeds a trajectory + a proposed replica for:
 "open dashboard + open focus app + enable DND + start 45m focus timer".
 
+Optional: auto-capture trajectories from child app-open transitions:
+
+- `CHILD_AUTO_CAPTURE_TRAJECTORIES=true`
+- `CHILD_BEARER_TOKEN=<access-token>` (or `CHILD_EMAIL` + `CHILD_PASSWORD`)
+- Run `./scripts/run_child.sh`
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`
