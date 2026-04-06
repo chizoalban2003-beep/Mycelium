@@ -350,6 +350,24 @@ Practical effect:
 - Owners/editors can approve project-scoped telemetry actions.
 - Cross-project whispers are rejected when caller is not a member.
 
+### Global Wisdom filter (consensus gate)
+
+Before broadcasting `recommended_kwargs`, the Hive now applies evidence gating:
+
+- minimum whispers: `HIVE_WISDOM_MIN_WHISPERS`
+- minimum distinct devices: `HIVE_WISDOM_MIN_DEVICES`
+- key-level consensus threshold: `HIVE_WISDOM_CONSENSUS_FRACTION`
+
+Example production defaults:
+
+```bash
+HIVE_WISDOM_MIN_WHISPERS=3
+HIVE_WISDOM_MIN_DEVICES=2
+HIVE_WISDOM_CONSENSUS_FRACTION=0.6
+```
+
+If evidence is below threshold, `recommended_kwargs` is intentionally empty and `evidence.wisdom_filter.gated=true`.
+
 ## 3) Child node (edge)
 
 Minimum connectivity test:

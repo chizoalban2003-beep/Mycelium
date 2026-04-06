@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -53,7 +54,7 @@ class WisdomWhisper:
     payload: dict[str, Any]
 
 
-def aggregate_recommended_kwargs(dicts: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate_recommended_kwargs(dicts: list[dict[str, Any]], *, min_support_count: int = 1) -> dict[str, Any]:
     """Aggregate a list of safe kwargs into a single recommended kwargs dict.
 
     - numbers -> median
@@ -67,8 +68,12 @@ def aggregate_recommended_kwargs(dicts: list[dict[str, Any]]) -> dict[str, Any]:
             by_key.setdefault(str(k), []).append(v)
 
     out: dict[str, Any] = {}
+    min_support_count = max(1, int(min_support_count))
     for k, vals in by_key.items():
         if not vals:
+            continue
+        if len(vals) < min_support_count:
+            # Do not publish low-support keys.
             continue
 
         # numeric median
@@ -195,6 +200,7 @@ def compute_wisdom_latest(
     rows = session.exec(q).all()
 
     recs: list[dict[str, Any]] = []
+    whisper_device_ids: set[str] = set()
     used_update_uuids: list[str] = []
     as_of: datetime | None = None
 
@@ -276,14 +282,42 @@ def compute_wisdom_latest(
         if rec:
             recs.append(rec)
             used_update_uuids.append(str(r.update_uuid))
+            did = str(meta.get("device_id") or "").strip()
+            if did:
+                whisper_device_ids.add(did)
             if as_of is None:
                 as_of = r.created_at
 
-    merged = aggregate_recommended_kwargs(recs) if recs else {}
+    n_recs = int(len(recs))
+    n_devices = int(len(whisper_device_ids))
+
+    min_whispers = max(1, int(getattr(settings, "hive_wisdom_min_whispers", 2) or 1))
+    min_devices = max(1, int(getattr(settings, "hive_wisdom_min_devices", 1) or 1))
+    consensus_fraction = float(getattr(settings, "hive_wisdom_consensus_fraction", 0.50) or 0.0)
+    consensus_fraction = max(0.0, min(consensus_fraction, 1.0))
+
+    min_support_count = max(1, int(math.ceil(float(max(1, n_recs)) * consensus_fraction)))
+
+    gated = (n_recs < min_whispers) or (n_devices < min_devices)
+    merged = (
+        {}
+        if gated
+        else (aggregate_recommended_kwargs(recs, min_support_count=min_support_count) if recs else {})
+    )
+
     evidence = {
         "update_uuids": used_update_uuids[:50],
         "limit": int(limit),
         "include_project_scoped": bool(include_project_scoped),
+        "wisdom_filter": {
+            "min_whispers": int(min_whispers),
+            "min_devices": int(min_devices),
+            "consensus_fraction": float(consensus_fraction),
+            "min_support_count": int(min_support_count),
+            "n_whispers_used": int(n_recs),
+            "n_devices_used": int(n_devices),
+            "gated": bool(gated),
+        },
         "curiosity": {
             "n_feedback_used": int(n_feedback_used),
             "n_concepts_used": int(n_concepts_used),

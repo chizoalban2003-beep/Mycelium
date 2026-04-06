@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     hive_enabled: bool = False
     hive_export_enabled_default: bool = False
 
+    # Global Wisdom broadcast guardrails (ProjectMembrane companion).
+    # A recommendation is published only when enough evidence exists.
+    hive_wisdom_min_whispers: int = 2
+    hive_wisdom_min_devices: int = 1
+    hive_wisdom_consensus_fraction: float = 0.50
+
     # Optional shared secret to allow headless child devices to ingest into the Parent Hub.
     # When set, child nodes can call Hive import endpoints with header: X-Hive-Token: <token>
     hive_ingest_token: str = ""
