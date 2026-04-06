@@ -196,6 +196,16 @@ class HiveWhisperImportResponse(BaseModel):
     imported: bool = True
 
 
+class HiveWisdomLatestResponse(BaseModel):
+    ok: bool = True
+    as_of: datetime | None = None
+    project_id: int | None = None
+    n_updates_considered: int = 0
+    n_whispers_used: int = 0
+    recommended_kwargs: dict[str, object] = Field(default_factory=dict)
+    evidence: dict[str, object] = Field(default_factory=dict)
+
+
 class HiveGlobalUpdatePublic(BaseModel):
     update_uuid: str
     created_at: datetime

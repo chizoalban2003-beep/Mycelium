@@ -43,7 +43,7 @@ class WisdomWhisper:
     payload: dict[str, Any]
 
 
-def _aggregate_kwargs(dicts: list[dict[str, Any]]) -> dict[str, Any]:
+def aggregate_recommended_kwargs(dicts: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate a list of safe kwargs into a single recommended kwargs dict.
 
     - numbers -> median
@@ -83,6 +83,40 @@ def _aggregate_kwargs(dicts: list[dict[str, Any]]) -> dict[str, Any]:
         out[k] = c.most_common(1)[0][0]
 
     return out
+
+
+def recommended_kwargs_from_whisper(whisper: dict[str, Any]) -> dict[str, Any]:
+    """Extract (and re-filter) recommended kwargs from a wisdom_whisper payload."""
+
+    if not isinstance(whisper, dict):
+        return {}
+    wisdom = whisper.get("wisdom") if isinstance(whisper.get("wisdom"), dict) else {}
+    rec = wisdom.get("recommended_kwargs") if isinstance(wisdom.get("recommended_kwargs"), dict) else {}
+
+    # Re-filter defensively: never trust imported global updates.
+    try:
+        return extract_recallable_kwargs(dict(rec))
+    except Exception:
+        return {}
+
+
+def whisper_from_global_update(update_obj: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull the whisper payload out of a HiveGlobalUpdate.update_json object."""
+
+    if not isinstance(update_obj, dict):
+        return None
+
+    # Preferred wrapper form produced by /whisper/import.
+    if str(update_obj.get("kind", "")) == "wisdom_whisper":
+        w = update_obj.get("whisper")
+        return w if isinstance(w, dict) else None
+
+    # Fallback: some callers may store the whisper directly.
+    meta = update_obj.get("meta") if isinstance(update_obj.get("meta"), dict) else {}
+    if str(meta.get("kind", "")) == "wisdom_whisper":
+        return update_obj
+
+    return None
 
 
 def build_wisdom_whisper_from_physics_ledger(
@@ -128,7 +162,7 @@ def build_wisdom_whisper_from_physics_ledger(
         metric_counts[str(r.score_metric or "")] += 1
         target_kind_counts[str(r.target_kind or "")] += 1
 
-    rec = _aggregate_kwargs(safe_kwargs)
+    rec = aggregate_recommended_kwargs(safe_kwargs)
 
     top_score = max(score_values) if score_values else 0.0
     avg_score = (sum(score_values) / float(len(score_values))) if score_values else 0.0

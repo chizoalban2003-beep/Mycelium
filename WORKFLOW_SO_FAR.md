@@ -177,3 +177,13 @@ To ingest a `wisdom_whisper` from another device and make it available via globa
   - body: `{ "whisper": { ...full whisper payload... } }`
 
 The server will upsert it into `HiveGlobalUpdate` idempotently using a deterministic UUID (SHA256 of the whisper JSON) unless you provide `update_uuid`.
+
+### WisdomBroadcast (Genetic Push)
+
+Children can fetch the latest aggregated baseline physics knobs (derived from imported whispers):
+
+- `GET /api/hive/wisdom/latest`
+
+Optional parameters:
+- Scope to a specific project: `?project_id=123`
+- Include project-scoped whispers in global mode: `?include_project_scoped=true`
