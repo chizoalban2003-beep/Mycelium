@@ -133,6 +133,15 @@ class NexusPolicyUpdateRequest(BaseModel):
     policy: dict[str, object]
 
 
+class NexusPrivacyExportStatus(BaseModel):
+    hive_enabled: bool
+    export_enabled: bool
+
+
+class NexusPrivacyExportUpdateRequest(BaseModel):
+    export_enabled: bool
+
+
 class NexusIntroResponse(BaseModel):
     mode: str
     observe_hours: int
@@ -459,6 +468,7 @@ class NexusFeedbackIonizeResponse(BaseModel):
     entry_id: int
     digest: str
     exported_to_hive: bool = False
+    export_redacted: bool = False
     export_reason: str | None = None
 
 

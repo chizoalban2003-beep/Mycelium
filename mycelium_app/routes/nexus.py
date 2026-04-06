@@ -28,6 +28,8 @@ from mycelium_app.schemas import (
     NexusKnowledgeAuditResponse,
     NexusPolicyPublic,
     NexusPolicyUpdateRequest,
+    NexusPrivacyExportStatus,
+    NexusPrivacyExportUpdateRequest,
 )
 from mycelium_app.settings import settings
 
@@ -196,6 +198,44 @@ def update_parental_policy(
     user_id = int(current_user.id or 0)
     updated = set_policy(session, user_id, payload.policy)
     return NexusPolicyPublic(policy=updated)
+
+
+@router.get("/privacy/export", response_model=NexusPrivacyExportStatus)
+def get_export_status(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    policy = get_policy(session, user_id)
+    privacy = policy.get("privacy") if isinstance(policy.get("privacy"), dict) else {}
+    return NexusPrivacyExportStatus(
+        hive_enabled=bool(getattr(settings, "hive_enabled", False)),
+        export_enabled=bool(privacy.get("export_enabled")),
+    )
+
+
+@router.post("/privacy/export", response_model=NexusPrivacyExportStatus)
+def update_export_status(
+    payload: NexusPrivacyExportUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    policy = get_policy(session, user_id)
+    privacy = policy.get("privacy") if isinstance(policy.get("privacy"), dict) else {}
+    updated_policy = {
+        **policy,
+        "privacy": {
+            **privacy,
+            "export_enabled": bool(payload.export_enabled),
+        },
+    }
+    updated = set_policy(session, user_id, updated_policy)
+    privacy2 = updated.get("privacy") if isinstance(updated.get("privacy"), dict) else {}
+    return NexusPrivacyExportStatus(
+        hive_enabled=bool(getattr(settings, "hive_enabled", False)),
+        export_enabled=bool(privacy2.get("export_enabled")),
+    )
 
 
 @router.get("/intro", response_model=NexusIntroResponse)

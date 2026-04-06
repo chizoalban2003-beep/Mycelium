@@ -14,6 +14,7 @@ from sqlmodel import Session, select
 from mycelium_app.knowledge_sync import extract_recallable_kwargs
 from mycelium_app.models import HiveGlobalUpdate, HiveOutboxMessage, HomeostasisState, PhysicsLedgerEntry
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.privacy_membrane import check_hive_payload, redact_hive_payload
 from mycelium_app.settings import settings
 
 
@@ -410,12 +411,30 @@ def queue_outbox_message(
     kind: str,
     payload: dict[str, Any],
 ) -> int:
+    redacted, _changed = redact_hive_payload(payload or {})
+    if not isinstance(redacted, dict):
+        redacted = {}
+
+    if _changed:
+        meta = redacted.get("meta")
+        if isinstance(meta, dict):
+            privacy = meta.get("privacy")
+            if not isinstance(privacy, dict):
+                privacy = {}
+            privacy["redacted"] = True
+            meta["privacy"] = privacy
+            redacted["meta"] = meta
+
+    membrane = check_hive_payload(redacted)
+    if not membrane.ok:
+        raise ValueError(f"privacy_membrane_blocked:{str(kind or '')[:64]}:{'|'.join(membrane.reasons[:4])}")
+
     row = HiveOutboxMessage(
         created_by_user_id=int(user_id),
         project_id=int(project_id) if project_id is not None else None,
         device_id=str(device_id or "local"),
         kind=str(kind or "")[:64],
-        payload_json=_dumps(payload or {}),
+        payload_json=_dumps(redacted),
         submitted_at=None,
     )
     session.add(row)
@@ -447,15 +466,18 @@ def queue_wisdom_whisper(
         device_id=str(device_id or "local"),
         limit=int(limit),
     )
-    message_id = queue_outbox_message(
-        session,
-        user_id=int(user_id),
-        project_id=project_id,
-        device_id=str(device_id or "local"),
-        kind="wisdom_whisper",
-        payload=whisper.payload,
-    )
-    return message_id, None
+    try:
+        message_id = queue_outbox_message(
+            session,
+            user_id=int(user_id),
+            project_id=project_id,
+            device_id=str(device_id or "local"),
+            kind="wisdom_whisper",
+            payload=whisper.payload,
+        )
+        return message_id, None
+    except ValueError:
+        return None, "privacy_membrane_blocked"
 
 
 def queue_homeostasis_failure(
@@ -513,12 +535,15 @@ def queue_homeostasis_failure(
         },
     }
 
-    message_id = queue_outbox_message(
-        session,
-        user_id=int(user_id),
-        project_id=project_id,
-        device_id=str(device_id or "local"),
-        kind="homeostasis_failure",
-        payload=payload,
-    )
-    return message_id, None
+    try:
+        message_id = queue_outbox_message(
+            session,
+            user_id=int(user_id),
+            project_id=project_id,
+            device_id=str(device_id or "local"),
+            kind="homeostasis_failure",
+            payload=payload,
+        )
+        return message_id, None
+    except ValueError:
+        return None, "privacy_membrane_blocked"

@@ -7,8 +7,16 @@
       <h1 class="text-lg font-semibold">Knowledge Audit</h1>
       <div class="text-sm text-slate-300 mt-1">What the child learned from you vs. the Hive.</div>
     </div>
-    <button id="refreshAudit" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">Refresh</button>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-xs text-slate-300">
+        <input id="exportToggle" type="checkbox" class="h-4 w-4" />
+        <label for="exportToggle" class="select-none">Share anonymized lessons with the Hive?</label>
+      </div>
+      <button id="refreshAudit" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">Refresh</button>
+    </div>
   </div>
+
+  <div id="exportStatus" class="text-xs text-slate-400 mt-2"></div>
 
   <div id="auditMeta" class="text-xs text-slate-400 mt-3"></div>
 
@@ -126,7 +134,63 @@
     }
   }
 
+  async function loadExportStatus() {
+    const toggle = document.getElementById('exportToggle');
+    const status = document.getElementById('exportStatus');
+    status.textContent = 'Loading export settings…';
+    toggle.disabled = true;
+
+    try {
+      const r = await fetch('/api/nexus/privacy/export', { credentials: 'same-origin' });
+      const data = await r.json();
+      if (!r.ok) {
+        status.textContent = (data && data.detail) ? String(data.detail) : 'Failed to load export settings.';
+        return;
+      }
+
+      const hiveEnabled = !!data.hive_enabled;
+      const exportEnabled = !!data.export_enabled;
+
+      toggle.checked = exportEnabled;
+      toggle.disabled = !hiveEnabled;
+
+      if (!hiveEnabled) {
+        status.textContent = 'Hive is disabled in settings.';
+      } else if (exportEnabled) {
+        status.textContent = 'Enabled. A privacy membrane redacts (and may block) obvious PII before export.';
+      } else {
+        status.textContent = 'Disabled. Nothing is exported to the Hive.';
+      }
+    } catch (e) {
+      status.textContent = 'Failed to load export settings.';
+    }
+  }
+
+  async function setExportEnabled(v) {
+    const toggle = document.getElementById('exportToggle');
+    const status = document.getElementById('exportStatus');
+    toggle.disabled = true;
+    status.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/nexus/privacy/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ export_enabled: !!v }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        status.textContent = (data && data.detail) ? String(data.detail) : 'Failed to save export settings.';
+      }
+    } catch (e) {
+      status.textContent = 'Failed to save export settings.';
+    }
+    await loadExportStatus();
+  }
+
   document.getElementById('refreshAudit').onclick = loadAudit;
+  document.getElementById('exportToggle').onchange = (e) => setExportEnabled(!!e.target.checked);
+  loadExportStatus();
   loadAudit();
 </script>
 {% endblock %}

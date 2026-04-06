@@ -150,8 +150,25 @@
                     statusEl.classList.remove('hidden');
                     return;
                   }
-                  const exportNote = data2.exported_to_hive ? ' (shared to Hive)' : '';
-                  statusEl.textContent = `Saved${exportNote}.`;
+                  if (!!share.checked) {
+                    if (data2.exported_to_hive) {
+                      const anon = data2.export_redacted ? ' (shared • anonymized)' : ' (shared)';
+                      statusEl.textContent = `Saved${anon}.`;
+                    } else {
+                      const reason = String(data2.export_reason || 'not_exported');
+                      if (reason === 'export_disabled_by_policy') {
+                        statusEl.textContent = 'Saved locally. Hive sharing is disabled by parental policy.';
+                      } else if (reason === 'hive_disabled') {
+                        statusEl.textContent = 'Saved locally. Hive is disabled in settings.';
+                      } else if (reason === 'blocked_by_privacy_membrane') {
+                        statusEl.textContent = 'Saved locally. Export blocked by privacy membrane.';
+                      } else {
+                        statusEl.textContent = 'Saved locally. Export failed.';
+                      }
+                    }
+                  } else {
+                    statusEl.textContent = 'Saved locally.';
+                  }
                   statusEl.classList.remove('hidden');
                 } catch (e) {
                   statusEl.textContent = 'Failed to save feedback.';

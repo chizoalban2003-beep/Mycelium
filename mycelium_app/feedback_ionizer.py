@@ -11,6 +11,7 @@ from sqlmodel import Session
 from mycelium_app.hive_empathy import queue_outbox_message
 from mycelium_app.models import ExperienceBufferEntry
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.privacy_membrane import redact_hive_payload
 from mycelium_app.settings import settings
 
 
@@ -106,6 +107,7 @@ def ionize_user_feedback(
     session.refresh(entry)
 
     exported = False
+    export_redacted = False
     export_reason: str | None = None
 
     # Optional export to Hive (policy-gated).
@@ -136,6 +138,10 @@ def ionize_user_feedback(
                             "digest": digest,
                         },
                     }
+
+                    _redacted_preview, changed = redact_hive_payload(payload)
+                    export_redacted = bool(changed)
+
                     queue_outbox_message(
                         session,
                         user_id=int(user_id),
@@ -145,6 +151,8 @@ def ionize_user_feedback(
                         payload=payload,
                     )
                     exported = True
+        except ValueError:
+            export_reason = "blocked_by_privacy_membrane"
         except Exception as e:
             export_reason = f"export_failed:{type(e).__name__}"
 
@@ -154,5 +162,6 @@ def ionize_user_feedback(
         "entry_id": int(entry.id or 0),
         "digest": str(digest),
         "exported_to_hive": bool(exported),
+        "export_redacted": bool(export_redacted) if bool(exported) else False,
         "export_reason": export_reason,
     }
