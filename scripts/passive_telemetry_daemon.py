@@ -40,6 +40,11 @@ def _request(
     form_body: dict[str, str] | None = None,
     timeout_s: float = 15.0,
 ) -> HttpResult:
+    """Small stdlib-only HTTP helper.
+
+    We intentionally avoid third-party deps here so the daemon can run in
+    minimal environments (and so it’s easy to audit what leaves the machine).
+    """
     headers = {"Accept": "application/json"}
     data: bytes | None = None
 
@@ -81,6 +86,10 @@ def _parse_json_maybe(text: str) -> object:
 
 
 def login_for_token(base_url: str, *, email: str, password: str) -> str:
+    """Login via /api/auth/login and return a bearer token.
+
+    This matches FastAPI's OAuth2PasswordRequestForm: {username,password}.
+    """
     url = base_url.rstrip("/") + "/api/auth/login"
     # FastAPI OAuth2PasswordRequestForm expects fields: username, password
     res = _request(
@@ -125,6 +134,7 @@ _ACTIVE_WIN_RE = re.compile(r"window id # (0x[0-9a-fA-F]+)")
 
 
 def _active_window_id_x11() -> str | None:
+    """Return the active X11 window id in hex (e.g. 0x3a00007) if available."""
     out = _xprop(["-root", "_NET_ACTIVE_WINDOW"])
     if not out:
         return None
@@ -143,6 +153,11 @@ def _parse_xprop_quoted_list(out: str) -> list[str]:
 
 
 def _active_app_token_x11(wid_hex: str) -> str | None:
+    """Extract a stable 'app token' from WM_CLASS.
+
+    This records *app identity only* (no window title). It’s enough to build
+    next-app transitions without capturing content.
+    """
     out = _xprop(["-id", wid_hex, "WM_CLASS"])
     if not out:
         return None
@@ -167,6 +182,8 @@ def _post_app_open(
     backend: str,
     dry_run: bool,
 ) -> None:
+    # Payload is designed to be small, structured, and non-sensitive.
+    # The server applies additional payload size limits.
     body: dict[str, object] = {
         "project_id": project_id,
         "device_id": device_id,
@@ -215,6 +232,8 @@ def main() -> int:
         raise SystemExit("Missing auth: pass --token or --email + --password (or use --dry-run)")
 
     # Backend selection
+    # Today: X11 only. Wayland typically blocks global active-window reads
+    # without compositor/portal-specific APIs, so we keep it explicit.
     if not os.environ.get("DISPLAY"):
         raise SystemExit("DISPLAY is not set; X11 backend requires an X11 session")
     if _which("xprop") is None:
@@ -259,6 +278,8 @@ def main() -> int:
             if app and app != last_app:
                 last_app = app
                 try:
+                    # Only post when the app token changes; this yields a clean
+                    # sequence suitable for transition modeling.
                     _post_app_open(
                         base_url=str(args.base_url),
                         token=str(token or ""),

@@ -49,6 +49,8 @@ def _simple_confidence(n_events: int, signal_counts: dict[str, int]) -> float:
 
 
 def _extract_app_token(payload_json: str) -> str | None:
+    # We accept a few common key names so multiple collectors can coexist.
+    # Only app identifiers are used; no titles/URLs/text content.
     try:
         payload = json.loads(payload_json or "{}")
     except Exception:
@@ -63,6 +65,9 @@ def _extract_app_token(payload_json: str) -> str | None:
 
 
 def _r2_score(y_true: list[int], y_pred: list[int]) -> float:
+    # NOTE: This is used as a *proxy* quality score to match the existing
+    # growth-stage trigger design (telemetry_next_app:r2). Here, apps are
+    # encoded into stable integers to make the score deterministic.
     if not y_true or len(y_true) != len(y_pred):
         return 0.0
     n = len(y_true)
@@ -78,12 +83,20 @@ def deep_freeze_sweep(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Run a deterministic 'Deep Freeze' sweep over recent telemetry.
+        """Run a deterministic 'Deep Freeze' sweep over recent telemetry.
 
-    This uses recent `app_open` events to predict the next app based on a
-    simple transition table (most-likely next app per current app). The sweep
-    result is recorded into GrowthLedgerEntry as domain=telemetry_next_app.
-    """
+        Model:
+        - Build a transition table from app A -> next app B counts.
+        - Predict next app as argmax_B count(A->B) (a simple Markov-1 baseline).
+
+        Output:
+        - Computes accuracy (exact-match next-app rate) and an R²-style proxy over a
+            stable integer encoding, then records the result in GrowthLedgerEntry as:
+            domain=telemetry_next_app, metric=r2.
+
+        Design goal:
+        - Keep this sweep transparent, deterministic, and cheap to run locally.
+        """
 
     user_id = int(current_user.id or 0)
     _ensure_project_access(session, user_id, payload.project_id)
@@ -118,6 +131,7 @@ def deep_freeze_sweep(
             apps.append(token)
 
     # Build (current -> next) pairs.
+    # We drop immediate repeats (A->A) to avoid inflating trivial transitions.
     pairs: list[tuple[str, str]] = []
     for i in range(len(apps) - 1):
         a = apps[i]
@@ -132,7 +146,7 @@ def deep_freeze_sweep(
             detail=f"Not enough app_open transitions for sweep (have {len(pairs)}, need {min_pairs}).",
         )
 
-    # Transition counts.
+    # Transition counts per current app.
     next_counts: dict[str, Counter[str]] = {}
     for a, b in pairs:
         bucket = next_counts.get(a)
@@ -146,7 +160,7 @@ def deep_freeze_sweep(
     for a, c in next_counts.items():
         predictor[a] = c.most_common(1)[0][0]
 
-    # Stable encoding (sorted) so R2 is reproducible.
+    # Stable encoding (sorted) so the R² proxy is reproducible.
     vocab = sorted({x for ab in pairs for x in ab})
     to_int = {app: i for i, app in enumerate(vocab)}
 

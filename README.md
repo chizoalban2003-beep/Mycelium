@@ -82,6 +82,16 @@ python scripts/passive_telemetry_daemon.py --dry-run
 
 Note: Wayland support is not implemented yet.
 
+Run the Deep Freeze sweep + print growth status:
+
+```bash
+python3 scripts/silent24_deep_freeze.py \
+	--base-url http://127.0.0.1:8000 \
+	--email you@example.com \
+	--password "change-me" \
+	--device-id local
+```
+
 Benchmarks / scratch data:
 - `tmp_eval/` is ignored by git (local outputs + datasets). This repo no longer ships the benchmark dataset.
 - Use your own CSV when running benchmark scripts, e.g. `python scripts/benchmark_salary_models.py --csv /path/to/data.csv --target salary`.
