@@ -90,6 +90,13 @@ What you get out of the box:
 
 3) Launch it from the home screen. It opens as a standalone app.
 
+#### True downloadable Android app (APK/AAB)
+
+If you want a real installable Android package (not just PWA install), use Trusted Web Activity packaging:
+
+- See [docs/android_twa_packaging.md](docs/android_twa_packaging.md)
+- This produces APK/AAB while keeping your existing Railway-hosted web app
+
 #### Enable telemetry assistant nudges (server-side)
 
 On the brain device, set in `.env`:
