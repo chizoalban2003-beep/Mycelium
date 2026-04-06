@@ -121,7 +121,7 @@ async def electrophoresis_predict(
     max_rows: int = Form(5000),
     current_user: User = Depends(get_current_user),
 ):
-    """Run the Mycelium electrophoresis engine and return JSON outputs for realtime polling clients."""
+    """Run the Proofgrid electrophoresis engine and return JSON outputs for realtime polling clients."""
 
     _ = current_user
     try:

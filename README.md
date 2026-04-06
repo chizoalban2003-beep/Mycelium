@@ -1,6 +1,6 @@
-# Mycelium
+# Proofgrid
 
-Mycelium is a multi-user, project-tree workspace for data/ML work (ETL → EDA → stats tests → feature engineering → modeling → dashboards → deployable predictions).
+Proofgrid is a multi-user, project-tree workspace for data/ML work (ETL → EDA → stats tests → feature engineering → modeling → dashboards → deployable predictions).
 
 This repo currently ships an MVP platform:
 
