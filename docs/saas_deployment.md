@@ -123,7 +123,7 @@ curl -sS -X POST "$PARENT_HUB_URL/api/hive/whisper/import" \
         "device_id": "edge-1",
         "created_at": "2026-04-06T00:00:00Z"
       },
-      "wisdom": {"recommended_kwargs": {"learning_rate": 0.03}},
+      "wisdom": {"recommended_kwargs": {"cycle_learning_rate": 0.03}},
       "note": "hello parent"
     }
   }'
