@@ -95,6 +95,7 @@ Fields:
 - `given_name` (e.g. "Jarvis")
 - `gender_identity` (`neutral|female|male|nonbinary|custom`)
 - `vocal_preset` (provider-specific voice key)
+- `assistant_avatar_url` (optional `http(s)` image URL)
 
 Identity presentation (`/api/nexus/identity/presentation`) now uses this profile
 for personalized assistant display naming.

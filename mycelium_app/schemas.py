@@ -629,6 +629,7 @@ class AssistantProfilePublic(BaseModel):
     given_name: str = "Synapse"
     gender_identity: str = "neutral"
     vocal_preset: str = "alloy"
+    assistant_avatar_url: str = ""
     created_at: datetime
     updated_at: datetime
     is_default: bool = True
@@ -639,6 +640,7 @@ class AssistantProfileUpdateRequest(BaseModel):
     given_name: str = "Synapse"
     gender_identity: str = "neutral"
     vocal_preset: str = "alloy"
+    assistant_avatar_url: str = ""
 
 
 class NexusNudgePublic(BaseModel):

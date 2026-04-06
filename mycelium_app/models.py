@@ -138,6 +138,16 @@ class AssistantProfile(SQLModel, table=True):
     vocal_preset: str = Field(default="alloy", index=True)
 
 
+class AssistantAvatarProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    assistant_avatar_url: str = Field(default="", index=False)
+
+
 class HiveOutboxReport(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

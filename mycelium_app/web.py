@@ -446,6 +446,7 @@ def assistant_profile_save_action(
     given_name: str = Form("Synapse"),
     gender_identity: str = Form("neutral"),
     vocal_preset: str = Form("alloy"),
+    assistant_avatar_url: str = Form(""),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -458,6 +459,7 @@ def assistant_profile_save_action(
         given_name=str(given_name or "Synapse"),
         gender_identity=str(gender_identity or "neutral"),
         vocal_preset=str(vocal_preset or "alloy"),
+        assistant_avatar_url=str(assistant_avatar_url or ""),
     )
     return RedirectResponse(url="/assistant/profile?saved=1", status_code=302)
 

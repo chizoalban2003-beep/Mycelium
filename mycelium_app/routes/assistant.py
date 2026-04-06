@@ -45,6 +45,7 @@ def get_config(
         given_name=str(p.get("given_name", "Synapse")),
         gender_identity=str(p.get("gender_identity", "neutral")),
         vocal_preset=str(p.get("vocal_preset", "alloy")),
+        assistant_avatar_url=str(p.get("assistant_avatar_url", "")),
         created_at=p.get("created_at"),
         updated_at=p.get("updated_at"),
         is_default=bool(p.get("is_default", True)),
@@ -67,13 +68,16 @@ def configure_assistant(
         given_name=payload.given_name,
         gender_identity=payload.gender_identity,
         vocal_preset=payload.vocal_preset,
+        assistant_avatar_url=payload.assistant_avatar_url,
     )
+    p = get_assistant_profile_effective(session, user_id=user_id, project_id=payload.project_id)
     return AssistantProfilePublic(
         ok=True,
         project_id=row.project_id,
         given_name=str(row.given_name or "Synapse"),
         gender_identity=str(row.gender_identity or "neutral"),
         vocal_preset=str(row.vocal_preset or "alloy"),
+        assistant_avatar_url=str(p.get("assistant_avatar_url", "")),
         created_at=row.created_at,
         updated_at=row.updated_at,
         is_default=False,

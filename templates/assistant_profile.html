@@ -49,6 +49,25 @@
         />
       </div>
 
+      <div>
+        <label class="block text-sm text-slate-300">Assistant avatar URL (optional)</label>
+        <input
+          name="assistant_avatar_url"
+          maxlength="500"
+          value="{{ profile.assistant_avatar_url }}"
+          placeholder="https://example.com/avatar.png"
+          class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2"
+        />
+        <div class="mt-2 flex items-center gap-3 text-xs text-slate-400">
+          {% if profile.assistant_avatar_url %}
+            <img src="{{ profile.assistant_avatar_url }}" alt="assistant avatar" class="h-10 w-10 rounded-full border border-slate-700 object-cover" />
+            <span>Preview</span>
+          {% else %}
+            <span>No avatar configured.</span>
+          {% endif %}
+        </div>
+      </div>
+
       <button type="submit" class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-4 py-2 font-medium">
         Save profile
       </button>

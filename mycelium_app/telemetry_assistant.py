@@ -177,6 +177,7 @@ def maybe_queue_telemetry_assistant_nudge(
     given_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
     vocal_preset = str(ap.get("vocal_preset", "alloy")).strip().lower() or "alloy"
     gender_identity = str(ap.get("gender_identity", "neutral")).strip().lower() or "neutral"
+    assistant_avatar_url = str(ap.get("assistant_avatar_url", "")).strip()
 
     msg = (
         f"I’m {given_name}. I’ve observed a stable pattern in your recent signals. "
@@ -201,6 +202,7 @@ def maybe_queue_telemetry_assistant_nudge(
             "given_name": given_name,
             "vocal_preset": vocal_preset,
             "gender_identity": gender_identity,
+            "assistant_avatar_url": assistant_avatar_url,
         },
         "device_id": resolved_device_id,
         "project_role": project_role,

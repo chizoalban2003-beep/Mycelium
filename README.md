@@ -185,6 +185,7 @@ Personalize assistant identity:
 
 This updates identity presentation so the assistant is addressed by the configured name.
 Telemetry assistant nudges also include the configured assistant name/voice traits.
+You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
 SelfReflection (analyze best sweeps):
 
