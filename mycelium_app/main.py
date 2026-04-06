@@ -138,6 +138,22 @@ async def _wisdom_nudge_daemon() -> None:
                         changed_keys = int(diff.get("changed_keys", 0) or 0)
                         max_rel = float(diff.get("max_rel_change", 0.0) or 0.0)
 
+                        # Optional: surface Active Curiosity hints from WisdomBroadcast.
+                        hints: list[str] = []
+                        try:
+                            cur = (latest.evidence or {}).get("curiosity") if isinstance(latest.evidence, dict) else None
+                            top = cur.get("top_tags") if isinstance(cur, dict) else None
+                            if isinstance(top, list):
+                                for item in top[:3]:
+                                    if isinstance(item, dict) and str(item.get("tag", "")).strip():
+                                        hints.append(str(item.get("tag")).strip())
+                        except Exception:
+                            hints = []
+
+                        hint_clause = ""
+                        if hints:
+                            hint_clause = " Hive hint: " + ", ".join(hints) + "."
+
                         # Optional: Validation Shadow (empirical honesty).
                         shadow = run_validation_shadow(
                             session,
@@ -180,11 +196,15 @@ async def _wisdom_nudge_daemon() -> None:
                                 )
                                 if str(getattr(shadow, "causal_narrative", "") or "").strip():
                                     msg = msg + " " + str(shadow.causal_narrative).strip()
+                                if hint_clause:
+                                    msg = msg + hint_clause
                             else:
                                 msg = (
                                     f"I learned an update from the Hive: {changed_keys} knob(s) changed "
                                     f"(max Δ≈{round(max_rel * 100.0)}%). You may see improved stability/accuracy."
                                 )
+                                if hint_clause:
+                                    msg = msg + hint_clause
                             nudge = NexusNudge(
                                 created_by_user_id=int(uid),
                                 project_id=None,
@@ -208,6 +228,7 @@ async def _wisdom_nudge_daemon() -> None:
                                         },
                                         "as_of": (latest.as_of.isoformat() + "Z") if latest.as_of else None,
                                         "n_whispers_used": int(latest.n_whispers_used),
+                                        "curiosity_hints": hints,
                                         "digest": str(new_digest),
                                     },
                                     sort_keys=True,
