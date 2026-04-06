@@ -126,11 +126,31 @@ def whisper_from_global_update(update_obj: dict[str, Any]) -> dict[str, Any] | N
     return None
 
 
+def curiosity_feedback_from_global_update(update_obj: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull curiosity_feedback payload out of a HiveGlobalUpdate.update_json object."""
+
+    if not isinstance(update_obj, dict):
+        return None
+
+    # Preferred wrapper form produced by /curiosity/import.
+    if str(update_obj.get("kind", "")) == "curiosity_feedback":
+        fb = update_obj.get("feedback")
+        return fb if isinstance(fb, dict) else None
+
+    # Fallback: store the feedback directly.
+    meta = update_obj.get("meta") if isinstance(update_obj.get("meta"), dict) else {}
+    if str(meta.get("kind", "")) == "curiosity_feedback":
+        return update_obj
+
+    return None
+
+
 @dataclass(frozen=True)
 class WisdomLatest:
     as_of: datetime | None
     n_updates_considered: int
     n_whispers_used: int
+    n_curiosity_feedback_used: int
     recommended_kwargs: dict[str, Any]
     evidence: dict[str, Any]
 
@@ -152,8 +172,32 @@ def compute_wisdom_latest(
     used_update_uuids: list[str] = []
     as_of: datetime | None = None
 
+    curiosity_tags: Counter[str] = Counter()
+    n_feedback_used = 0
+
     for r in rows:
         update_obj = _loads_dict(r.update_json)
+
+        fb = curiosity_feedback_from_global_update(update_obj)
+        if fb:
+            meta_fb = fb.get("meta") if isinstance(fb.get("meta"), dict) else {}
+            fb_project_id = meta_fb.get("project_id")
+            if project_id is not None:
+                if fb_project_id != project_id:
+                    fb = None
+            else:
+                if (fb_project_id is not None) and not include_project_scoped:
+                    fb = None
+
+        if fb:
+            feedback_obj = fb.get("feedback") if isinstance(fb.get("feedback"), dict) else {}
+            tags = feedback_obj.get("tags") if isinstance(feedback_obj.get("tags"), list) else []
+            for t in tags[:50]:
+                ts = str(t).strip()
+                if ts:
+                    curiosity_tags[ts] += 1
+            n_feedback_used += 1
+
         whisper = whisper_from_global_update(update_obj)
         if not whisper:
             continue
@@ -179,12 +223,17 @@ def compute_wisdom_latest(
         "update_uuids": used_update_uuids[:50],
         "limit": int(limit),
         "include_project_scoped": bool(include_project_scoped),
+        "curiosity": {
+            "n_feedback_used": int(n_feedback_used),
+            "top_tags": [{"tag": k, "count": int(v)} for k, v in curiosity_tags.most_common(10)],
+        },
     }
 
     return WisdomLatest(
         as_of=as_of,
         n_updates_considered=int(len(rows)),
         n_whispers_used=int(len(recs)),
+        n_curiosity_feedback_used=int(n_feedback_used),
         recommended_kwargs=merged,
         evidence=evidence,
     )

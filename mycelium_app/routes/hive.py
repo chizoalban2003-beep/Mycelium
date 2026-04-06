@@ -14,6 +14,8 @@ from mycelium_app.hive_sync import build_anonymized_report
 from mycelium_app.models import ExperienceBufferEntry, HiveGlobalUpdate, HiveOutboxMessage, HiveOutboxReport, ProjectMember, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
+    HiveCuriosityFeedbackImportRequest,
+    HiveCuriosityFeedbackImportResponse,
     HiveGlobalUpdateImportRequest,
     HiveGlobalUpdateImportResponse,
     HiveGlobalUpdateListResponse,
@@ -287,6 +289,55 @@ def import_whisper_as_global_update(
     session.refresh(row)
 
     return HiveWhisperImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
+
+
+@router.post("/curiosity/import", response_model=HiveCuriosityFeedbackImportResponse)
+def import_curiosity_feedback_as_global_update(
+    payload: HiveCuriosityFeedbackImportRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Import Active Curiosity feedback as a HiveGlobalUpdate.
+
+    This stores privacy-safe feedback (tags + coarse meta) so it can be
+    broadcast back to children as aggregated "hints" via /wisdom/latest.
+    """
+
+    if not bool(settings.hive_enabled):
+        raise HTTPException(status_code=403, detail="HiveSync disabled")
+
+    _ = current_user
+
+    fb = payload.feedback or {}
+    if not isinstance(fb, dict):
+        raise HTTPException(status_code=400, detail="Invalid feedback")
+
+    meta = fb.get("meta") if isinstance(fb.get("meta"), dict) else {}
+    if str(meta.get("kind", "")) != "curiosity_feedback":
+        raise HTTPException(status_code=400, detail="Not a curiosity_feedback payload")
+
+    update_uuid = (payload.update_uuid or "").strip() or _stable_uuid_from_obj(fb)
+
+    existing = session.exec(select(HiveGlobalUpdate).where(HiveGlobalUpdate.update_uuid == update_uuid)).first()
+    if existing:
+        return HiveCuriosityFeedbackImportResponse(ok=True, update_uuid=existing.update_uuid, imported=False)
+
+    update_obj = {
+        "kind": "curiosity_feedback",
+        "feedback": fb,
+    }
+
+    row = HiveGlobalUpdate(
+        source=(payload.source or "active_curiosity")[:64],
+        version=(payload.version or "curiosity_v1")[:64],
+        update_json=_dumps(update_obj),
+    )
+    row.update_uuid = update_uuid
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    return HiveCuriosityFeedbackImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
 
 @router.get("/outbox/messages/recent", response_model=HiveOutboxMessageListResponse)

@@ -196,6 +196,19 @@ class HiveWhisperImportResponse(BaseModel):
     imported: bool = True
 
 
+class HiveCuriosityFeedbackImportRequest(BaseModel):
+    update_uuid: str | None = None
+    source: str = "active_curiosity"
+    version: str = "curiosity_v1"
+    feedback: dict[str, object]
+
+
+class HiveCuriosityFeedbackImportResponse(BaseModel):
+    ok: bool = True
+    update_uuid: str
+    imported: bool = True
+
+
 class HiveWisdomLatestResponse(BaseModel):
     ok: bool = True
     as_of: datetime | None = None

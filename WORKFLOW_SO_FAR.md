@@ -247,6 +247,10 @@ Hive flow (privacy-safe):
 - The system exports only coarse tags + meta as an outbox message kind `curiosity_feedback`.
 - It does **not** export freeform answer text or raw row excerpts.
 
+Parent ingest (optional):
+- `POST /api/hive/curiosity/import` stores a `curiosity_feedback` payload as a `HiveGlobalUpdate`.
+- `GET /api/hive/wisdom/latest` includes aggregated curiosity `top_tags` under `evidence.curiosity`.
+
 ### Enable (via env vars)
 
 - `NEXUS_ACTIVE_CURIOSITY_ENABLED=true`
