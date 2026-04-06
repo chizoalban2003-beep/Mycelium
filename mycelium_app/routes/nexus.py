@@ -9,7 +9,9 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.feedback_ionizer import ionize_user_feedback
+from mycelium_app.hive_empathy import compute_wisdom_latest
 from mycelium_app.models import ExperienceBufferEntry, ProjectMember, User
+from mycelium_app.models import MetricCausalTrace, MetricSnapshot
 from mycelium_app.nexus_ionizer import grammar_suggest, ionize_finance, style_profile
 from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.schemas import (
@@ -23,6 +25,7 @@ from mycelium_app.schemas import (
     NexusListResponse,
     NexusFeedbackIonizeRequest,
     NexusFeedbackIonizeResponse,
+    NexusKnowledgeAuditResponse,
     NexusPolicyPublic,
     NexusPolicyUpdateRequest,
 )
@@ -300,6 +303,158 @@ def ionize_feedback(
         raise HTTPException(status_code=400, detail=str(e))
 
     return NexusFeedbackIonizeResponse(**res)
+
+
+@router.get("/knowledge/audit", response_model=NexusKnowledgeAuditResponse)
+def knowledge_audit(
+    project_id: int | None = None,
+    include_project_scoped: bool = False,
+    limit: int = 50,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Summarize what the child learned locally vs from the Hive.
+
+    Returns:
+    - local: recent user ionized concepts (confirm/correct)
+    - hive: current WisdomBroadcast evidence (including top_concepts)
+    - validation: recent MetricSnapshots and CausalTraces (Validation Shadow)
+    """
+
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, project_id)
+
+    limit = max(1, min(int(limit), 200))
+
+    def _loads(s: str | None) -> dict:
+        if not s:
+            return {}
+        try:
+            v = json.loads(s)
+            return v if isinstance(v, dict) else {}
+        except Exception:
+            return {}
+
+    # Local ionized concepts (stored in ExperienceBufferEntry).
+    q = (
+        select(ExperienceBufferEntry)
+        .where(ExperienceBufferEntry.created_by_user_id == user_id)
+        .where(ExperienceBufferEntry.modality == "curiosity_feedback")
+        .order_by(ExperienceBufferEntry.created_at.desc())
+        .limit(500)
+    )
+    if project_id is not None:
+        q = q.where(ExperienceBufferEntry.project_id == project_id)
+
+    rows = session.exec(q).all()
+    local_recent: list[dict[str, object]] = []
+    n_confirm = 0
+    n_correct = 0
+
+    for r in rows:
+        ex = _loads(r.extracted_json)
+        if str(ex.get("kind", "")) != "user_feedback_ionized":
+            continue
+        action = str(ex.get("action", "confirm")).strip().lower()
+        hint_tag = str(ex.get("hint_tag", "")).strip()
+        concept = str(ex.get("concept", "")).strip()
+        if action == "correct":
+            n_correct += 1
+        else:
+            n_confirm += 1
+
+        local_recent.append(
+            {
+                "created_at": r.created_at.isoformat() + "Z",
+                "action": action,
+                "hint_tag": hint_tag,
+                "concept": concept,
+                "nudge_id": ex.get("nudge_id"),
+                "digest": ex.get("digest"),
+            }
+        )
+        if len(local_recent) >= limit:
+            break
+
+    local_obj: dict[str, object] = {
+        "n_entries_scanned": int(len(rows)),
+        "n_confirm": int(n_confirm),
+        "n_correct": int(n_correct),
+        "recent": local_recent,
+    }
+
+    # Hive knowledge: reuse compute_wisdom_latest aggregation evidence.
+    hive_latest = compute_wisdom_latest(
+        session,
+        project_id=project_id,
+        include_project_scoped=bool(include_project_scoped),
+        limit=50,
+    )
+    hive_obj: dict[str, object] = {
+        "as_of": (None if hive_latest.as_of is None else hive_latest.as_of.isoformat() + "Z"),
+        "evidence": hive_latest.evidence,
+    }
+
+    # Validation Shadow artifacts.
+    snap_q = (
+        select(MetricSnapshot)
+        .where(MetricSnapshot.created_by_user_id == user_id)
+        .order_by(MetricSnapshot.created_at.desc())
+        .limit(30)
+    )
+    trace_q = (
+        select(MetricCausalTrace)
+        .where(MetricCausalTrace.created_by_user_id == user_id)
+        .order_by(MetricCausalTrace.created_at.desc())
+        .limit(20)
+    )
+    if project_id is not None:
+        snap_q = snap_q.where(MetricSnapshot.project_id == project_id)
+        trace_q = trace_q.where(MetricCausalTrace.project_id == project_id)
+
+    snaps = session.exec(snap_q).all()
+    traces = session.exec(trace_q).all()
+
+    validation_obj: dict[str, object] = {
+        "recent_snapshots": [
+            {
+                "id": int(s.id or 0),
+                "created_at": s.created_at.isoformat() + "Z",
+                "phase": str(s.phase or ""),
+                "metric_name": str(s.metric_name or ""),
+                "metric_value": float(s.metric_value or 0.0),
+                "target_kind": str(s.target_kind or ""),
+                "target_col": str(s.target_col or ""),
+                "dataset_digest": str(s.dataset_digest or ""),
+                "wisdom_digest": str(s.wisdom_digest or ""),
+            }
+            for s in snaps
+        ],
+        "recent_traces": [
+            {
+                "id": int(t.id or 0),
+                "created_at": t.created_at.isoformat() + "Z",
+                "metric_name": str(t.metric_name or ""),
+                "improvement_frac": (None if t.improvement_frac is None else float(t.improvement_frac)),
+                "method": str(t.method or ""),
+                "narrative": str(t.narrative or ""),
+                "baseline_snapshot_id": int(t.baseline_snapshot_id),
+                "trial_snapshot_id": int(t.trial_snapshot_id),
+                "dataset_digest": str(t.dataset_digest or ""),
+                "wisdom_digest": str(t.wisdom_digest or ""),
+            }
+            for t in traces
+        ],
+    }
+
+    return NexusKnowledgeAuditResponse(
+        ok=True,
+        as_of=datetime.utcnow(),
+        project_id=project_id,
+        local=local_obj,
+        hive=hive_obj,
+        validation=validation_obj,
+    )
 
 
 @router.post("/sync/import", response_model=NexusImportResponse)

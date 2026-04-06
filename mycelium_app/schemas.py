@@ -460,3 +460,12 @@ class NexusFeedbackIonizeResponse(BaseModel):
     digest: str
     exported_to_hive: bool = False
     export_reason: str | None = None
+
+
+class NexusKnowledgeAuditResponse(BaseModel):
+    ok: bool = True
+    as_of: datetime | None = None
+    project_id: int | None = None
+    local: dict[str, object] = Field(default_factory=dict)
+    hive: dict[str, object] = Field(default_factory=dict)
+    validation: dict[str, object] = Field(default_factory=dict)
