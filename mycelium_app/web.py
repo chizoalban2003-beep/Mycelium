@@ -37,6 +37,7 @@ from mycelium_app.settings import settings
 
 
 templates = Jinja2Templates(directory="templates")
+templates.env.globals["system_motto"] = settings.system_motto
 router = APIRouter(include_in_schema=False)
 
 
@@ -397,6 +398,20 @@ def hive_health_page(
 
     return templates.TemplateResponse(
         "hive_health.html",
+        {"request": request, "user": current_user, "app_name": settings.app_name},
+    )
+
+
+@router.get("/demo", response_class=HTMLResponse)
+def demo_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        "demo.html",
         {"request": request, "user": current_user, "app_name": settings.app_name},
     )
 

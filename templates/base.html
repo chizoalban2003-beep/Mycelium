@@ -9,15 +9,16 @@
     <link rel="manifest" href="/static/manifest.webmanifest" />
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
-  <body class="bg-slate-950 text-slate-100">
+  <body class="bg-slate-950 text-slate-100 bg-[radial-gradient(circle_at_10%_10%,rgba(34,211,238,0.10),transparent_30%),radial-gradient(circle_at_85%_15%,rgba(129,140,248,0.08),transparent_35%)]">
     <div class="max-w-5xl mx-auto px-4 py-6">
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-4">
           <div>
             <a href="/projects" class="text-xl font-semibold tracking-wide">{{ app_name }}</a>
-            <div class="text-[11px] uppercase tracking-[0.25em] text-cyan-300/90">Grow With Data</div>
+            <div class="text-[11px] uppercase tracking-[0.25em] text-cyan-300/90">{{ system_motto }}</div>
           </div>
           {% if user %}
+            <a href="/demo" class="text-sm text-cyan-300 hover:text-cyan-200">Demo</a>
             <a href="/predict" class="text-sm text-slate-300 hover:text-white">Predict</a>
             <a href="/curiosity" class="text-sm text-slate-300 hover:text-white">Curiosity</a>
             <a href="/knowledge" class="text-sm text-slate-300 hover:text-white">Knowledge</a>
