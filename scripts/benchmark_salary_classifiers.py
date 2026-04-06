@@ -101,7 +101,47 @@ def main() -> int:
         default=12,
         help="Skip printing confusion matrices when class count exceeds this (to avoid huge tables).",
     )
+
+    # Optional: apply the same Homeostasis→Predictor bridge as the API route.
+    parser.add_argument(
+        "--apply-homeostasis",
+        action="store_true",
+        help="If set, load HomeostasisState from the local DB and apply the shared allowlisted predictor knob adjustments.",
+    )
+    parser.add_argument(
+        "--user-id",
+        type=int,
+        default=0,
+        help="User id for homeostasis lookup (required if --apply-homeostasis).",
+    )
     args = parser.parse_args()
+
+    session = None
+    if bool(getattr(args, "apply_homeostasis", False)):
+        if int(getattr(args, "user_id", 0)) <= 0:
+            raise SystemExit("--apply-homeostasis requires --user-id > 0")
+        try:
+            from sqlmodel import Session as _Session
+
+            from mycelium_app.db import engine
+
+            session = _Session(engine)
+        except Exception as e:
+            raise SystemExit(f"Failed to open DB session for homeostasis: {type(e).__name__}: {e}")
+
+    def _apply_homeostasis(kwargs: dict[str, object]) -> tuple[dict[str, object], dict[str, object] | None]:
+        if session is None:
+            return dict(kwargs), None
+        try:
+            from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
+
+            return apply_homeostasis_from_db(
+                session,
+                user_id=int(args.user_id),
+                base_kwargs=kwargs,
+            )
+        except Exception:
+            return dict(kwargs), {"enabled": True, "error": "homeostasis_apply_failed"}
 
     dataset_path = Path(str(args.path)) if str(args.path).strip() else Path("")
     if (not str(args.path).strip()) or (dataset_path and not dataset_path.exists()):
@@ -151,18 +191,21 @@ def main() -> int:
     from mycelium_app.physics_predictor import PhysicsPlane, run_physics_prediction
 
     t0 = time.perf_counter()
-    myc = run_physics_prediction(
-        df,
-        target_col=target,
-        plane=PhysicsPlane.solid,
-        train_fraction=float(args.train_fraction),
-        random_seed=int(args.seed),
-        top_k_weights=int(args.top_k),
-        cascade_enabled=True,
-        competitive_inhibition=True,
-        thermal_noise=True,
-        return_predictions=True,
-    )
+    myc_kwargs: dict[str, object] = {
+        "target_col": target,
+        "plane": PhysicsPlane.solid,
+        "train_fraction": float(args.train_fraction),
+        "random_seed": int(args.seed),
+        "top_k_weights": int(args.top_k),
+        "cascade_enabled": True,
+        "competitive_inhibition": True,
+        "thermal_noise": True,
+        "return_predictions": True,
+    }
+    myc_kwargs, hs_info = _apply_homeostasis(myc_kwargs)
+    if hs_info is not None and hs_info.get("applied"):
+        print("Homeostasis applied:", hs_info)
+    myc = run_physics_prediction(df, **myc_kwargs)
     myc_time = time.perf_counter() - t0
     myc_acc = myc.metrics.accuracy
 
@@ -446,6 +489,11 @@ def main() -> int:
             print(f"\n[{name}]")
             print(cm_txt)
 
+    try:
+        if session is not None:
+            session.close()
+    except Exception:
+        pass
     return 0
 
 

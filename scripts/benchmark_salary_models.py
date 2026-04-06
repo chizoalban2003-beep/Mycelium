@@ -175,6 +175,19 @@ def main() -> int:
     parser.add_argument("--mlp-max-iter", type=int, default=80)
     parser.add_argument("--plane", default="liquid", choices=["solid", "liquid", "gas"])
 
+    # Optional: apply the same Homeostasis→Predictor bridge as the API route.
+    parser.add_argument(
+        "--apply-homeostasis",
+        action="store_true",
+        help="If set, load HomeostasisState from the local DB and apply the shared allowlisted predictor knob adjustments.",
+    )
+    parser.add_argument(
+        "--user-id",
+        type=int,
+        default=0,
+        help="User id for homeostasis lookup (required if --apply-homeostasis).",
+    )
+
     parser.add_argument(
         "--mycelium-cycles",
         type=int,
@@ -237,6 +250,34 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    session = None
+    if bool(getattr(args, "apply_homeostasis", False)):
+        if int(getattr(args, "user_id", 0)) <= 0:
+            raise SystemExit("--apply-homeostasis requires --user-id > 0")
+        try:
+            from sqlmodel import Session as _Session
+
+            from mycelium_app.db import engine
+
+            session = _Session(engine)
+        except Exception as e:
+            raise SystemExit(f"Failed to open DB session for homeostasis: {type(e).__name__}: {e}")
+
+    def _apply_homeostasis(kwargs: dict[str, object]) -> tuple[dict[str, object], dict[str, object] | None]:
+        if session is None:
+            return dict(kwargs), None
+        try:
+            from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
+
+            return apply_homeostasis_from_db(
+                session,
+                user_id=int(args.user_id),
+                base_kwargs=kwargs,
+            )
+        except Exception:
+            # Never fail the benchmark due to optional modulation.
+            return dict(kwargs), {"enabled": True, "error": "homeostasis_apply_failed"}
+
     csv_path = str(args.csv).strip()
     if (not csv_path) or (csv_path and not os.path.exists(csv_path)):
         if not bool(args.generate_sample):
@@ -290,8 +331,18 @@ def main() -> int:
 
     if bool(args.mycelium_sweep):
         # Mycelium-only sweep: vary Field-Effect parameters.
-        alphas = _frange(args.mycelium_field_alpha_start, args.mycelium_field_alpha_stop, args.mycelium_field_alpha_step)
-        starts = list(range(int(args.mycelium_field_start_start), int(args.mycelium_field_start_stop) + 1, int(args.mycelium_field_start_step)))
+        alphas = _frange(
+            args.mycelium_field_alpha_start,
+            args.mycelium_field_alpha_stop,
+            args.mycelium_field_alpha_step,
+        )
+        starts = list(
+            range(
+                int(args.mycelium_field_start_start),
+                int(args.mycelium_field_start_stop) + 1,
+                int(args.mycelium_field_start_step),
+            )
+        )
         raw_types = [t.strip().lower() for t in str(args.mycelium_field_coupling_types).split(",") if t.strip()]
         types = [t for t in raw_types if t in ("linear", "r_squared")] or ["linear"]
         raw_decays = [x.strip() for x in str(args.mycelium_field_decay_values).split(",") if x.strip()]
@@ -344,30 +395,40 @@ def main() -> int:
         try:
             print("Mycelium sweep configs:", len(sweep_cfgs))
             print("Dataset:", args.csv)
-            print("Rows:", len(df), "Train/Test:", int(train_mask.sum()), "/", int(test_mask.sum()), "Seed:", args.seed)
+            print(
+                "Rows:",
+                len(df),
+                "Train/Test:",
+                int(train_mask.sum()),
+                "/",
+                int(test_mask.sum()),
+                "Seed:",
+                args.seed,
+            )
             print("Target:", target)
             print()
 
             for i, (enabled, alpha, start, coupling, decay) in enumerate(sweep_cfgs, start=1):
                 t0 = time.time()
-                pred = run_physics_prediction(
-                    df,
-                    target_col=target,
-                    plane=PhysicsPlane(args.plane),
-                    train_fraction=float(args.train_fraction),
-                    random_seed=int(args.seed),
-                    n_cycles=int(cycles),
-                    cascade_enabled=True,
-                    competitive_inhibition=True,
-                    thermal_noise=True,
-                    field_effect_enabled=bool(enabled),
-                    field_effect_alpha=float(alpha),
-                    field_effect_start_cycle=int(start),
-                    field_effect_use_abs_corr=True,
-                    field_effect_coupling=str(coupling),
-                    field_effect_alpha_exp_decay=float(decay),
-                    return_predictions=True,
-                )
+                call_kwargs: dict[str, object] = {
+                    "target_col": target,
+                    "plane": PhysicsPlane(args.plane),
+                    "train_fraction": float(args.train_fraction),
+                    "random_seed": int(args.seed),
+                    "n_cycles": int(cycles),
+                    "cascade_enabled": True,
+                    "competitive_inhibition": True,
+                    "thermal_noise": True,
+                    "field_effect_enabled": bool(enabled),
+                    "field_effect_alpha": float(alpha),
+                    "field_effect_start_cycle": int(start),
+                    "field_effect_use_abs_corr": True,
+                    "field_effect_coupling": str(coupling),
+                    "field_effect_alpha_exp_decay": float(decay),
+                    "return_predictions": True,
+                }
+                call_kwargs, _hs_info = _apply_homeostasis(call_kwargs)
+                pred = run_physics_prediction(df, **call_kwargs)
                 seconds = float(time.time() - t0)
 
                 mae = float(pred.metrics.mae or float("nan"))
@@ -419,6 +480,12 @@ def main() -> int:
 
         if out_csv:
             print("Wrote sweep CSV:", out_csv)
+
+        try:
+            if session is not None:
+                session.close()
+        except Exception:
+            pass
         return 0
 
     # Choose cycle budget for the single Mycelium run.
@@ -433,23 +500,26 @@ def main() -> int:
 
     # Mycelium v4
     t0 = time.time()
-    myc = run_physics_prediction(
-        df,
-        target_col=target,
-        plane=PhysicsPlane(args.plane),
-        train_fraction=float(args.train_fraction),
-        random_seed=int(args.seed),
-        n_cycles=int(myc_cycles),
-        cascade_enabled=True,
-        competitive_inhibition=True,
-        thermal_noise=True,
-        field_effect_enabled=bool(args.mycelium_field),
-        field_effect_alpha=float(args.mycelium_field_alpha),
-        field_effect_start_cycle=int(args.mycelium_field_start),
-        field_effect_use_abs_corr=True,
-        field_effect_coupling=str(args.mycelium_field_coupling),
-        field_effect_alpha_exp_decay=float(args.mycelium_field_alpha_exp_decay),
-    )
+    myc_kwargs: dict[str, object] = {
+        "target_col": target,
+        "plane": PhysicsPlane(args.plane),
+        "train_fraction": float(args.train_fraction),
+        "random_seed": int(args.seed),
+        "n_cycles": int(myc_cycles),
+        "cascade_enabled": True,
+        "competitive_inhibition": True,
+        "thermal_noise": True,
+        "field_effect_enabled": bool(args.mycelium_field),
+        "field_effect_alpha": float(args.mycelium_field_alpha),
+        "field_effect_start_cycle": int(args.mycelium_field_start),
+        "field_effect_use_abs_corr": True,
+        "field_effect_coupling": str(args.mycelium_field_coupling),
+        "field_effect_alpha_exp_decay": float(args.mycelium_field_alpha_exp_decay),
+    }
+    myc_kwargs, hs_info = _apply_homeostasis(myc_kwargs)
+    if hs_info is not None and hs_info.get("applied"):
+        print("Homeostasis applied:", hs_info)
+    myc = run_physics_prediction(df, **myc_kwargs)
     t_my = time.time() - t0
 
     # Sklearn prep
@@ -510,7 +580,12 @@ def main() -> int:
         _fit_predict("LinearRegression", lin_pipe)
 
         ridge_pipe = Pipeline(
-            steps=[("pre", pre), ("scale", StandardScaler()), ("model", Ridge(alpha=1.0, random_state=int(args.seed)))])
+            steps=[
+                ("pre", pre),
+                ("scale", StandardScaler()),
+                ("model", Ridge(alpha=1.0, random_state=int(args.seed))),
+            ]
+        )
         _fit_predict("Ridge", ridge_pipe)
 
         enet = ElasticNet(
@@ -561,6 +636,11 @@ def main() -> int:
     for row in sorted(rows, key=lambda r: r.metrics.mae):
         print(f"{row.name:<14s} {row.metrics.mae:>14.3f} {row.metrics.rmse:>14.3f} {row.seconds:>10.2f}")
 
+    try:
+        if session is not None:
+            session.close()
+    except Exception:
+        pass
     return 0
 
 
