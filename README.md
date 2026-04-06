@@ -102,6 +102,8 @@ Homeostasis (stability + pruning + identity backup):
 - Manual tick: `POST /api/nexus/homeostasis/tick`
 - Status: `GET /api/nexus/homeostasis/status`
 
+When homeostasis is enabled, `/api/predict/electrophoresis` will consult the latest homeostasis mood and may apply a small, allowlisted learning-rate tightening when mood is `agitated` (reported back in the response under `homeostasis`).
+
 Rebuild local virtualenv:
 
 ```bash

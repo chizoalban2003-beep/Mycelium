@@ -6,12 +6,13 @@ import time
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlmodel import Session
+from sqlmodel import select
 
 import pandas as pd
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import User
+from mycelium_app.models import GrowthLedgerEntry, HomeostasisState, User
 from mycelium_app.knowledge_sync import MemoryManager
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
 from mycelium_app.presets import (
@@ -29,6 +30,122 @@ from mycelium_app.settings import settings
 
 
 router = APIRouter(prefix="/api/predict", tags=["predict"])
+
+
+def _loads_dict(s: str | None) -> dict:
+    if not s:
+        return {}
+    try:
+        import json
+
+        v = json.loads(s)
+        return v if isinstance(v, dict) else {}
+    except Exception:
+        return {}
+
+
+def _get_homeostasis_state(session: Session, *, user_id: int) -> HomeostasisState | None:
+    # We only apply global (project_id=None) homeostasis to predictions for now.
+    q = (
+        select(HomeostasisState)
+        .where(HomeostasisState.user_id == user_id)
+        .where(HomeostasisState.project_id.is_(None))
+        .order_by(HomeostasisState.updated_at.desc())
+        .limit(1)
+    )
+    return session.exec(q).first()
+
+
+def _recent_deep_breath(session: Session, *, user_id: int, cooldown_minutes: int) -> bool:
+    # If a Deep Breath was triggered recently, treat it as a stabilization command.
+    # This is a simple, explicit bridge between "feeling" and "acting".
+    try:
+        from datetime import datetime, timedelta
+
+        since = datetime.utcnow() - timedelta(minutes=max(1, int(cooldown_minutes)))
+    except Exception:
+        return False
+
+    q = (
+        select(GrowthLedgerEntry)
+        .where(GrowthLedgerEntry.created_by_user_id == user_id)
+        .where(GrowthLedgerEntry.created_at >= since)
+        .where(GrowthLedgerEntry.domain == "homeostasis")
+        .where(GrowthLedgerEntry.metric == "deep_breath")
+        .order_by(GrowthLedgerEntry.created_at.desc())
+        .limit(1)
+    )
+    return bool(session.exec(q).first())
+
+
+def _apply_homeostasis_to_kwargs(
+    base_kwargs: dict[str, object],
+    *,
+    mood: str | None,
+    recent_deep_breath: bool,
+) -> tuple[dict[str, object], list[str]]:
+    """Apply a small allowlisted adjustment to predictor knobs.
+
+    Safety rules:
+    - Only touch a tiny allowlist of stable parameters.
+    - Keep changes monotonic and bounded.
+    - Always return the applied changes for transparency.
+    """
+
+    applied: list[str] = []
+    out = dict(base_kwargs)
+
+    # Defaults from run_physics_prediction signature.
+    lr_default = 0.18
+
+    # Deep Breath is a stabilization event: return to baseline LR.
+    if recent_deep_breath:
+        out["cycle_learning_rate"] = float(lr_default)
+        out["cycle_learning_rate_schedule"] = "constant"
+        out["cycle_learning_rate_exp_decay"] = 1.0
+        applied.append("deep_breath_reset_lr")
+        return out, applied
+
+    if (mood or "").strip().lower() != "agitated":
+        return out, applied
+
+    # If agitated, reduce LR slightly and (if present) tighten multibuffer transition.
+    try:
+        cur_lr = float(out.get("cycle_learning_rate", lr_default))
+    except Exception:
+        cur_lr = lr_default
+
+    # 15% reduction, clamped.
+    new_lr = max(0.02, min(0.50, cur_lr * 0.85))
+    if abs(new_lr - cur_lr) > 1e-12:
+        out["cycle_learning_rate"] = float(new_lr)
+        applied.append(f"cycle_learning_rate:{cur_lr:.4g}->{new_lr:.4g}")
+
+    # Encourage decay if the caller is using exp_decay schedule.
+    if str(out.get("cycle_learning_rate_schedule", "constant")).strip().lower() in {"exp_decay", "constant"}:
+        try:
+            cur_exp = float(out.get("cycle_learning_rate_exp_decay", 1.0))
+        except Exception:
+            cur_exp = 1.0
+        # nudge toward gentle decay (<= 0.997) but never increase instability.
+        new_exp = min(cur_exp, 0.997)
+        if abs(new_exp - cur_exp) > 1e-12:
+            out["cycle_learning_rate_exp_decay"] = float(new_exp)
+            applied.append(f"cycle_learning_rate_exp_decay:{cur_exp:.4g}->{new_exp:.4g}")
+
+    # Optional: tighten (narrow) soft transition if multibuffer is enabled.
+    if bool(out.get("multibuffer_enabled")) and "multibuffer_transition_frac" in out:
+        try:
+            cur_t = float(out.get("multibuffer_transition_frac", 0.0))
+        except Exception:
+            cur_t = 0.0
+        if cur_t > 0.0:
+            new_t = max(0.0, min(0.50, cur_t * 0.85))
+            if abs(new_t - cur_t) > 1e-12:
+                out["multibuffer_transition_frac"] = float(new_t)
+                applied.append(f"multibuffer_transition_frac:{cur_t:.4g}->{new_t:.4g}")
+
+    return out, applied
 
 
 def _r2_from_actual_pred(actual: list[object] | None, predicted: list[object] | None) -> float | None:
@@ -278,6 +395,29 @@ async def electrophoresis_predict(
                     "score_value": decision.score_value,
                 }
 
+        # Homeostasis bridge: let mood influence a small, safe subset of knobs.
+        # This is the "Global Workspace" effect: internal state can modulate action.
+        homeostasis_info: dict[str, object] | None = None
+        if bool(getattr(settings, "nexus_homeostasis_enabled", False)):
+            hs = _get_homeostasis_state(session, user_id=int(current_user.id or 0))
+            recent = _recent_deep_breath(
+                session,
+                user_id=int(current_user.id or 0),
+                cooldown_minutes=int(getattr(settings, "nexus_homeostasis_deep_breath_cooldown_minutes", 30)),
+            )
+            mood = None if hs is None else str(hs.mood)
+            identity_hash = None if hs is None else str(hs.identity_hash)
+            mood_signal = {} if hs is None else _loads_dict(hs.mood_signal_json)
+            base_kwargs, applied = _apply_homeostasis_to_kwargs(base_kwargs, mood=mood, recent_deep_breath=recent)
+            homeostasis_info = {
+                "enabled": True,
+                "mood": mood,
+                "identity_hash": identity_hash,
+                "mood_signal": mood_signal,
+                "recent_deep_breath": bool(recent),
+                "applied": applied,
+            }
+
         t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
         elapsed_s = float(time.perf_counter() - t0)
@@ -332,6 +472,7 @@ async def electrophoresis_predict(
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,
             "diagnostics": getattr(pred, "diagnostics", None),
+            "homeostasis": homeostasis_info,
             "ledger": ledger_info,
             "weights": [
                 {
