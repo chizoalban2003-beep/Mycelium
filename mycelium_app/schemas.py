@@ -623,6 +623,24 @@ class IdentityPresentationResponse(BaseModel):
     palette: dict[str, str] = Field(default_factory=dict)
 
 
+class AssistantProfilePublic(BaseModel):
+    ok: bool = True
+    project_id: int | None = None
+    given_name: str = "Synapse"
+    gender_identity: str = "neutral"
+    vocal_preset: str = "alloy"
+    created_at: datetime
+    updated_at: datetime
+    is_default: bool = True
+
+
+class AssistantProfileUpdateRequest(BaseModel):
+    project_id: int | None = None
+    given_name: str = "Synapse"
+    gender_identity: str = "neutral"
+    vocal_preset: str = "alloy"
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime

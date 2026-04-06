@@ -173,6 +173,17 @@ Helper script:
 
 This updates directive confidence and records a growth-ledger outcome for learning.
 
+## Assistant profile (name/gender/voice)
+
+Personalize assistant identity:
+
+- Web UI: `/assistant/profile`
+- API:
+	- `GET /api/nexus/identity/assistant/profile`
+	- `POST /api/nexus/identity/assistant/profile`
+
+This updates identity presentation so the assistant is addressed by the configured name.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

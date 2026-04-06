@@ -126,6 +126,18 @@ class NexusPolicy(SQLModel, table=True):
     policy_json: str = "{}"
 
 
+class AssistantProfile(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    given_name: str = Field(default="Synapse", index=True)
+    gender_identity: str = Field(default="neutral", index=True)
+    vocal_preset: str = Field(default="alloy", index=True)
+
+
 class HiveOutboxReport(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

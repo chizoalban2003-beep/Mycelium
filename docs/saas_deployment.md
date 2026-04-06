@@ -75,6 +75,28 @@ companion execution.
 Verification updates the directive confidence and stores evidence in GrowthLedger
 (`domain=task_replica_focus`, `metric=adherence`).
 
+### Assistant naming ceremony (identity sovereignty)
+
+You can personalize assistant identity (name/gender/voice) globally per user.
+
+API:
+
+- `GET /api/nexus/identity/assistant/profile`
+- `POST /api/nexus/identity/assistant/profile`
+
+Web UI:
+
+- `/assistant/profile`
+
+Fields:
+
+- `given_name` (e.g. "Jarvis")
+- `gender_identity` (`neutral|female|male|nonbinary|custom`)
+- `vocal_preset` (provider-specific voice key)
+
+Identity presentation (`/api/nexus/identity/presentation`) now uses this profile
+for personalized assistant display naming.
+
 ### Child trajectory capture: manual first, auto optional
 
 Recommended rollout:

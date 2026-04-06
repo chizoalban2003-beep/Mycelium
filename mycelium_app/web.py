@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 
 import pandas as pd
 
+from mycelium_app.assistant_profile import get_assistant_profile_effective, set_assistant_profile
 from mycelium_app.curiosity import capture_agitated_cases
 from mycelium_app.curiosity import answer_case, dismiss_case, next_pending_case
 from mycelium_app.db import get_session
@@ -414,6 +415,51 @@ def demo_page(
         "demo.html",
         {"request": request, "user": current_user, "app_name": settings.app_name},
     )
+
+
+@router.get("/assistant/profile", response_class=HTMLResponse)
+def assistant_profile_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    profile = get_assistant_profile_effective(session, user_id=int(current_user.id or 0), project_id=None)
+    return templates.TemplateResponse(
+        "assistant_profile.html",
+        {
+            "request": request,
+            "user": current_user,
+            "app_name": settings.app_name,
+            "profile": profile,
+            "saved": str(request.query_params.get("saved", "")) == "1",
+        },
+    )
+
+
+@router.post("/assistant/profile")
+def assistant_profile_save_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    given_name: str = Form("Synapse"),
+    gender_identity: str = Form("neutral"),
+    vocal_preset: str = Form("alloy"),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    set_assistant_profile(
+        session,
+        user_id=int(current_user.id or 0),
+        project_id=None,
+        given_name=str(given_name or "Synapse"),
+        gender_identity=str(gender_identity or "neutral"),
+        vocal_preset=str(vocal_preset or "alloy"),
+    )
+    return RedirectResponse(url="/assistant/profile?saved=1", status_code=302)
 
 
 @router.post("/curiosity/answer")
