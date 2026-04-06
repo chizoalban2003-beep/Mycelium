@@ -13,6 +13,7 @@ from mycelium_app.db import engine
 from mycelium_app.hive_empathy import queue_homeostasis_failure
 from mycelium_app.hive_empathy import compute_wisdom_latest, stable_digest, summarize_kwargs_diff
 from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
+from mycelium_app.metric_snapshot import run_validation_shadow
 from mycelium_app.models import NexusNudge, WisdomIntegrationState
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.game import router as game_router
@@ -136,6 +137,17 @@ async def _wisdom_nudge_daemon() -> None:
                         changed_keys = int(diff.get("changed_keys", 0) or 0)
                         max_rel = float(diff.get("max_rel_change", 0.0) or 0.0)
 
+                        # Optional: Validation Shadow (empirical honesty).
+                        shadow = run_validation_shadow(
+                            session,
+                            user_id=int(uid),
+                            project_id=None,
+                            target_col=str(getattr(settings, "nexus_validation_shadow_target_col", "") or ""),
+                            baseline_kwargs=old_kwargs,
+                            trial_kwargs=new_kwargs,
+                            wisdom_digest=str(new_digest),
+                        )
+
                         # Update integration state even if we don't nudge.
                         state.last_wisdom_digest = str(new_digest)
                         state.last_wisdom_kwargs_json = json.dumps(new_kwargs, sort_keys=True, separators=(",", ":"))
@@ -148,12 +160,28 @@ async def _wisdom_nudge_daemon() -> None:
                             state.last_nudge_at is not None
                             and (now - state.last_nudge_at) < timedelta(hours=6)
                         )
-                        if meaningful and not throttled:
+
+                        # If we have an empirical benchmark, only speak when it improved.
+                        empirical_ok = bool(shadow.ok and shadow.improvement_frac is not None)
+                        min_imp = float(getattr(settings, "nexus_validation_shadow_min_improvement_frac", 0.02) or 0.0)
+                        improved = empirical_ok and float(shadow.improvement_frac or 0.0) > float(min_imp)
+
+                        should_nudge = (improved or (meaningful and not empirical_ok)) and not throttled
+
+                        if should_nudge:
                             title = "New Hive wisdom integrated"
-                            msg = (
-                                f"I learned an update from the Hive: {changed_keys} knob(s) changed "
-                                f"(max Δ≈{round(max_rel * 100.0)}%). You may see improved stability/accuracy."
-                            )
+                            if improved:
+                                pct = round(float(shadow.improvement_frac or 0.0) * 100.0, 1)
+                                metric = str(shadow.metric_name or "metric")
+                                msg = (
+                                    f"Integrated Hive wisdom. Local validation improved by {pct}% "
+                                    f"on {metric}."
+                                )
+                            else:
+                                msg = (
+                                    f"I learned an update from the Hive: {changed_keys} knob(s) changed "
+                                    f"(max Δ≈{round(max_rel * 100.0)}%). You may see improved stability/accuracy."
+                                )
                             nudge = NexusNudge(
                                 created_by_user_id=int(uid),
                                 project_id=None,
@@ -163,6 +191,14 @@ async def _wisdom_nudge_daemon() -> None:
                                 payload_json=json.dumps(
                                     {
                                         "diff": diff,
+                                        "shadow": {
+                                            "ok": bool(shadow.ok),
+                                            "metric": shadow.metric_name,
+                                            "baseline": shadow.baseline_value,
+                                            "trial": shadow.trial_value,
+                                            "improvement_frac": shadow.improvement_frac,
+                                            "notes": shadow.notes,
+                                        },
                                         "as_of": (latest.as_of.isoformat() + "Z") if latest.as_of else None,
                                         "n_whispers_used": int(latest.n_whispers_used),
                                         "digest": str(new_digest),

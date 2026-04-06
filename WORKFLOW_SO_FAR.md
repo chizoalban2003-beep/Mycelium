@@ -204,3 +204,24 @@ Returns a deterministic `display_name` + `tagline` computed from `identity_hash`
 - Acknowledge (dismiss): `POST /api/nexus/nudges/ack` with body `{ "nudge_id": 123 }`
 
 Autonomous nudge: when Hive wisdom changes meaningfully, the server queues a `wisdom_update` nudge for active users.
+
+## 10) Validation Shadow (MetricSnapshot) — “Empirical Nudges”
+
+If you want the nudge to honestly say “I’m ~12% better now”, enable the Validation Shadow.
+
+When enabled, on wisdom change the system will:
+- run a mini-benchmark on a local CSV evaluation set using the *old* kwargs and the *new* broadcast kwargs
+- store both results as `MetricSnapshot` rows (baseline + trial)
+- only nudge the user if the measured delta is positive and above the threshold
+
+### Enable (via env vars)
+
+Set in your `.env` (or environment):
+- `NEXUS_VALIDATION_SHADOW_ENABLED=true`
+- `NEXUS_VALIDATION_SHADOW_DATASET_PATH=/absolute/path/to/eval.csv`
+- `NEXUS_VALIDATION_SHADOW_TARGET_COL=salary` (or your target)
+
+Optional tuning:
+- `NEXUS_VALIDATION_SHADOW_MAX_ROWS=5000`
+- `NEXUS_VALIDATION_SHADOW_N_CYCLES=12`
+- `NEXUS_VALIDATION_SHADOW_MIN_IMPROVEMENT_FRAC=0.02` (2%)

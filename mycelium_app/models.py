@@ -254,3 +254,26 @@ class WisdomIntegrationState(SQLModel, table=True):
     last_wisdom_digest: str = Field(default="", index=True)
     last_wisdom_kwargs_json: str = "{}"
     last_nudge_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class MetricSnapshot(SQLModel, table=True):
+    """Persisted metric measurement for validation-shadow honesty."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    # What was measured
+    dataset_digest: str = Field(default="", index=True)
+    wisdom_digest: str = Field(default="", index=True)
+    phase: str = Field(default="", index=True)  # baseline|trial
+
+    target_col: str = ""
+    target_kind: str = Field(default="", index=True)
+    metric_name: str = Field(default="", index=True)  # mae|rmse|accuracy
+    metric_value: float = 0.0
+
+    # Repro context
+    kwargs_json: str = "{}"
+    notes: str = ""

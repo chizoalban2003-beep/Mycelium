@@ -63,5 +63,18 @@ class Settings(BaseSettings):
     hive_enabled: bool = False
     hive_export_enabled_default: bool = False
 
+    # Validation Shadow (Empirical Nudges)
+    # Disabled by default: when enabled and configured with a local CSV, the
+    # system will benchmark old vs new Hive wisdom and only claim improvements
+    # that are measured.
+    nexus_validation_shadow_enabled: bool = False
+    nexus_validation_shadow_dataset_path: str = ""
+    nexus_validation_shadow_target_col: str = ""
+    nexus_validation_shadow_max_rows: int = 5000
+    nexus_validation_shadow_train_fraction: float = 0.8
+    nexus_validation_shadow_random_seed: int = 42
+    nexus_validation_shadow_n_cycles: int = 12
+    nexus_validation_shadow_min_improvement_frac: float = 0.02
+
 
 settings = Settings()
