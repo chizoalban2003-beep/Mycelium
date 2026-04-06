@@ -141,8 +141,24 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Assess job salary regression under Mycelium cleaning/outlier strategies")
     p.add_argument(
         "--data",
-        default="tmp_eval/job_salary_prediction_dataset.csv",
-        help="Path to a CSV dataset (default: tmp_eval/job_salary_prediction_dataset.csv)",
+        default="",
+        help="Path to a CSV dataset. If omitted, pass --generate-sample to create a synthetic dataset.",
+    )
+    p.add_argument(
+        "--generate-sample",
+        action="store_true",
+        help="Generate a small synthetic salary dataset if --data is missing (or points to a missing file).",
+    )
+    p.add_argument(
+        "--generate-sample-out",
+        default="tmp_eval/sample_salary_dataset.csv",
+        help="Where to write the generated sample dataset (default: tmp_eval/sample_salary_dataset.csv)",
+    )
+    p.add_argument(
+        "--generate-sample-rows",
+        type=int,
+        default=8000,
+        help="Rows to generate for --generate-sample (default: 8000)",
     )
     p.add_argument("--target", default="salary", help="Regression target column name (default: salary)")
     p.add_argument("--nrows", type=int, default=8000)
@@ -167,9 +183,21 @@ def main() -> int:
 
     args = p.parse_args()
 
-    data_path = Path(args.data)
-    if not data_path.exists():
-        raise SystemExit(f"Data not found: {data_path}. Provide a dataset path via --data.")
+    data_path = Path(str(args.data)) if str(args.data).strip() else Path("")
+    if (not str(args.data).strip()) or (data_path and not data_path.exists()):
+        if not bool(args.generate_sample):
+            raise SystemExit(
+                "Dataset not provided. Provide --data /path/to/your.csv, or run with --generate-sample. "
+                "You can also generate one explicitly via: python scripts/sample_salary_dataset.py"
+            )
+        from scripts.sample_salary_dataset import make_sample_salary_dataset
+
+        out_path = Path(str(args.generate_sample_out))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        df_gen = make_sample_salary_dataset(int(args.generate_sample_rows), int(args.seed))
+        df_gen.to_csv(out_path, index=False)
+        data_path = out_path
+        print(f"Generated sample dataset -> {data_path}")
 
     df = _load_df(data_path, args.nrows)
 

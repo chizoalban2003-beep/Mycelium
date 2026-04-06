@@ -48,7 +48,27 @@ def _fmt(v: float | None) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark Mycelium vs sklearn classifiers on the salary dataset")
-    parser.add_argument("--path", default="tmp_eval/job_salary_prediction_dataset.csv")
+    parser.add_argument(
+        "--path",
+        default="",
+        help="Path to a CSV dataset. If omitted, pass --generate-sample to create a synthetic dataset.",
+    )
+    parser.add_argument(
+        "--generate-sample",
+        action="store_true",
+        help="Generate a small synthetic salary dataset if --path is missing (or points to a missing file).",
+    )
+    parser.add_argument(
+        "--generate-sample-out",
+        default="tmp_eval/sample_salary_dataset.csv",
+        help="Where to write the generated sample dataset (default: tmp_eval/sample_salary_dataset.csv)",
+    )
+    parser.add_argument(
+        "--generate-sample-rows",
+        type=int,
+        default=50_000,
+        help="Rows to generate for --generate-sample (default: 50000)",
+    )
     parser.add_argument("--nrows", type=int, default=50_000)
     parser.add_argument(
         "--target",
@@ -83,7 +103,23 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    df = pd.read_csv(args.path, nrows=int(args.nrows))
+    dataset_path = Path(str(args.path)) if str(args.path).strip() else Path("")
+    if (not str(args.path).strip()) or (dataset_path and not dataset_path.exists()):
+        if not bool(args.generate_sample):
+            raise SystemExit(
+                "Dataset not provided. Provide --path /path/to/your.csv, or run with --generate-sample. "
+                "You can also generate one explicitly via: python scripts/sample_salary_dataset.py"
+            )
+        from scripts.sample_salary_dataset import make_sample_salary_dataset
+
+        out_path = Path(str(args.generate_sample_out))
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        df_gen = make_sample_salary_dataset(int(args.generate_sample_rows), int(args.seed))
+        df_gen.to_csv(out_path, index=False)
+        dataset_path = out_path
+        print(f"Generated sample dataset -> {dataset_path}")
+
+    df = pd.read_csv(str(dataset_path), nrows=int(args.nrows))
     target = str(args.target)
     if target.lower() == "random":
         candidates: list[str] = []

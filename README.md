@@ -56,4 +56,6 @@ Option B (API): `POST /api/auth/register`
 - `storage/` is ignored by git.
 
 Benchmarks / scratch data:
-- `tmp_eval/` is ignored by git (local outputs + datasets).
+- `tmp_eval/` is ignored by git (local outputs + datasets). This repo no longer ships the benchmark dataset.
+- Use your own CSV when running benchmark scripts, e.g. `python scripts/benchmark_salary_models.py --csv /path/to/data.csv --target salary`.
+- Or generate a synthetic sample dataset: `python scripts/sample_salary_dataset.py --out tmp_eval/sample_salary_dataset.csv`, then pass it into scripts.
