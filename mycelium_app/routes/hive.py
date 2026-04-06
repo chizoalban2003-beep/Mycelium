@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
@@ -14,10 +15,12 @@ from mycelium_app.hive_empathy import compute_wisdom_latest, queue_wisdom_whispe
 from mycelium_app.hive_sync import build_anonymized_report
 from mycelium_app.models import (
     ExperienceBufferEntry,
+    HiveDevice,
     HiveGlobalUpdate,
     HiveOutboxMessage,
     HiveOutboxReport,
     MetricSnapshot,
+    NexusNudge,
     ProjectMember,
     User,
 )
@@ -182,6 +185,99 @@ def _extract_device_id_any(obj: object, *, depth: int = 0, max_depth: int = 6) -
         return ""
 
     return ""
+
+
+def _operator_user_ids(session: Session) -> list[int]:
+    """Resolve operator recipients for system nudges.
+
+    If Hive Health is restricted via allowlist, we nudge only those accounts.
+    Otherwise, we nudge all active users.
+    """
+
+    allow = _csv_set(getattr(settings, "hive_health_allowlist_emails_csv", ""))
+    q = select(User).where(User.is_active.is_(True))
+    if allow:
+        q = q.where(User.email.in_(sorted(allow)))
+    rows = session.exec(q).all()
+    out: list[int] = []
+    for u in rows:
+        uid = int(getattr(u, "id", 0) or 0)
+        if uid > 0:
+            out.append(uid)
+    return out
+
+
+def _maybe_record_device_seen(session: Session, *, device_id: str, source: str) -> bool:
+    """Upsert a HiveDevice row. Returns True if this is the first time seen."""
+
+    did = (device_id or "").strip()
+    if not did:
+        return False
+
+    now = datetime.utcnow()
+
+    row = session.exec(select(HiveDevice).where(HiveDevice.device_id == did)).first()
+    if row:
+        row.last_seen_at = now
+        row.last_source = (source or "")[:64]
+        session.add(row)
+        session.commit()
+        return False
+
+    row = HiveDevice(device_id=did[:128], first_seen_at=now, last_seen_at=now, last_source=(source or "")[:64])
+    session.add(row)
+    try:
+        session.commit()
+        return True
+    except IntegrityError:
+        # Concurrent first-seen: another request inserted it.
+        session.rollback()
+        return False
+
+
+def _maybe_nudge_child_connected(
+    session: Session,
+    *,
+    device_id: str,
+    source: str,
+    update_uuid: str,
+    kind: str,
+) -> None:
+    did = (device_id or "").strip()
+    if not did:
+        return
+
+    try:
+        first_seen = _maybe_record_device_seen(session, device_id=did, source=source)
+    except Exception:
+        return
+
+    if not first_seen:
+        return
+
+    payload = {
+        "device_id": did,
+        "source": str(source or ""),
+        "update_uuid": str(update_uuid or ""),
+        "kind": str(kind or ""),
+        "first_seen_at": datetime.utcnow().isoformat() + "Z",
+    }
+
+    for uid in _operator_user_ids(session):
+        n = NexusNudge(
+            created_by_user_id=int(uid),
+            project_id=None,
+            kind="child_connected",
+            title="New child connected",
+            message=f"First whisper received from device '{did}'.",
+            payload_json=_dumps(payload),
+        )
+        session.add(n)
+
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
 
 
 def _to_report_public(report: dict[str, object], *, project_id: int | None) -> HiveReportPublic:
@@ -403,6 +499,20 @@ def import_whisper_as_global_update(
     session.commit()
     session.refresh(row)
 
+    device_id = ""
+    try:
+        device_id = str(meta.get("device_id") or "").strip()
+    except Exception:
+        device_id = ""
+    if device_id:
+        _maybe_nudge_child_connected(
+            session,
+            device_id=device_id,
+            source=(payload.source or "hive_empathy")[:64],
+            update_uuid=row.update_uuid,
+            kind="wisdom_whisper",
+        )
+
     return HiveWhisperImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
 
@@ -452,6 +562,20 @@ def import_curiosity_feedback_as_global_update(
     session.commit()
     session.refresh(row)
 
+    device_id = ""
+    try:
+        device_id = str(meta.get("device_id") or "").strip()
+    except Exception:
+        device_id = ""
+    if device_id:
+        _maybe_nudge_child_connected(
+            session,
+            device_id=device_id,
+            source=(payload.source or "active_curiosity")[:64],
+            update_uuid=row.update_uuid,
+            kind="curiosity_feedback",
+        )
+
     return HiveCuriosityFeedbackImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
 
@@ -500,6 +624,20 @@ def import_curiosity_concept_as_global_update(
     session.add(row)
     session.commit()
     session.refresh(row)
+
+    device_id = ""
+    try:
+        device_id = str(meta.get("device_id") or "").strip()
+    except Exception:
+        device_id = ""
+    if device_id:
+        _maybe_nudge_child_connected(
+            session,
+            device_id=device_id,
+            source=(payload.source or "user_feedback_ionizer")[:64],
+            update_uuid=row.update_uuid,
+            kind="curiosity_concept",
+        )
 
     return HiveCuriosityConceptImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 

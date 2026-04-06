@@ -131,6 +131,13 @@ curl -sS -X POST "$PARENT_HUB_URL/api/hive/whisper/import" \
 
 If you want this to show up as a connected node in Hive Health, include `meta.device_id`.
 
+If this is the first time the Parent Hub has ever seen that `meta.device_id`, it will also create a small in-app **Nudge** (title: “New child connected”).
+The nudge appears in the web UI banner after you log in.
+
+Operator targeting:
+- If `HIVE_HEALTH_ALLOWLIST_EMAILS_CSV` is set, the nudge is created only for those accounts.
+- Otherwise, the nudge is created for all active users.
+
 ### Hive Health (authenticated curl)
 
 ```bash

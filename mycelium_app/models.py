@@ -145,6 +145,23 @@ class HiveGlobalUpdate(SQLModel, table=True):
     update_json: str = "{}"  # e.g. recommended knobs, safe allowlisted fields
 
 
+class HiveDevice(SQLModel, table=True):
+    """Track Hive child devices that have reported in.
+
+    Used to generate a one-time "first connect" operator nudge without scanning
+    the full HiveGlobalUpdate JSON history.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    device_id: str = Field(default="", index=True, unique=True)
+
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    last_source: str = Field(default="", index=True)
+
+
+
 class HiveOutboxMessage(SQLModel, table=True):
     """Generic Hive outbox message.
 
