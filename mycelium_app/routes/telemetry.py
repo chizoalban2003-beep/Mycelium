@@ -10,12 +10,16 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.growth import compute_growth_stage
-from mycelium_app.models import GrowthLedgerEntry, NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent, User
+from mycelium_app.models import GrowthLedgerEntry, HiveOutboxMessage, NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.schemas import (
     TelemetryAssistantActionRequest,
     TelemetryAssistantActionResponse,
+    TelemetryDeviceActionAckRequest,
+    TelemetryDeviceActionAckResponse,
+    TelemetryDeviceActionPendingResponse,
+    TelemetryDeviceActionPublic,
     TelemetryDeepFreezeSweepRequest,
     TelemetryDeepFreezeSweepResponse,
     TelemetryAssistantTickResponse,
@@ -410,6 +414,43 @@ def _loads_dict(s: str | None) -> dict:
         return {}
 
 
+def _safe_float(v: object, default: float = 0.0) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return float(default)
+
+
+def _queue_device_action(
+    *,
+    session: Session,
+    user_id: int,
+    project_id: int | None,
+    device_id: str,
+    action_id: str,
+    confidence: float,
+    command: dict[str, object],
+) -> int:
+    row = HiveOutboxMessage(
+        created_by_user_id=int(user_id),
+        project_id=project_id,
+        device_id=str(device_id or "local")[:128],
+        kind="device_action",
+        payload_json=_dumps(
+            {
+                "action_id": str(action_id or "")[:64],
+                "confidence": float(round(confidence, 4)),
+                "command": command if isinstance(command, dict) else {},
+                "requested_at": datetime.utcnow().isoformat() + "Z",
+            }
+        ),
+        submitted_at=None,
+    )
+    session.add(row)
+    session.flush()
+    return int(row.id or 0)
+
+
 @router.post("/assistant/action", response_model=TelemetryAssistantActionResponse)
 def assistant_action(
     payload: TelemetryAssistantActionRequest,
@@ -445,6 +486,17 @@ def assistant_action(
     require_confirm = bool(actions_cfg.get("require_confirm", True))
     if not actions_enabled:
         raise HTTPException(status_code=403, detail="Device actions disabled by parental policy")
+
+    notify_only = bool(actions_cfg.get("notify_only", True))
+    device_control_enabled = bool(actions_cfg.get("device_control_enabled", False))
+    try:
+        min_confidence = float(actions_cfg.get("min_confidence", 0.90))
+    except Exception:
+        min_confidence = 0.90
+    min_confidence = max(0.0, min(min_confidence, 1.0))
+
+    caps_raw = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
+    capabilities = {str(x).strip().lower() for x in caps_raw if str(x).strip()}
 
     # Project membrane: in project-scoped actions, only owner/editor can execute.
     if nudge.project_id is not None:
@@ -484,6 +536,7 @@ def assistant_action(
         pass
 
     sweep_entry_id: int | None = None
+    queued_device_action_id: int | None = None
     detail = ""
 
     if action_id == "run_deep_freeze_sweep":
@@ -511,6 +564,45 @@ def assistant_action(
         )
         session.add(followup)
         detail = "Focus-Zone suggestion queued."
+    elif action_id == "device_start_focus_session":
+        if notify_only:
+            return TelemetryAssistantActionResponse(
+                ok=True,
+                executed=False,
+                action_id=action_id,
+                decision=decision,
+                detail="Policy is notify-only; no device operation was queued.",
+                sweep_entry_id=None,
+                queued_device_action_id=None,
+            )
+        if not device_control_enabled:
+            raise HTTPException(status_code=403, detail="Device control not granted by user policy")
+        if "start_focus_session" not in capabilities:
+            raise HTTPException(status_code=403, detail="Capability not allowed by user policy")
+
+        conf = _safe_float(nudge_payload.get("confidence"), 0.0)
+        if conf < min_confidence:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Confidence {conf:.3f} below policy minimum {min_confidence:.3f}",
+            )
+
+        target_device_id = str(nudge_payload.get("device_id") or settings.nexus_device_id or "local").strip()[:64]
+        queued_device_action_id = _queue_device_action(
+            session=session,
+            user_id=user_id,
+            project_id=nudge.project_id,
+            device_id=target_device_id,
+            action_id=action_id,
+            confidence=conf,
+            command={
+                "op": "focus_session",
+                "duration_minutes": 45,
+                "enable_dnd": True,
+                "open_app": "focus",
+            },
+        )
+        detail = f"Device action queued for companion agent ({target_device_id})."
     else:
         raise HTTPException(status_code=400, detail="Unsupported action_id")
 
@@ -526,4 +618,94 @@ def assistant_action(
         decision=decision,
         detail=detail,
         sweep_entry_id=sweep_entry_id,
+        queued_device_action_id=queued_device_action_id,
+    )
+
+
+@router.get("/device-actions/pending", response_model=TelemetryDeviceActionPendingResponse)
+def device_actions_pending(
+    device_id: str | None = None,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Poll pending user-approved device actions for a local companion agent."""
+
+    user_id = int(current_user.id or 0)
+    limit = max(1, min(int(limit), 200))
+    target_device = (device_id or settings.nexus_device_id or "local").strip()[:64]
+
+    q = (
+        select(HiveOutboxMessage)
+        .where(HiveOutboxMessage.created_by_user_id == user_id)
+        .where(HiveOutboxMessage.kind == "device_action")
+        .where(HiveOutboxMessage.submitted_at.is_(None))
+        .where(HiveOutboxMessage.device_id == target_device)
+        .order_by(HiveOutboxMessage.created_at.asc())
+        .limit(limit)
+    )
+    rows = session.exec(q).all()
+
+    out: list[TelemetryDeviceActionPublic] = []
+    for r in rows:
+        payload = _loads_dict(r.payload_json)
+        out.append(
+            TelemetryDeviceActionPublic(
+                message_id=int(r.id or 0),
+                created_at=r.created_at,
+                device_id=str(r.device_id or ""),
+                project_id=r.project_id,
+                action_id=str(payload.get("action_id") or ""),
+                confidence=_safe_float(payload.get("confidence"), 0.0),
+                command=payload.get("command") if isinstance(payload.get("command"), dict) else {},
+            )
+        )
+
+    return TelemetryDeviceActionPendingResponse(ok=True, actions=out)
+
+
+@router.post("/device-actions/{message_id}/ack", response_model=TelemetryDeviceActionAckResponse)
+def device_action_ack(
+    message_id: int,
+    payload: TelemetryDeviceActionAckRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Acknowledge execution result for a queued device action."""
+
+    status = str(payload.status or "executed").strip().lower()
+    if status not in {"executed", "failed", "rejected"}:
+        raise HTTPException(status_code=400, detail="status must be executed|failed|rejected")
+
+    user_id = int(current_user.id or 0)
+    row = session.exec(
+        select(HiveOutboxMessage).where(
+            HiveOutboxMessage.id == int(message_id),
+            HiveOutboxMessage.created_by_user_id == user_id,
+            HiveOutboxMessage.kind == "device_action",
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Device action not found")
+
+    wanted_device = (payload.device_id or "").strip()
+    if wanted_device and wanted_device != str(row.device_id or ""):
+        raise HTTPException(status_code=403, detail="device_id does not match queued action")
+
+    p = _loads_dict(row.payload_json)
+    p["ack"] = {
+        "status": status,
+        "notes": str(payload.notes or "")[:500],
+        "acked_at": datetime.utcnow().isoformat() + "Z",
+    }
+    row.payload_json = _dumps(p)
+    row.submitted_at = datetime.utcnow()
+    session.add(row)
+    session.commit()
+
+    return TelemetryDeviceActionAckResponse(
+        ok=True,
+        message_id=int(row.id or 0),
+        status=status,
+        executed=bool(status == "executed"),
     )

@@ -24,6 +24,9 @@ def default_policy() -> dict[str, object]:
             "enabled": False,
             "notify_only": True,
             "require_confirm": True,
+            "device_control_enabled": False,
+            "min_confidence": 0.90,
+            "allowed_capabilities": [],
         },
         "intro": {
             "mode": str(getattr(settings, "nexus_intro_mode", "ask")),
@@ -89,7 +92,24 @@ def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
         "enabled": bool((actions or {}).get("enabled", base_actions.get("enabled", False))),
         "notify_only": bool((actions or {}).get("notify_only", base_actions.get("notify_only", True))),
         "require_confirm": bool((actions or {}).get("require_confirm", base_actions.get("require_confirm", True))),
+        "device_control_enabled": bool(
+            (actions or {}).get("device_control_enabled", base_actions.get("device_control_enabled", False))
+        ),
     }
+
+    try:
+        min_conf = float((actions or {}).get("min_confidence", base_actions.get("min_confidence", 0.90)))
+    except Exception:
+        min_conf = 0.90
+    min_conf = max(0.0, min(min_conf, 1.0))
+    merged["actions"]["min_confidence"] = float(min_conf)
+
+    caps_raw = (actions or {}).get("allowed_capabilities", base_actions.get("allowed_capabilities", []))
+    if not isinstance(caps_raw, list):
+        caps_raw = []
+    merged["actions"]["allowed_capabilities"] = [
+        str(x).strip().lower()[:64] for x in caps_raw if str(x).strip()
+    ][:20]
 
     intro = merged.get("intro")
     if not isinstance(intro, dict):

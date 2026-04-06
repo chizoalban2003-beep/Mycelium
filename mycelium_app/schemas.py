@@ -387,6 +387,35 @@ class TelemetryAssistantActionResponse(BaseModel):
     decision: str
     detail: str = ""
     sweep_entry_id: int | None = None
+    queued_device_action_id: int | None = None
+
+
+class TelemetryDeviceActionPublic(BaseModel):
+    message_id: int
+    created_at: datetime
+    device_id: str
+    project_id: int | None
+    action_id: str
+    confidence: float
+    command: dict[str, object] = Field(default_factory=dict)
+
+
+class TelemetryDeviceActionPendingResponse(BaseModel):
+    ok: bool = True
+    actions: list[TelemetryDeviceActionPublic]
+
+
+class TelemetryDeviceActionAckRequest(BaseModel):
+    device_id: str | None = None
+    status: str = "executed"  # executed|failed|rejected
+    notes: str = ""
+
+
+class TelemetryDeviceActionAckResponse(BaseModel):
+    ok: bool = True
+    message_id: int
+    status: str
+    executed: bool = False
 
 
 class TelemetryDeepFreezeSweepRequest(BaseModel):

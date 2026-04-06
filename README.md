@@ -92,6 +92,38 @@ python3 scripts/silent24_deep_freeze.py \
 	--device-id local
 ```
 
+## Consented device actions (confidence-gated)
+
+Mycelium can queue local device operations only after explicit user permission.
+
+1) Enable actions in policy (and keep confirmations on):
+
+- `POST /api/nexus/policy` with:
+	- `actions.enabled=true`
+	- `actions.device_control_enabled=true`
+	- `actions.require_confirm=true`
+	- `actions.notify_only=false`
+	- `actions.min_confidence=0.90`
+	- `actions.allowed_capabilities=["start_focus_session"]`
+
+2) Generate a telemetry proposal:
+
+- `POST /api/nexus/telemetry/assistant/tick`
+
+3) User approves a proposed action:
+
+- `POST /api/nexus/telemetry/assistant/action`
+
+4) Companion agent polls pending actions:
+
+- `GET /api/nexus/telemetry/device-actions/pending?device_id=local`
+
+5) Companion agent reports result:
+
+- `POST /api/nexus/telemetry/device-actions/{message_id}/ack`
+
+This keeps operations auditable and reversible while improving learning from accept/reject/execute outcomes.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

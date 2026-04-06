@@ -103,6 +103,17 @@ def maybe_queue_telemetry_assistant_nudge(
 
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
     actions_enabled = bool(actions_cfg.get("enabled", False))
+    device_control_enabled = bool(actions_cfg.get("device_control_enabled", False))
+    try:
+        min_confidence = float(actions_cfg.get("min_confidence", 0.90))
+    except Exception:
+        min_confidence = 0.90
+    min_confidence = max(0.0, min(min_confidence, 1.0))
+
+    caps_raw = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
+    capabilities = {str(x).strip().lower() for x in caps_raw if str(x).strip()}
+
+    resolved_device_id = (device_id or settings.nexus_device_id or "local").strip()[:64]
 
     project_role: str | None = None
     can_execute_project_actions = True
@@ -131,6 +142,20 @@ def maybe_queue_telemetry_assistant_nudge(
                     "title": "Suggest a Work-Zone",
                     "detail": "Propose a daily focus window and learn from accept/reject feedback.",
                     "requires_confirm": True,
+                }
+            )
+        if (
+            device_control_enabled
+            and (conf >= min_confidence)
+            and ({"start_focus_session", "open_focus_app"} & capabilities)
+        ):
+            proposed_actions.append(
+                {
+                    "action_id": "device_start_focus_session",
+                    "title": "Start Focus Session on device",
+                    "detail": "Ask your companion agent to enable DND for 45 min and open your focus app.",
+                    "requires_confirm": True,
+                    "device_capability": "start_focus_session",
                 }
             )
         proposed_actions.append(
@@ -163,7 +188,10 @@ def maybe_queue_telemetry_assistant_nudge(
             "actions_enabled": actions_enabled,
             "notify_only": bool(actions_cfg.get("notify_only", True)),
             "require_confirm": bool(actions_cfg.get("require_confirm", True)),
+            "device_control_enabled": bool(device_control_enabled),
+            "min_confidence": float(min_confidence),
         },
+        "device_id": resolved_device_id,
         "project_role": project_role,
         "can_execute_actions": bool(actions_enabled and can_execute_project_actions),
     }
