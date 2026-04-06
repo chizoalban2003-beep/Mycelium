@@ -91,6 +91,29 @@ Recommended rollout:
   - `CHILD_TRAJECTORY_COOLDOWN_SECONDS=600`
   - `CHILD_TRAJECTORY_MUST_INCLUDE_CSV=mycelium`
 
+### Launch readiness checklist (Railway + Play)
+
+Use this before opening public alpha:
+
+- [ ] Rotate `SECRET_KEY` in Railway and redeploy.
+- [ ] Confirm `COOKIE_SECURE=true` and strict `CORS_ALLOW_ORIGINS_CSV`.
+- [ ] Set Android identity vars:
+  - [ ] `ANDROID_APP_PACKAGE_NAME`
+  - [ ] `ANDROID_APP_SHA256_CERT_FINGERPRINTS_CSV`
+- [ ] Verify `https://<domain>/.well-known/assetlinks.json` returns expected values.
+- [ ] Verify public ingest throttling is enabled:
+  - [ ] `HIVE_WHISPER_IMPORT_RATE_LIMIT_ENABLED=true`
+  - [ ] Window/source/device limits are set.
+- [ ] Run one closed-loop directive test:
+  1. `POST /api/nexus/tasks/bootstrap/work-session`
+  2. approve a proposed replica (`/decision`)
+  3. execute locally via child companion
+  4. report outcomes via `/verify`
+- [ ] Confirm GrowthLedger records adherence:
+  - `domain=task_replica_focus`
+  - `metric=adherence`
+- [ ] Keep device capabilities allowlisted (minimum viable set) in user policy.
+
 ---
 
 This repo already runs as a local “Parent Hub” + “Child” model.
