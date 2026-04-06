@@ -211,3 +211,64 @@ class TelemetrySummaryResponse(BaseModel):
     confidence: float
     patterns: list[dict[str, object]]
     first_word: str | None = None
+
+
+class TelemetryDeepFreezeSweepRequest(BaseModel):
+    project_id: int | None = None
+    device_id: str | None = None
+    window_hours: int = 24
+    accept_r2_threshold: float = 0.90
+    min_pairs: int = 30
+
+
+class TelemetryDeepFreezeSweepResponse(BaseModel):
+    ok: bool = True
+    entry_id: int
+    domain: str
+    metric: str
+    r2: float
+    accuracy: float
+    n_pairs: int
+    accepted: bool
+
+
+class GrowthSweepRecordRequest(BaseModel):
+    project_id: int | None = None
+    device_id: str | None = None
+    domain: str
+    metric: str
+    score: float
+    accepted: bool = False
+    proposal: dict[str, object] = Field(default_factory=dict)
+    outcome: dict[str, object] = Field(default_factory=dict)
+    notes: str = ""
+
+
+class GrowthSweepPublic(BaseModel):
+    created_at: datetime
+    device_id: str
+    project_id: int | None
+    domain: str
+    metric: str
+    score: float
+    accepted: bool
+    notes: str
+    proposal: dict[str, object]
+    outcome: dict[str, object]
+
+
+class GrowthSweepRecordResponse(BaseModel):
+    ok: bool = True
+    entry_id: int
+
+
+class GrowthStatusResponse(BaseModel):
+    ok: bool = True
+    stage: str
+    unlocked_features: list[str]
+    stats: dict[str, object]
+    motto: str
+
+
+class GrowthRecentResponse(BaseModel):
+    entries: list[GrowthSweepPublic]

@@ -9,9 +9,16 @@ from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import ProjectMember, SignalLedgerEvent, User
+from mycelium_app.growth import compute_growth_stage
+from mycelium_app.models import GrowthLedgerEntry, ProjectMember, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
-from mycelium_app.schemas import TelemetryIngestRequest, TelemetryIngestResponse, TelemetrySummaryResponse
+from mycelium_app.schemas import (
+    TelemetryDeepFreezeSweepRequest,
+    TelemetryDeepFreezeSweepResponse,
+    TelemetryIngestRequest,
+    TelemetryIngestResponse,
+    TelemetrySummaryResponse,
+)
 from mycelium_app.settings import settings
 
 
@@ -39,6 +46,175 @@ def _simple_confidence(n_events: int, signal_counts: dict[str, int]) -> float:
     diversity = min(1.0, unique / 6.0)
     conf = 0.25 + 0.55 * density + 0.20 * diversity
     return float(max(0.0, min(1.0, conf)))
+
+
+def _extract_app_token(payload_json: str) -> str | None:
+    try:
+        payload = json.loads(payload_json or "{}")
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    for k in ("app", "app_name", "bundle_id", "process", "exe"):
+        v = payload.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()[:128]
+    return None
+
+
+def _r2_score(y_true: list[int], y_pred: list[int]) -> float:
+    if not y_true or len(y_true) != len(y_pred):
+        return 0.0
+    n = len(y_true)
+    mean = sum(y_true) / float(n)
+    ss_tot = sum((yt - mean) ** 2 for yt in y_true)
+    ss_res = sum((yt - yp) ** 2 for yt, yp in zip(y_true, y_pred))
+    return float(1.0 - (ss_res / (ss_tot + 1e-12)))
+
+
+@router.post("/deep-freeze-sweep", response_model=TelemetryDeepFreezeSweepResponse)
+def deep_freeze_sweep(
+    payload: TelemetryDeepFreezeSweepRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Run a deterministic 'Deep Freeze' sweep over recent telemetry.
+
+    This uses recent `app_open` events to predict the next app based on a
+    simple transition table (most-likely next app per current app). The sweep
+    result is recorded into GrowthLedgerEntry as domain=telemetry_next_app.
+    """
+
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, payload.project_id)
+
+    policy = get_policy(session, user_id)
+    allow_modalities = policy.get("allow_modalities") if isinstance(policy.get("allow_modalities"), list) else []
+    if allow_modalities and "telemetry" not in set(str(m).lower() for m in allow_modalities):
+        raise HTTPException(status_code=403, detail="Telemetry blocked by parental policy")
+
+    window_hours = max(1, min(int(payload.window_hours), 168))
+    since = datetime.utcnow() - timedelta(hours=window_hours)
+
+    device_id = (payload.device_id or settings.nexus_device_id or "local").strip()[:64]
+
+    q = select(SignalLedgerEvent).where(
+        SignalLedgerEvent.created_by_user_id == user_id,
+        SignalLedgerEvent.created_at >= since,
+        SignalLedgerEvent.signal_type == "app_open",
+    )
+    if payload.project_id is not None:
+        q = q.where(SignalLedgerEvent.project_id == payload.project_id)
+    if device_id:
+        q = q.where(SignalLedgerEvent.device_id == device_id)
+    q = q.order_by(SignalLedgerEvent.created_at.asc())
+
+    rows = session.exec(q).all()
+
+    apps: list[str] = []
+    for r in rows:
+        token = _extract_app_token(r.payload_json)
+        if token:
+            apps.append(token)
+
+    # Build (current -> next) pairs.
+    pairs: list[tuple[str, str]] = []
+    for i in range(len(apps) - 1):
+        a = apps[i]
+        b = apps[i + 1]
+        if a and b and a != b:
+            pairs.append((a, b))
+
+    min_pairs = max(5, min(int(payload.min_pairs), 50_000))
+    if len(pairs) < min_pairs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not enough app_open transitions for sweep (have {len(pairs)}, need {min_pairs}).",
+        )
+
+    # Transition counts.
+    next_counts: dict[str, Counter[str]] = {}
+    for a, b in pairs:
+        bucket = next_counts.get(a)
+        if bucket is None:
+            bucket = Counter()
+            next_counts[a] = bucket
+        bucket[b] += 1
+
+    # Deterministic predictor: argmax next app per current app.
+    predictor: dict[str, str] = {}
+    for a, c in next_counts.items():
+        predictor[a] = c.most_common(1)[0][0]
+
+    # Stable encoding (sorted) so R2 is reproducible.
+    vocab = sorted({x for ab in pairs for x in ab})
+    to_int = {app: i for i, app in enumerate(vocab)}
+
+    y_true: list[int] = []
+    y_pred: list[int] = []
+    correct = 0
+
+    for a, b in pairs:
+        pred = predictor.get(a)
+        if pred is None:
+            continue
+        y_true.append(int(to_int[b]))
+        y_pred.append(int(to_int.get(pred, 0)))
+        if pred == b:
+            correct += 1
+
+    n_pairs = len(y_true)
+    if n_pairs < min_pairs:
+        raise HTTPException(status_code=400, detail="Not enough usable pairs for sweep")
+
+    accuracy = float(correct / float(n_pairs))
+    r2 = float(_r2_score(y_true, y_pred))
+
+    accept_r2 = float(payload.accept_r2_threshold)
+    accepted = bool(r2 >= accept_r2)
+
+    ledger = GrowthLedgerEntry(
+        created_by_user_id=user_id,
+        project_id=payload.project_id,
+        device_id=device_id,
+        domain="telemetry_next_app",
+        metric="r2",
+        score=float(r2),
+        accepted=accepted,
+        proposal_json=_dumps(
+            {
+                "sweep": "deep_freeze_telemetry_next_app",
+                "window_hours": window_hours,
+                "model": "markov_argmax",
+                "min_pairs": min_pairs,
+            }
+        ),
+        outcome_json=_dumps(
+            {
+                "n_events": len(rows),
+                "n_pairs": n_pairs,
+                "accuracy": accuracy,
+                "vocab_size": len(vocab),
+                "accepted": accepted,
+                "accept_r2_threshold": accept_r2,
+            }
+        ),
+        notes=("Deep Freeze telemetry sweep (next-app prediction)" if accepted else "Telemetry sweep recorded"),
+    )
+    session.add(ledger)
+    session.commit()
+    session.refresh(ledger)
+
+    return TelemetryDeepFreezeSweepResponse(
+        ok=True,
+        entry_id=int(ledger.id or 0),
+        domain=str(ledger.domain),
+        metric=str(ledger.metric),
+        r2=float(round(r2, 6)),
+        accuracy=float(round(accuracy, 6)),
+        n_pairs=int(n_pairs),
+        accepted=bool(accepted),
+    )
 
 
 @router.post("/ingest", response_model=TelemetryIngestResponse)
@@ -115,6 +291,8 @@ def summary(
     signal_counts = {k: int(v) for k, v in counts.most_common(50)}
     conf = _simple_confidence(len(rows), signal_counts)
 
+    stage, unlocked, _stats = compute_growth_stage(session, user_id=user_id, project_id=project_id)
+
     patterns: list[dict[str, object]] = []
     if signal_counts.get("screen_on", 0) + signal_counts.get("screen_off", 0) >= 10:
         patterns.append({"pattern": "temporal_pulse", "detail": "Screen on/off rhythm detected"})
@@ -127,10 +305,21 @@ def summary(
 
     first_word = None
     if conf >= 0.85:
-        first_word = (
-            "I've observed a stable routine pattern. Should I pre-warm your Work-Zone viscosity during your "
-            "high-focus window to silence non-essential notifications?"
-        )
+        if stage == "infant":
+            first_word = (
+                "I've observed a stable routine pattern. Should I pre-warm your Work-Zone viscosity during your "
+                "high-focus window to silence non-essential notifications?"
+            )
+        elif stage == "toddler":
+            first_word = (
+                "Pattern locked with high confidence. Want me to run a small sweep: auto-silence distractions in your "
+                "Work-Zone window and learn from your accept/reject feedback?"
+            )
+        else:
+            first_word = (
+                "Your routine looks stable. I can lock a Deep-Work zone (pre-warm viscosity + block known distractions) "
+                "and periodically propose macro-optimizations. Approve?"
+            )
 
     return TelemetrySummaryResponse(
         ok=True,
@@ -138,6 +327,7 @@ def summary(
         n_events=int(len(rows)),
         signal_counts=signal_counts,
         confidence=float(round(conf, 4)),
-        patterns=patterns,
+        patterns=patterns
+        + ([{"pattern": "growth_stage", "detail": stage, "unlocked": unlocked}] if stage else []),
         first_word=first_word,
     )

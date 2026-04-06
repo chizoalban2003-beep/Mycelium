@@ -154,3 +154,25 @@ class SignalLedgerEvent(SQLModel, table=True):
     device_id: str = Field(default="", index=True)
     signal_type: str = Field(default="", index=True)  # e.g. screen,onoff,app,network,text_sample
     payload_json: str = "{}"  # JSON dict; must never contain raw secrets by policy
+
+
+class GrowthLedgerEntry(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    device_id: str = Field(default="", index=True)
+
+    # What was being optimized.
+    domain: str = Field(default="", index=True)  # e.g. telemetry_next_app, grammar_rewrite
+    metric: str = Field(default="", index=True)  # e.g. r2, acceptance_rate, mae
+    score: float = Field(default=0.0, index=True)
+
+    # Whether the sweep outcome was accepted / considered a 'best sweep'.
+    accepted: bool = Field(default=False, index=True)
+
+    # Optional structured payloads (must remain non-sensitive).
+    proposal_json: str = "{}"  # what it tried
+    outcome_json: str = "{}"  # what happened
+    notes: str = ""
