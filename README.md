@@ -139,6 +139,17 @@ Then opt in per user via `POST /api/nexus/policy`:
 - `notifications.telegram_chat_id=<telegram-chat-id>`
 - Optional `notifications.telegram_nudge_kinds=["telemetry_assistant","wisdom_update"]`
 
+## ActionSchema (task reproduction foundation)
+
+Behavioral mirroring now has a first API skeleton:
+
+- Record observed trajectories: `POST /api/nexus/tasks/trajectory/record`
+- Propose executable replicas: `POST /api/nexus/tasks/replicas/propose`
+- Approve/reject: `POST /api/nexus/tasks/replicas/{id}/decision`
+- Ack local execution result: `POST /api/nexus/tasks/replicas/{id}/ack`
+
+Approvals queue into the existing device action outbox for companion-agent execution.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

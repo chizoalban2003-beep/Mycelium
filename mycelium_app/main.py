@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
@@ -31,6 +32,7 @@ from mycelium_app.routes.predict import router as predict_router
 from mycelium_app.routes.projects import router as projects_router
 from mycelium_app.routes.reflection import router as reflection_router
 from mycelium_app.routes.telemetry import router as telemetry_router
+from mycelium_app.routes.tasks import router as tasks_router
 from mycelium_app.routes.tree import router as tree_router
 from mycelium_app.settings import settings
 from mycelium_app.web import router as web_router
@@ -333,6 +335,29 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/.well-known/assetlinks.json")
+def assetlinks():
+    package_name = str(getattr(settings, "android_app_package_name", "") or "").strip()
+    fingerprints_csv = str(getattr(settings, "android_app_sha256_cert_fingerprints_csv", "") or "").strip()
+    fingerprints = [p.strip() for p in fingerprints_csv.split(",") if p.strip()]
+
+    if not package_name or not fingerprints:
+        return JSONResponse(content=[])
+
+    return JSONResponse(
+        content=[
+            {
+                "relation": ["delegate_permission/common.handle_all_urls"],
+                "target": {
+                    "namespace": "android_app",
+                    "package_name": package_name,
+                    "sha256_cert_fingerprints": fingerprints,
+                },
+            }
+        ]
+    )
+
+
 app.include_router(auth_router)
 app.include_router(curiosity_router)
 app.include_router(game_router)
@@ -343,6 +368,7 @@ app.include_router(identity_router)
 app.include_router(nudges_router)
 app.include_router(growth_router)
 app.include_router(telemetry_router)
+app.include_router(tasks_router)
 app.include_router(reflection_router)
 app.include_router(predict_router)
 app.include_router(projects_router)

@@ -25,8 +25,12 @@ Host Digital Asset Links on your production domain:
 
 - `/.well-known/assetlinks.json`
 
-This repository now serves that path directly. Update package name and release
-certificate fingerprint before publishing your Play build.
+This repository now serves that path directly from env vars:
+
+- `ANDROID_APP_PACKAGE_NAME`
+- `ANDROID_APP_SHA256_CERT_FINGERPRINTS_CSV`
+
+Set those in Railway before publishing your Play build.
 
 ### Public-ingest protection
 
@@ -52,6 +56,19 @@ Per-user opt-in lives in `POST /api/nexus/policy` under `notifications`:
 - `notifications.telegram_enabled`
 - `notifications.telegram_chat_id`
 - `notifications.telegram_nudge_kinds`
+
+### v7 ActionSchema (behavioral mirroring foundation)
+
+New API surface for "observe → propose → approve → execute":
+
+- `POST /api/nexus/tasks/trajectory/record`
+- `POST /api/nexus/tasks/replicas/propose`
+- `GET /api/nexus/tasks/replicas/recent`
+- `POST /api/nexus/tasks/replicas/{replica_id}/decision`
+- `POST /api/nexus/tasks/replicas/{replica_id}/ack`
+
+Approved replicas are queued into the existing device action outbox for local
+companion execution.
 
 ---
 

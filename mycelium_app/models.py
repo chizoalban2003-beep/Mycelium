@@ -273,6 +273,51 @@ class WisdomIntegrationState(SQLModel, table=True):
     last_nudge_at: Optional[datetime] = Field(default=None, index=True)
 
 
+class TaskTrajectory(SQLModel, table=True):
+    """Observed user action sequence used for behavioral mirroring."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    device_id: str = Field(default="", index=True)
+    trajectory_key: str = Field(default="", index=True)
+
+    # JSON blobs (privacy-safe, no raw secrets).
+    sequence_json: str = "[]"  # e.g. ["open_spotify", "search_deep_focus", "set_volume_40"]
+    app_state_json: str = "{}"
+    input_vector_json: str = "{}"
+
+    confidence: float = Field(default=0.0, index=True)
+    support_count: int = Field(default=1, index=True)
+
+
+class TaskReplica(SQLModel, table=True):
+    """Executable action proposal derived from trajectories + hive consensus."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    device_id: str = Field(default="", index=True)
+    title: str = Field(default="", index=True)
+    trajectory_key: str = Field(default="", index=True)
+
+    consensus_fraction: float = Field(default=0.0, index=True)
+    species_confidence: float = Field(default=0.0, index=True)
+    capability: str = Field(default="", index=True)
+    command_json: str = "{}"
+
+    # proposed | approved | rejected | executed | failed
+    status: str = Field(default="proposed", index=True)
+    approved_at: Optional[datetime] = Field(default=None, index=True)
+    executed_at: Optional[datetime] = Field(default=None, index=True)
+    notes: str = ""
+
+
 class MetricSnapshot(SQLModel, table=True):
     """Persisted metric measurement for validation-shadow honesty."""
 

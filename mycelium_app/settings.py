@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     notifications_dispatch_lookback_hours: int = 24
     notifications_dispatch_max_per_tick: int = 50
     notifications_telegram_bot_token: str = ""
+
+    # Android TWA verification (served at /.well-known/assetlinks.json).
+    android_app_package_name: str = ""
+    android_app_sha256_cert_fingerprints_csv: str = ""
     hive_wisdom_consensus_fraction: float = 0.50
 
     # Optional shared secret to allow headless child devices to ingest into the Parent Hub.

@@ -418,6 +418,84 @@ class TelemetryDeviceActionAckResponse(BaseModel):
     executed: bool = False
 
 
+class TaskTrajectoryRecordRequest(BaseModel):
+    project_id: int | None = None
+    device_id: str | None = None
+    sequence: list[str] = Field(default_factory=list)
+    app_state: dict[str, object] = Field(default_factory=dict)
+    input_vector: dict[str, object] = Field(default_factory=dict)
+    trajectory_key: str | None = None
+    confidence: float = 0.5
+    support_count: int = 1
+
+
+class TaskTrajectoryRecordResponse(BaseModel):
+    ok: bool = True
+    trajectory_id: int
+    trajectory_key: str
+
+
+class TaskReplicaProposeRequest(BaseModel):
+    project_id: int | None = None
+    device_id: str | None = None
+    title: str
+    trajectory_key: str
+    capability: str
+    command: dict[str, object] = Field(default_factory=dict)
+    consensus_fraction: float = 0.6
+    species_confidence: float = 0.8
+    notes: str = ""
+
+
+class TaskReplicaPublic(BaseModel):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    project_id: int | None
+    device_id: str
+    title: str
+    trajectory_key: str
+    consensus_fraction: float
+    species_confidence: float
+    capability: str
+    status: str
+    command: dict[str, object] = Field(default_factory=dict)
+    notes: str = ""
+
+
+class TaskReplicaProposeResponse(BaseModel):
+    ok: bool = True
+    replica: TaskReplicaPublic
+
+
+class TaskReplicaListResponse(BaseModel):
+    replicas: list[TaskReplicaPublic]
+
+
+class TaskReplicaDecisionRequest(BaseModel):
+    device_id: str | None = None
+    decision: str = "approve"  # approve|reject
+
+
+class TaskReplicaDecisionResponse(BaseModel):
+    ok: bool = True
+    replica_id: int
+    decision: str
+    queued_device_action_id: int | None = None
+    detail: str = ""
+
+
+class TaskReplicaAckRequest(BaseModel):
+    status: str = "executed"  # executed|failed
+    notes: str = ""
+
+
+class TaskReplicaAckResponse(BaseModel):
+    ok: bool = True
+    replica_id: int
+    status: str
+
+
 class TelemetryDeepFreezeSweepRequest(BaseModel):
     project_id: int | None = None
     device_id: str | None = None
