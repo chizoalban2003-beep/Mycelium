@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import math
 import time
 
@@ -12,6 +13,8 @@ from sqlmodel import Session, select
 
 import pandas as pd
 
+from mycelium_app.curiosity import capture_agitated_cases
+from mycelium_app.curiosity import answer_case, dismiss_case, next_pending_case
 from mycelium_app.db import get_session
 from mycelium_app.knowledge_sync import MemoryManager
 from mycelium_app.models import Project, ProjectMember, ProjectRole, TreeNode, User
@@ -332,6 +335,88 @@ def predict_page(
             "cleaning_arbitrary_max": None,
         },
     )
+
+
+@router.get("/curiosity", response_class=HTMLResponse)
+def curiosity_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    case = next_pending_case(session, user_id=int(current_user.id or 0), project_id=None)
+    excerpt = {} if case is None else (
+        json.loads(case.excerpt_json) if (case.excerpt_json and case.excerpt_json.strip().startswith("{")) else {}
+    )
+    case_obj = None
+    if case is not None:
+        case_obj = {
+            "id": int(case.id or 0),
+            "target_kind": str(case.target_kind or ""),
+            "error_kind": str(case.error_kind or ""),
+            "error_value": float(case.error_value or 0.0),
+            "question": str(case.question or ""),
+            "excerpt": excerpt if isinstance(excerpt, dict) else {},
+        }
+    return templates.TemplateResponse(
+        "curiosity.html",
+        {"request": request, "user": current_user, "app_name": settings.app_name, "case": case_obj},
+    )
+
+
+@router.post("/curiosity/answer")
+def curiosity_answer_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    case_id: int = Form(...),
+    answer_text: str = Form(""),
+    corrected_target: str = Form(""),
+    tags_csv: str = Form(""),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    tags = [t.strip() for t in (tags_csv or "").split(",") if t.strip()]
+    corr: object | None = None
+    if str(corrected_target or "").strip():
+        s = str(corrected_target).strip()
+        try:
+            corr = float(s)
+        except Exception:
+            corr = s[:200]
+
+    try:
+        answer_case(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=None,
+            case_id=int(case_id),
+            answer_text=str(answer_text or ""),
+            corrected_target=corr,
+            tags=tags,
+            export_to_hive=True,
+        )
+    except Exception:
+        pass
+    return RedirectResponse(url="/curiosity", status_code=302)
+
+
+@router.post("/curiosity/dismiss")
+def curiosity_dismiss_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    case_id: int = Form(...),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    try:
+        dismiss_case(session, user_id=int(current_user.id or 0), case_id=int(case_id))
+    except Exception:
+        pass
+    return RedirectResponse(url="/curiosity", status_code=302)
 
 
 @router.post("/predict", response_class=HTMLResponse)
@@ -873,6 +958,19 @@ async def predict_action(
         t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
         elapsed_s = float(time.perf_counter() - t0)
+
+        # Active Curiosity: capture a few "agitated" (high-error) samples.
+        try:
+            capture_agitated_cases(
+                session,
+                user_id=int(current_user.id or 0),
+                project_id=None,
+                df=df,
+                target_col=str(target_col),
+                pred=pred,
+            )
+        except Exception:
+            pass
 
         r2 = None
         if pred.target_kind == "numeric":

@@ -9,6 +9,7 @@ from sqlmodel import Session
 
 import pandas as pd
 
+from mycelium_app.curiosity import capture_agitated_cases
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import User
@@ -289,6 +290,19 @@ async def electrophoresis_predict(
         t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
         elapsed_s = float(time.perf_counter() - t0)
+
+        # Active Curiosity: capture a few "agitated" (high-error) samples.
+        try:
+            capture_agitated_cases(
+                session,
+                user_id=int(current_user.id or 0),
+                project_id=None,
+                df=df,
+                target_col=str(target_col),
+                pred=pred,
+            )
+        except Exception:
+            pass
 
         r2 = None
         if pred.target_kind == "numeric":

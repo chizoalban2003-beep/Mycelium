@@ -234,3 +234,27 @@ If both baseline + trial runs succeed, the system will:
 - compare baseline vs trial feature weights to find the biggest “pull” shifts
 - persist that explanation as a `MetricCausalTrace` row (linked to the baseline/trial `MetricSnapshot` IDs)
 - append a short explanatory clause to the `wisdom_update` nudge when an empirical improvement is reported
+
+## 12) Active Curiosity — “Ask for Human Ground Truth”
+
+When enabled, after a prediction run the system will capture a few high-error ("agitated") test samples as `CuriosityCase` rows and (optionally) nudge the user to answer them.
+
+User flow:
+- Visit `/curiosity` to see the next pending question and answer/dismiss it.
+- Answers are stored as `CuriosityAnswer`.
+
+Hive flow (privacy-safe):
+- The system exports only coarse tags + meta as an outbox message kind `curiosity_feedback`.
+- It does **not** export freeform answer text or raw row excerpts.
+
+### Enable (via env vars)
+
+- `NEXUS_ACTIVE_CURIOSITY_ENABLED=true`
+- `NEXUS_ACTIVE_CURIOSITY_SAFE_COLUMNS_CSV=job_title,city,seniority` (optional; only these columns are shown on `/curiosity`)
+
+Optional tuning:
+- `NEXUS_ACTIVE_CURIOSITY_MAX_CASES_PER_RUN=3`
+- `NEXUS_ACTIVE_CURIOSITY_MIN_ERROR_QUANTILE=0.97`
+- `NEXUS_ACTIVE_CURIOSITY_MIN_ABS_ERROR=0.0`
+- `NEXUS_ACTIVE_CURIOSITY_NUDGE_ENABLED=true`
+- `NEXUS_ACTIVE_CURIOSITY_NUDGE_THROTTLE_MINUTES=120`

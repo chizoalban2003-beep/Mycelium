@@ -16,6 +16,7 @@ from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.metric_snapshot import run_validation_shadow
 from mycelium_app.models import NexusNudge, WisdomIntegrationState
 from mycelium_app.routes.auth import router as auth_router
+from mycelium_app.routes.curiosity import router as curiosity_router
 from mycelium_app.routes.game import router as game_router
 from mycelium_app.routes.growth import router as growth_router
 from mycelium_app.routes.hive import router as hive_router
@@ -243,6 +244,7 @@ def health():
 
 
 app.include_router(auth_router)
+app.include_router(curiosity_router)
 app.include_router(game_router)
 app.include_router(hive_router)
 app.include_router(homeostasis_router)

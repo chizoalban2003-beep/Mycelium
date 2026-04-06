@@ -366,3 +366,53 @@ class NexusNudgeAckRequest(BaseModel):
 
 class NexusNudgeAckResponse(BaseModel):
     ok: bool = True
+
+
+class CuriosityCasePublic(BaseModel):
+    id: int
+    created_at: datetime
+    project_id: int | None = None
+    status: str
+    dataset_digest: str
+    target_col: str
+    target_kind: str
+    row_index: int | None = None
+    error_kind: str
+    error_value: float
+    predicted: object | None = None
+    actual: object | None = None
+    excerpt: dict[str, object] = Field(default_factory=dict)
+    question: str
+    answered_at: datetime | None = None
+    dismissed_at: datetime | None = None
+
+
+class CuriosityCaseListResponse(BaseModel):
+    cases: list[CuriosityCasePublic]
+
+
+class CuriosityAnswerRequest(BaseModel):
+    project_id: int | None = None
+    case_id: int
+    answer_text: str
+    corrected_target: object | None = None
+    tags: list[str] = Field(default_factory=list)
+    export_to_hive: bool = True
+
+
+class CuriosityAnswerResponse(BaseModel):
+    ok: bool = True
+    answer_id: int
+
+
+class CuriosityDismissRequest(BaseModel):
+    case_id: int
+
+
+class CuriosityDismissResponse(BaseModel):
+    ok: bool = True
+
+
+class CuriosityExportSummaryResponse(BaseModel):
+    ok: bool = True
+    summary: dict[str, object] = Field(default_factory=dict)

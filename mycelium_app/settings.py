@@ -76,5 +76,18 @@ class Settings(BaseSettings):
     nexus_validation_shadow_n_cycles: int = 12
     nexus_validation_shadow_min_improvement_frac: float = 0.02
 
+    # Active Curiosity (Human Ground Truth loop)
+    # When enabled, the system will capture a few high-error ("agitated") samples
+    # from prediction runs and ask the user for a short explanation or correction.
+    nexus_active_curiosity_enabled: bool = False
+    nexus_active_curiosity_max_cases_per_run: int = 3
+    nexus_active_curiosity_min_abs_error: float = 0.0  # numeric targets only
+    nexus_active_curiosity_min_error_quantile: float = 0.97  # 0..1; applied within test set
+    nexus_active_curiosity_safe_columns_csv: str = ""  # comma-separated allowlist of columns to show
+
+    # When true, creating new cases will also create a throttled nudge.
+    nexus_active_curiosity_nudge_enabled: bool = True
+    nexus_active_curiosity_nudge_throttle_minutes: int = 120
+
 
 settings = Settings()

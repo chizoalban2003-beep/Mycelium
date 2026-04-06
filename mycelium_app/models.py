@@ -302,3 +302,53 @@ class MetricCausalTrace(SQLModel, table=True):
     method: str = Field(default="weights_shift", index=True)
     narrative: str = ""
     top_shifts_json: str = "[]"  # JSON list of top feature shifts
+
+
+class CuriosityCase(SQLModel, table=True):
+    """A high-error sample that requests human ground truth.
+
+    Privacy stance:
+    - stores a minimal excerpt (allowlisted columns only)
+    - can be answered without exporting raw row data
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    case_uuid: str = Field(default="", index=True, unique=True)
+    dataset_digest: str = Field(default="", index=True)
+    target_col: str = Field(default="", index=True)
+    target_kind: str = Field(default="", index=True)
+
+    row_index: int | None = Field(default=None, index=True)
+    row_fingerprint: str = Field(default="", index=True)
+
+    predicted_json: str = "null"
+    actual_json: str = "null"
+    error_value: float = 0.0
+    error_kind: str = Field(default="abs_error", index=True)  # abs_error|miss
+
+    excerpt_json: str = "{}"  # allowlisted columns only
+    question: str = ""
+
+    status: str = Field(default="pending", index=True)  # pending|answered|dismissed
+    answered_at: Optional[datetime] = Field(default=None, index=True)
+    dismissed_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class CuriosityAnswer(SQLModel, table=True):
+    """User-provided ground truth/explanation for a CuriosityCase."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    case_id: int = Field(foreign_key="curiositycase.id", index=True)
+    answer_text: str = ""
+    corrected_target_json: str = "null"  # optional corrected label/value
+    tags_json: str = "[]"
+
+    exported_to_hive_at: Optional[datetime] = Field(default=None, index=True)
