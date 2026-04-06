@@ -187,3 +187,20 @@ Children can fetch the latest aggregated baseline physics knobs (derived from im
 Optional parameters:
 - Scope to a specific project: `?project_id=123`
 - Include project-scoped whispers in global mode: `?include_project_scoped=true`
+
+## 9) IdentityPresentation + Nudges ("Voice")
+
+The child can now describe itself and proactively surface short notifications.
+
+### IdentityPresentation
+
+- `GET /api/nexus/identity/presentation`
+
+Returns a deterministic `display_name` + `tagline` computed from `identity_hash` and current mood.
+
+### Nudges
+
+- List unseen nudges: `GET /api/nexus/nudges/recent?unseen_only=true&limit=5`
+- Acknowledge (dismiss): `POST /api/nexus/nudges/ack` with body `{ "nudge_id": 123 }`
+
+Autonomous nudge: when Hive wisdom changes meaningfully, the server queues a `wisdom_update` nudge for active users.

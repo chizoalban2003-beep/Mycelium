@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from collections import Counter
 from dataclasses import dataclass
@@ -9,13 +10,19 @@ from typing import Any
 from sqlmodel import Session, select
 
 from mycelium_app.knowledge_sync import extract_recallable_kwargs
-from mycelium_app.models import HiveOutboxMessage, HomeostasisState, PhysicsLedgerEntry
+from mycelium_app.models import HiveGlobalUpdate, HiveOutboxMessage, HomeostasisState, PhysicsLedgerEntry
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.settings import settings
 
 
 def _dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def stable_digest(obj: object) -> str:
+    """SHA-256 of canonical JSON (used for change detection)."""
+
+    return hashlib.sha256(_dumps(obj).encode("utf-8")).hexdigest()
 
 
 def _loads_dict(s: str | None) -> dict[str, Any]:
@@ -117,6 +124,92 @@ def whisper_from_global_update(update_obj: dict[str, Any]) -> dict[str, Any] | N
         return update_obj
 
     return None
+
+
+@dataclass(frozen=True)
+class WisdomLatest:
+    as_of: datetime | None
+    n_updates_considered: int
+    n_whispers_used: int
+    recommended_kwargs: dict[str, Any]
+    evidence: dict[str, Any]
+
+
+def compute_wisdom_latest(
+    session: Session,
+    *,
+    project_id: int | None,
+    include_project_scoped: bool,
+    limit: int,
+) -> WisdomLatest:
+    limit = max(1, min(int(limit), 200))
+    include_project_scoped = bool(include_project_scoped)
+
+    q = select(HiveGlobalUpdate).order_by(HiveGlobalUpdate.created_at.desc()).limit(limit)
+    rows = session.exec(q).all()
+
+    recs: list[dict[str, Any]] = []
+    used_update_uuids: list[str] = []
+    as_of: datetime | None = None
+
+    for r in rows:
+        update_obj = _loads_dict(r.update_json)
+        whisper = whisper_from_global_update(update_obj)
+        if not whisper:
+            continue
+
+        meta = whisper.get("meta") if isinstance(whisper.get("meta"), dict) else {}
+        w_project_id = meta.get("project_id")
+        if project_id is not None:
+            if w_project_id != project_id:
+                continue
+        else:
+            if (w_project_id is not None) and not include_project_scoped:
+                continue
+
+        rec = recommended_kwargs_from_whisper(whisper)
+        if rec:
+            recs.append(rec)
+            used_update_uuids.append(str(r.update_uuid))
+            if as_of is None:
+                as_of = r.created_at
+
+    merged = aggregate_recommended_kwargs(recs) if recs else {}
+    evidence = {
+        "update_uuids": used_update_uuids[:50],
+        "limit": int(limit),
+        "include_project_scoped": bool(include_project_scoped),
+    }
+
+    return WisdomLatest(
+        as_of=as_of,
+        n_updates_considered=int(len(rows)),
+        n_whispers_used=int(len(recs)),
+        recommended_kwargs=merged,
+        evidence=evidence,
+    )
+
+
+def summarize_kwargs_diff(old: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    old = old or {}
+    new = new or {}
+    keys = set(old.keys()) | set(new.keys())
+    changed = 0
+    max_rel = 0.0
+    for k in keys:
+        a = old.get(k)
+        b = new.get(k)
+        if a == b:
+            continue
+        changed += 1
+        try:
+            if isinstance(a, (int, float)) and isinstance(b, (int, float)) and float(a) != 0.0:
+                rel = abs(float(b) - float(a)) / abs(float(a))
+                if rel > max_rel:
+                    max_rel = rel
+        except Exception:
+            pass
+    return {"changed_keys": int(changed), "max_rel_change": float(max_rel)}
 
 
 def build_wisdom_whisper_from_physics_ledger(

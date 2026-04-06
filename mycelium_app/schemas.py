@@ -334,3 +334,35 @@ class HomeostasisTickResponse(BaseModel):
 class HomeostasisStatusResponse(BaseModel):
     ok: bool = True
     state: dict[str, object] | None = None
+
+
+class IdentityPresentationResponse(BaseModel):
+    ok: bool = True
+    identity_hash: str
+    mood: str
+    display_name: str
+    tagline: str
+    palette: dict[str, str] = Field(default_factory=dict)
+
+
+class NexusNudgePublic(BaseModel):
+    id: int
+    created_at: datetime
+    project_id: int | None
+    kind: str
+    title: str
+    message: str
+    payload: dict[str, object] = Field(default_factory=dict)
+    seen_at: datetime | None = None
+
+
+class NexusNudgeListResponse(BaseModel):
+    nudges: list[NexusNudgePublic]
+
+
+class NexusNudgeAckRequest(BaseModel):
+    nudge_id: int
+
+
+class NexusNudgeAckResponse(BaseModel):
+    ok: bool = True

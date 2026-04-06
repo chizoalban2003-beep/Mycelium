@@ -9,7 +9,7 @@ from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.hive_empathy import aggregate_recommended_kwargs, recommended_kwargs_from_whisper, queue_wisdom_whisper, whisper_from_global_update
+from mycelium_app.hive_empathy import compute_wisdom_latest, queue_wisdom_whisper
 from mycelium_app.hive_sync import build_anonymized_report
 from mycelium_app.models import ExperienceBufferEntry, HiveGlobalUpdate, HiveOutboxMessage, HiveOutboxReport, ProjectMember, User
 from mycelium_app.parental_policy import get_policy
@@ -332,58 +332,20 @@ def wisdom_latest(
 
     _ = current_user
 
-    limit = max(1, min(int(limit), 200))
-    include_project_scoped = bool(include_project_scoped)
-
-    q = select(HiveGlobalUpdate).order_by(HiveGlobalUpdate.created_at.desc()).limit(limit)
-    rows = session.exec(q).all()
-
-    whispers: list[dict[str, object]] = []
-    recs: list[dict[str, object]] = []
-    used_update_uuids: list[str] = []
-    as_of: datetime | None = None
-
-    for r in rows:
-        update_obj = _loads_dict(r.update_json)
-        whisper = whisper_from_global_update(update_obj)
-        if not whisper:
-            continue
-
-        meta = whisper.get("meta") if isinstance(whisper.get("meta"), dict) else {}
-        w_project_id = meta.get("project_id")
-        if project_id is not None:
-            if w_project_id != project_id:
-                continue
-        else:
-            # If caller didn't request a project scope, only include project-scoped
-            # wisdom if explicitly allowed.
-            if (w_project_id is not None) and not include_project_scoped:
-                continue
-
-        rec = recommended_kwargs_from_whisper(whisper)
-        if rec:
-            recs.append(rec)
-            whispers.append(whisper)
-            used_update_uuids.append(str(r.update_uuid))
-            if as_of is None:
-                as_of = r.created_at
-
-    merged = aggregate_recommended_kwargs([dict(x) for x in recs]) if recs else {}
-
-    evidence = {
-        "update_uuids": used_update_uuids[:50],
-        "limit": int(limit),
-        "include_project_scoped": bool(include_project_scoped),
-    }
-
+    res = compute_wisdom_latest(
+        session,
+        project_id=project_id,
+        include_project_scoped=bool(include_project_scoped),
+        limit=int(limit),
+    )
     return HiveWisdomLatestResponse(
         ok=True,
-        as_of=as_of,
+        as_of=res.as_of,
         project_id=project_id,
-        n_updates_considered=int(len(rows)),
-        n_whispers_used=int(len(recs)),
-        recommended_kwargs=merged,
-        evidence=evidence,
+        n_updates_considered=int(res.n_updates_considered),
+        n_whispers_used=int(res.n_whispers_used),
+        recommended_kwargs=dict(res.recommended_kwargs),
+        evidence=dict(res.evidence),
     )
 
 

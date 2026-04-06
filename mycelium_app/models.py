@@ -222,3 +222,35 @@ class HomeostasisState(SQLModel, table=True):
 
     venv_present: bool = False
     notes: str = ""
+
+
+class NexusNudge(SQLModel, table=True):
+    """A small user-facing notification (the system's 'voice')."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    kind: str = Field(default="", index=True)  # e.g. wisdom_update
+    title: str = ""
+    message: str = ""
+    payload_json: str = "{}"
+
+    seen_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class WisdomIntegrationState(SQLModel, table=True):
+    """Track the last broadcasted wisdom a child has integrated.
+
+    Stored separately to avoid altering HomeostasisState schema.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    last_wisdom_digest: str = Field(default="", index=True)
+    last_wisdom_kwargs_json: str = "{}"
+    last_nudge_at: Optional[datetime] = Field(default=None, index=True)
