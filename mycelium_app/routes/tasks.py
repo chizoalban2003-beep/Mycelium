@@ -12,6 +12,8 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.models import HiveOutboxMessage, ProjectMember, ProjectRole, TaskReplica, TaskTrajectory, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
+    TaskBootstrapWorkSessionRequest,
+    TaskBootstrapWorkSessionResponse,
     TaskReplicaAckRequest,
     TaskReplicaAckResponse,
     TaskReplicaDecisionRequest,
@@ -80,6 +82,84 @@ def _to_replica_public(row: TaskReplica) -> TaskReplicaPublic:
         status=str(row.status or ""),
         command=_loads_dict(row.command_json),
         notes=str(row.notes or ""),
+    )
+
+
+@router.post("/bootstrap/work-session", response_model=TaskBootstrapWorkSessionResponse)
+def bootstrap_work_session(
+    payload: TaskBootstrapWorkSessionRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Seed the first recommended directive: prepare a focused work session.
+
+    This creates:
+    - one trajectory template (behavioral pattern)
+    - one task replica proposal (executable command)
+    """
+
+    user_id = int(current_user.id or 0)
+    role = _ensure_project_access(session, user_id, payload.project_id)
+    if payload.project_id is not None and role not in {ProjectRole.owner, ProjectRole.editor}:
+        raise HTTPException(status_code=403, detail="Owner or editor role required")
+
+    duration = max(10, min(int(payload.duration_minutes), 180))
+    focus_app = str(payload.focus_app or "mycelium").strip().lower()[:64] or "mycelium"
+
+    sequence = [
+        "session_start_detected",
+        "open_mycelium_dashboard",
+        "open_focus_app",
+        "enable_dnd",
+        "set_focus_timer",
+    ]
+    trajectory_key = _trajectory_key_from_sequence(sequence)
+
+    trajectory = TaskTrajectory(
+        created_by_user_id=user_id,
+        project_id=payload.project_id,
+        device_id=str(payload.device_id or settings.nexus_device_id or "local")[:64],
+        trajectory_key=trajectory_key,
+        sequence_json=_dumps(sequence),
+        app_state_json=_dumps({"mode": "work_session", "focus_app": focus_app}),
+        input_vector_json=_dumps({"trigger": "manual_bootstrap", "time_block_minutes": duration}),
+        confidence=max(0.0, min(float(payload.species_confidence), 1.0)),
+        support_count=1,
+    )
+    session.add(trajectory)
+    session.flush()
+
+    replica = TaskReplica(
+        created_by_user_id=user_id,
+        project_id=payload.project_id,
+        device_id=str(payload.device_id or settings.nexus_device_id or "local")[:64],
+        title="Prepare Focus Work Session",
+        trajectory_key=trajectory_key,
+        consensus_fraction=max(0.0, min(float(payload.consensus_fraction), 1.0)),
+        species_confidence=max(0.0, min(float(payload.species_confidence), 1.0)),
+        capability="start_focus_session",
+        command_json=_dumps(
+            {
+                "op": "focus_session",
+                "duration_minutes": duration,
+                "enable_dnd": True,
+                "open_app": focus_app,
+                "open_dashboard": True,
+            }
+        ),
+        status="proposed",
+        notes="Bootstrapped starter directive for first-time behavioral mirroring.",
+    )
+    session.add(replica)
+    session.commit()
+    session.refresh(trajectory)
+    session.refresh(replica)
+
+    return TaskBootstrapWorkSessionResponse(
+        ok=True,
+        trajectory_id=int(trajectory.id or 0),
+        trajectory_key=trajectory_key,
+        replica=_to_replica_public(replica),
     )
 
 

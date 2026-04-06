@@ -61,6 +61,7 @@ Per-user opt-in lives in `POST /api/nexus/policy` under `notifications`:
 
 New API surface for "observe → propose → approve → execute":
 
+- `POST /api/nexus/tasks/bootstrap/work-session` (one-click starter directive)
 - `POST /api/nexus/tasks/trajectory/record`
 - `POST /api/nexus/tasks/replicas/propose`
 - `GET /api/nexus/tasks/replicas/recent`

@@ -496,6 +496,22 @@ class TaskReplicaAckResponse(BaseModel):
     status: str
 
 
+class TaskBootstrapWorkSessionRequest(BaseModel):
+    project_id: int | None = None
+    device_id: str | None = None
+    focus_app: str = "mycelium"
+    duration_minutes: int = 45
+    consensus_fraction: float = 0.70
+    species_confidence: float = 0.95
+
+
+class TaskBootstrapWorkSessionResponse(BaseModel):
+    ok: bool = True
+    trajectory_id: int
+    trajectory_key: str
+    replica: TaskReplicaPublic
+
+
 class TelemetryDeepFreezeSweepRequest(BaseModel):
     project_id: int | None = None
     device_id: str | None = None

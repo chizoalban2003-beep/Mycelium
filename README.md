@@ -150,6 +150,13 @@ Behavioral mirroring now has a first API skeleton:
 
 Approvals queue into the existing device action outbox for companion-agent execution.
 
+Quick start (recommended first directive):
+
+- `POST /api/nexus/tasks/bootstrap/work-session`
+
+This seeds a trajectory + a proposed replica for:
+"open dashboard + open focus app + enable DND + start 45m focus timer".
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`
