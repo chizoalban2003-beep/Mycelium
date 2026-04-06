@@ -282,3 +282,15 @@ class SelfReflectionResponse(BaseModel):
     top_preferences: list[dict[str, object]]
     causal_hints: list[str]
     stats: dict[str, object]
+
+
+class HomeostasisTickResponse(BaseModel):
+    ok: bool = True
+    mood: str
+    identity_hash: str
+    actions: list[str]
+
+
+class HomeostasisStatusResponse(BaseModel):
+    ok: bool = True
+    state: dict[str, object] | None = None

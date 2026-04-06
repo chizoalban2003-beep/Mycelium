@@ -176,3 +176,31 @@ class GrowthLedgerEntry(SQLModel, table=True):
     proposal_json: str = "{}"  # what it tried
     outcome_json: str = "{}"  # what happened
     notes: str = ""
+
+
+class HomeostasisState(SQLModel, table=True):
+    """Persisted homeostasis snapshot.
+
+    This is the Nexus "body" state: mood broadcast + resource health + last
+    self-repair / pruning actions.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    mood: str = Field(default="curious", index=True)
+    mood_signal_json: str = "{}"
+    identity_hash: str = Field(default="", index=True)
+
+    agitated_cycles: int = 0
+    last_deep_breath_at: Optional[datetime] = Field(default=None, index=True)
+    last_identity_backup_at: Optional[datetime] = Field(default=None, index=True)
+
+    disk_total_bytes: int = 0
+    disk_free_bytes: int = 0
+
+    venv_present: bool = False
+    notes: str = ""

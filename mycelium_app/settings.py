@@ -36,6 +36,25 @@ class Settings(BaseSettings):
     # Proofgrid Nexus (assistant) settings.
     nexus_device_id: str = "local"
 
+    # Nexus Homeostasis ("Body")
+    # When enabled, a background loop periodically computes reflection snapshots
+    # and can prune low-value memory under resource pressure.
+    nexus_homeostasis_enabled: bool = False
+    nexus_homeostasis_tick_seconds: int = 30
+    nexus_homeostasis_window_days: int = 30
+    nexus_homeostasis_agitated_cycles_trigger: int = 10
+    nexus_homeostasis_deep_breath_cooldown_minutes: int = 30
+
+    # Resource guardrails
+    nexus_homeostasis_min_free_mb: int = 512
+    nexus_homeostasis_prune_signal_retention_days: int = 21
+    nexus_homeostasis_prune_growth_retention_days: int = 90
+    nexus_homeostasis_prune_experience_retention_days: int = 90
+    nexus_homeostasis_prune_experience_confidence_lt: float = 0.55
+
+    # Identity backup
+    nexus_homeostasis_identity_backup_hours: int = 24
+
     # Nexus parental defaults (can be overridden per-user via /api/nexus/policy).
     nexus_intro_mode: str = "observe"  # ask | observe
     nexus_observe_hours: int = 24

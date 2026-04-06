@@ -96,6 +96,18 @@ SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`
 
+Homeostasis (stability + pruning + identity backup):
+
+- Enable background ticking with env var: `NEXUS_HOMEOSTASIS_ENABLED=true` (maps to settings `nexus_homeostasis_enabled`).
+- Manual tick: `POST /api/nexus/homeostasis/tick`
+- Status: `GET /api/nexus/homeostasis/status`
+
+Rebuild local virtualenv:
+
+```bash
+bash scripts/rebuild_env.sh
+```
+
 Benchmarks / scratch data:
 - `tmp_eval/` is ignored by git (local outputs + datasets). This repo no longer ships the benchmark dataset.
 - Use your own CSV when running benchmark scripts, e.g. `python scripts/benchmark_salary_models.py --csv /path/to/data.csv --target salary`.

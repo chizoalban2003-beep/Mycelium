@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from sqlmodel import Session
 
 from mycelium_app.db import create_db_and_tables
+from mycelium_app.db import engine
+from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.game import router as game_router
 from mycelium_app.routes.growth import router as growth_router
 from mycelium_app.routes.hive import router as hive_router
+from mycelium_app.routes.homeostasis import router as homeostasis_router
 from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.predict import router as predict_router
 from mycelium_app.routes.projects import router as projects_router
@@ -21,9 +27,38 @@ from mycelium_app.web import router as web_router
 app = FastAPI(title=settings.app_name)
 
 
+async def _homeostasis_daemon() -> None:
+    """Background daemon that periodically refreshes per-user HomeostasisState.
+
+    This implements a minimal "Global Workspace" broadcast: mood/identity is
+    recomputed on a cadence and persisted so other subsystems can read it.
+    """
+
+    # Delay a bit so startup is fast.
+    await asyncio.sleep(1.0)
+    tick_s = max(5, min(int(settings.nexus_homeostasis_tick_seconds), 3600))
+
+    while True:
+        try:
+            with Session(engine) as session:
+                user_ids = list_recent_user_ids(session, window_hours=24)
+                for uid in user_ids[:200]:
+                    try:
+                        tick_homeostasis(session, user_id=int(uid), project_id=None)
+                    except Exception:
+                        # Homeostasis should never take the app down.
+                        continue
+        except Exception:
+            pass
+
+        await asyncio.sleep(float(tick_s))
+
+
 @app.on_event("startup")
-def on_startup() -> None:
+async def on_startup() -> None:
     create_db_and_tables()
+    if bool(getattr(settings, "nexus_homeostasis_enabled", False)):
+        asyncio.create_task(_homeostasis_daemon())
 
 
 @app.get("/health")
@@ -34,6 +69,7 @@ def health():
 app.include_router(auth_router)
 app.include_router(game_router)
 app.include_router(hive_router)
+app.include_router(homeostasis_router)
 app.include_router(nexus_router)
 app.include_router(growth_router)
 app.include_router(telemetry_router)
