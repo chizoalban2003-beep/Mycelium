@@ -13,7 +13,10 @@
     <div class="max-w-5xl mx-auto px-4 py-6">
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-4">
-          <a href="/projects" class="text-xl font-semibold">{{ app_name }}</a>
+          <div>
+            <a href="/projects" class="text-xl font-semibold tracking-wide">{{ app_name }}</a>
+            <div class="text-[11px] uppercase tracking-[0.25em] text-cyan-300/90">Grow With Data</div>
+          </div>
           {% if user %}
             <a href="/predict" class="text-sm text-slate-300 hover:text-white">Predict</a>
             <a href="/curiosity" class="text-sm text-slate-300 hover:text-white">Curiosity</a>

@@ -1,6 +1,33 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% set project_count = projects|length %}
+  {% if project_count <= 1 %}
+    {% set growth_stage = "Infant Core" %}
+    {% set growth_hint = "Collect more signals to accelerate learning." %}
+  {% elif project_count <= 3 %}
+    {% set growth_stage = "Adaptive Cadet" %}
+    {% set growth_hint = "Patterns are forming. Keep feeding high-quality data." %}
+  {% else %}
+    {% set growth_stage = "Personal Assistant Orbit" %}
+    {% set growth_hint = "Your AI is now operating with mature context awareness." %}
+  {% endif %}
+
+  <div class="mb-5 rounded-xl border border-cyan-900/60 bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Growth Console</div>
+        <div class="mt-1 text-lg font-semibold">GROW WITH DATA</div>
+        <div class="text-sm text-slate-300">Baby AI status: <span class="text-cyan-300">{{ growth_stage }}</span></div>
+        <div class="text-xs text-slate-400 mt-1">{{ growth_hint }}</div>
+      </div>
+      <div class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right">
+        <div class="text-xs text-slate-400">Active projects</div>
+        <div class="text-2xl font-semibold text-slate-100">{{ project_count }}</div>
+      </div>
+    </div>
+  </div>
+
   <div class="flex items-start justify-between gap-6">
     <div class="flex-1">
       <h1 class="text-lg font-semibold mb-3">Projects</h1>
