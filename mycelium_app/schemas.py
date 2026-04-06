@@ -353,6 +353,11 @@ class TelemetrySummaryResponse(BaseModel):
     first_word: str | None = None
 
 
+class TelemetryAssistantTickResponse(BaseModel):
+    ok: bool = True
+    created: bool = False
+
+
 class TelemetryDeepFreezeSweepRequest(BaseModel):
     project_id: int | None = None
     device_id: str | None = None

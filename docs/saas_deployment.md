@@ -3,6 +3,156 @@
 This repo already runs as a local “Parent Hub” + “Child” model.
 This doc makes it deployable as a SaaS platform.
 
+## Fast path: your devices are the “main brain” (self-hosted Parent Hub)
+
+If you want *your* machine/home-server to be the primary brain, run the **Parent Hub** on one device and point your other devices at it as **Children**.
+
+Recommended networking:
+- Same Wi‑Fi/LAN for quick testing, or
+- **Tailscale** for secure “works anywhere” connectivity without exposing port 8000 to the public internet.
+
+### A) Brain device: run the Parent Hub with Docker (recommended)
+
+From the repo root on the brain device:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set at minimum:
+- `SECRET_KEY` (long random)
+- `HIVE_INGEST_TOKEN` (shared secret children will use)
+- Optional: `COOKIE_SECURE=true` if you’re behind HTTPS
+
+Then run:
+
+```bash
+docker compose up --build -d
+```
+
+Verify:
+
+```bash
+curl -sS http://127.0.0.1:8000/health
+```
+
+### B) Brain device: run the Parent Hub without Docker (SQLite dev mode)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements/base.txt
+cp .env.example .env
+uvicorn mycelium_app.main:app --host 0.0.0.0 --port 8000
+```
+
+This stores state in `storage/mycelium.db`.
+
+### C) Other devices: connect as Children (smoketest)
+
+On each child device (can be your laptop/phone-on-Termux/another server), in a clone of the repo:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements/base.txt
+
+export PARENT_HUB_URL="http://<BRAIN_IP_OR_TAILSCALE_NAME>:8000"
+export HIVE_INGEST_TOKEN="<same-as-brain-.env>"
+export NEXUS_DEVICE_ID="edge-1"  # unique per device
+
+./scripts/run_child.sh
+```
+
+If connectivity is correct, the child will POST a concept into the brain via:
+- `POST /api/hive/curiosity/concept/import` with `X-Hive-Token`
+
+To see child nodes in the UI, log into the brain and open:
+- `/hive/health`
+
+### D) Phone experience: make it feel like a personal assistant
+
+This repo already has a **Nudges** system (the assistant “voice”) and a **Telemetry** ledger for digital signals.
+
+What you get out of the box:
+- A nudge banner inside the web UI.
+- Optional telemetry-derived assistant nudges (server-side background loop).
+- Optional device notifications:
+  - **In-app notifications** when the web app is open.
+  - **Android notifications** via Termux poller (works even when the web UI is closed).
+
+#### Install on Android (PWA)
+
+1) Open the Parent Hub URL in Chrome on your phone (LAN/Tailscale):
+- `http://<brain-ip>:8000` or `http://<tailscale-name>:8000`
+
+2) Chrome menu → **Add to Home screen** (or **Install app**).
+
+3) Launch it from the home screen. It opens as a standalone app.
+
+#### Enable telemetry assistant nudges (server-side)
+
+On the brain device, set in `.env`:
+
+```bash
+NEXUS_TELEMETRY_ASSISTANT_ENABLED=true
+NEXUS_TELEMETRY_ASSISTANT_TICK_SECONDS=60
+NEXUS_TELEMETRY_ASSISTANT_CONFIDENCE_THRESHOLD=0.85
+```
+
+Then restart the Parent Hub.
+
+Per-user permission is controlled by parental policy. To allow *action proposals* (still confirmation-based), set:
+
+```bash
+curl -sS -X POST http://127.0.0.1:8000/api/nexus/policy \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"policy":{"actions":{"enabled":true,"notify_only":true,"require_confirm":true}}}'
+```
+
+#### Android notifications via Termux (optional)
+
+If you want real device notifications even when the UI is closed:
+
+1) Install Termux + Termux:API.
+
+2) In Termux:
+
+```bash
+pkg update
+pkg install python
+pip install -r requirements/base.txt
+```
+
+3) Run the poller:
+
+```bash
+python3 scripts/poll_nudges_and_notify.py \
+  --base-url http://<brain-ip-or-tailscale>:8000 \
+  --email you@example.com \
+  --password '...' \
+  --kinds telemetry_assistant,wisdom_update,child_connected \
+  --min-confidence 0.85 \
+  --auto-ack
+```
+
+This will call `termux-notification` if available.
+
+#### Export your digital signals to CSV
+
+On the brain device:
+
+```bash
+python3 scripts/telemetry_export_csv.py --since-hours 168 --out storage/telemetry_export.csv
+```
+
+To export only your account’s signals:
+
+```bash
+python3 scripts/telemetry_export_csv.py --email you@example.com --since-hours 168 --out storage/telemetry_you.csv
+```
+
 ## What changes in SaaS mode
 
 - Parent Hub runs in the cloud (FastAPI + Postgres).
@@ -89,6 +239,33 @@ curl -sS https://<your-railway-domain>/health
 
 If you are serving the UI using the built-in FastAPI templates on the same domain,
 you typically do **not** need CORS.
+
+#### Option A: keep Railway as staging/demo (brain runs on your device)
+
+If you are switching the “main brain” to a self-hosted Parent Hub (home server / laptop),
+keep Railway running but prevent your children from accidentally ingesting into Railway:
+
+- Simplest: set `HIVE_ENABLED=false` on Railway.
+- Or: keep `HIVE_ENABLED=true` but set a **different** `HIVE_INGEST_TOKEN` on Railway than the one used by your self-hosted brain.
+- Optional: set `NEXUS_DEVICE_ID=railway-staging` so it’s visually distinct in logs/telemetry.
+
+Then, on child devices, ensure `PARENT_HUB_URL` points to your self-hosted brain (LAN IP or Tailscale name), not the Railway URL.
+
+#### Option B: Railway is the brain (cloud Parent Hub)
+
+Use this if you want “works anywhere” without running a home server.
+
+- Keep `HIVE_ENABLED=true` and set `HIVE_INGEST_TOKEN` on Railway.
+- Children use `PARENT_HUB_URL=https://<your-railway-domain>`.
+- For phone-as-assistant, install the PWA from that Railway URL.
+
+#### Option C: Hybrid (device brain + cloud mirror)
+
+Use this if you want local-first privacy (device brain), but also want a cloud copy for resilience/demo.
+
+- Keep two Parent Hubs (local + Railway).
+- Use **different** `HIVE_INGEST_TOKEN`s so children don’t cross-stream accidentally.
+- Optionally run exports from local to cloud using your own sync rules (this repo has Hive outbox primitives, but a full two-way mirror is intentionally not automatic).
 
 ## 3) Child node (edge)
 

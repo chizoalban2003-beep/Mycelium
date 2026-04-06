@@ -16,6 +16,15 @@ def default_policy() -> dict[str, object]:
         },
         "deny_sources": ["social", "social_media"],
         "allow_modalities": ["auto", "finance", "style", "grammar", "telemetry"],
+        # Device actions are always opt-in.
+        # - enabled: allow the system to *propose* actions (still requires user confirmation)
+        # - notify_only: never attempt execution from the server; only surface nudges
+        # - require_confirm: when true, all actions must be explicitly approved by user
+        "actions": {
+            "enabled": False,
+            "notify_only": True,
+            "require_confirm": True,
+        },
         "intro": {
             "mode": str(getattr(settings, "nexus_intro_mode", "ask")),
             "observe_hours": int(getattr(settings, "nexus_observe_hours", 24)),
@@ -68,6 +77,18 @@ def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
         **(base.get("privacy") if isinstance(base.get("privacy"), dict) else {}),
         **privacy,
         "export_enabled": bool((privacy or {}).get("export_enabled", base["privacy"]["export_enabled"])),
+    }
+
+    actions = merged.get("actions")
+    if not isinstance(actions, dict):
+        actions = {}
+    base_actions = base.get("actions") if isinstance(base.get("actions"), dict) else {}
+    merged["actions"] = {
+        **base_actions,
+        **actions,
+        "enabled": bool((actions or {}).get("enabled", base_actions.get("enabled", False))),
+        "notify_only": bool((actions or {}).get("notify_only", base_actions.get("notify_only", True))),
+        "require_confirm": bool((actions or {}).get("require_confirm", base_actions.get("require_confirm", True))),
     }
 
     intro = merged.get("intro")

@@ -12,9 +12,11 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.growth import compute_growth_stage
 from mycelium_app.models import GrowthLedgerEntry, ProjectMember, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.schemas import (
     TelemetryDeepFreezeSweepRequest,
     TelemetryDeepFreezeSweepResponse,
+    TelemetryAssistantTickResponse,
     TelemetryIngestRequest,
     TelemetryIngestResponse,
     TelemetrySummaryResponse,
@@ -345,3 +347,38 @@ def summary(
         + ([{"pattern": "growth_stage", "detail": stage, "unlocked": unlocked}] if stage else []),
         first_word=first_word,
     )
+
+
+@router.post("/assistant/tick", response_model=TelemetryAssistantTickResponse)
+def assistant_tick(
+    window_hours: int | None = None,
+    project_id: int | None = None,
+    device_id: str | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Manually run one telemetry-assistant pass for the current user.
+
+    Useful for testing from a phone/UI without waiting for the background loop.
+    """
+
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, project_id)
+
+    created = False
+    try:
+        created = bool(
+            maybe_queue_telemetry_assistant_nudge(
+                session,
+                user_id=user_id,
+                project_id=project_id,
+                device_id=device_id,
+                window_hours=window_hours,
+            )
+        )
+        if created:
+            session.commit()
+    except Exception:
+        created = False
+
+    return TelemetryAssistantTickResponse(ok=True, created=bool(created))

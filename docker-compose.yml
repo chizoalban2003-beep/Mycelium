@@ -2,13 +2,13 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: mycelium
-      POSTGRES_USER: mycelium
-      POSTGRES_PASSWORD: mycelium
+      POSTGRES_DB: ${POSTGRES_DB:-mycelium}
+      POSTGRES_USER: ${POSTGRES_USER:-mycelium}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mycelium}
     volumes:
       - mycelium_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mycelium -d mycelium"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mycelium} -d ${POSTGRES_DB:-mycelium}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,20 +22,20 @@ services:
       - "8000:8000"
     environment:
       # App
-      APP_NAME: Proofgrid
-      SECRET_KEY: change-me-please
-      COOKIE_SECURE: "false"  # set true behind HTTPS
+      APP_NAME: ${APP_NAME:-Proofgrid}
+      SECRET_KEY: ${SECRET_KEY:-change-me-please}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}  # set true behind HTTPS
 
       # Postgres
-      DATABASE_URL: postgresql+psycopg://mycelium:mycelium@db:5432/mycelium
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-mycelium}:${POSTGRES_PASSWORD:-mycelium}@db:5432/${POSTGRES_DB:-mycelium}}
 
       # Hive
-      HIVE_ENABLED: "true"
-      HIVE_INGEST_TOKEN: dev-ingest-token
-      NEXUS_DEVICE_ID: parent-hub
+      HIVE_ENABLED: ${HIVE_ENABLED:-true}
+      HIVE_INGEST_TOKEN: ${HIVE_INGEST_TOKEN:-dev-ingest-token}
+      NEXUS_DEVICE_ID: ${NEXUS_DEVICE_ID:-parent-hub}
 
       # Optional: enable homeostasis daemon
-      NEXUS_HOMEOSTASIS_ENABLED: "true"
+      NEXUS_HOMEOSTASIS_ENABLED: ${NEXUS_HOMEOSTASIS_ENABLED:-true}
 
 volumes:
   mycelium_pg:

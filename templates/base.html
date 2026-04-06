@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ app_name }}</title>
+    <meta name="theme-color" content="#020617" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="/static/manifest.webmanifest" />
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="bg-slate-950 text-slate-100">
@@ -44,6 +47,25 @@
 
     {% if user %}
     <script>
+      // Register a minimal service worker so Android can install this as an app.
+      (function registerSW() {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+          }
+        } catch (e) {}
+      })();
+
+      // Best-effort: request notification permission once.
+      (function maybeAskNotif() {
+        try {
+          if (!('Notification' in window)) return;
+          if (Notification.permission !== 'default') return;
+          // Only prompt on a real user session.
+          Notification.requestPermission().catch(() => {});
+        } catch (e) {}
+      })();
+
       async function loadIdentityBadge() {
         const el = document.getElementById('identityBadge');
         if (!el) return;
@@ -73,6 +95,17 @@
           const data = await r.json();
           const n = (data && data.nudges && data.nudges.length) ? data.nudges[0] : null;
           if (!n) return;
+
+          // Optional: show a local OS notification (works when the page is open).
+          try {
+            if ('Notification' in window && Notification.permission === 'granted') {
+              const last = localStorage.getItem('lastNotifiedNudgeId');
+              if (String(last || '') !== String(n.id || '')) {
+                new Notification(n.title || 'Nudge', { body: n.message || '' });
+                localStorage.setItem('lastNotifiedNudgeId', String(n.id || ''));
+              }
+            }
+          } catch (e) {}
 
           titleEl.textContent = n.title || 'Nudge';
           msgEl.textContent = n.message || '';
@@ -218,6 +251,8 @@
 
       loadIdentityBadge();
       loadNudgeBanner();
+      // Poll nudges periodically so the assistant feels alive.
+      setInterval(loadNudgeBanner, 20000);
     </script>
     {% endif %}
   </body>

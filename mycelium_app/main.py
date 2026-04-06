@@ -16,6 +16,7 @@ from mycelium_app.hive_empathy import compute_wisdom_latest, stable_digest, summ
 from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.metric_snapshot import run_validation_shadow
 from mycelium_app.models import NexusNudge, WisdomIntegrationState
+from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.curiosity import router as curiosity_router
 from mycelium_app.routes.game import router as game_router
@@ -268,6 +269,33 @@ async def _wisdom_nudge_daemon() -> None:
         await asyncio.sleep(tick_s)
 
 
+async def _telemetry_assistant_daemon() -> None:
+    """Background daemon that turns recent digital signals into nudges.
+
+    This is disabled by default and must be explicitly enabled via settings.
+    The nudges are throttled per-user and gated by parental policy.
+    """
+
+    await asyncio.sleep(2.5)
+    tick_s = max(10, min(int(getattr(settings, "nexus_telemetry_assistant_tick_seconds", 60)), 3600))
+
+    while True:
+        try:
+            with Session(engine) as session:
+                user_ids = list_recent_user_ids(session, window_hours=48)
+                for uid in user_ids[:200]:
+                    try:
+                        created = maybe_queue_telemetry_assistant_nudge(session, user_id=int(uid), project_id=None)
+                        if created:
+                            session.commit()
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        await asyncio.sleep(float(tick_s))
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     create_db_and_tables()
@@ -276,6 +304,8 @@ async def on_startup() -> None:
     # Wisdom nudges only make sense when Hive is enabled.
     if bool(getattr(settings, "hive_enabled", False)):
         asyncio.create_task(_wisdom_nudge_daemon())
+    if bool(getattr(settings, "nexus_telemetry_assistant_enabled", False)):
+        asyncio.create_task(_telemetry_assistant_daemon())
 
 
 @app.get("/health")

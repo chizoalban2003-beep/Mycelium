@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # Proofgrid Nexus (assistant) settings.
     nexus_device_id: str = "local"
 
+    # Telemetry assistant (nudges from digital signals).
+    nexus_telemetry_assistant_enabled: bool = False
+    nexus_telemetry_assistant_tick_seconds: int = 60
+    nexus_telemetry_assistant_window_hours: int = 6
+    nexus_telemetry_assistant_confidence_threshold: float = 0.85
+    nexus_telemetry_assistant_throttle_minutes: int = 120
+
     # Nexus Homeostasis ("Body")
     # When enabled, a background loop periodically computes reflection snapshots
     # and can prune low-value memory under resource pressure.
