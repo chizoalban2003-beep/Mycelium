@@ -146,6 +146,14 @@ python3 scripts/poll_nudges_and_notify.py \
 
 This will call `termux-notification` if available.
 
+#### Keep only the newest assistant nudge (optional)
+
+If your banner is crowded while testing, keep only the newest unseen nudge:
+
+```bash
+python3 scripts/ack_old_nudges.py --email you@example.com --keep 1
+```
+
 #### Export your digital signals to CSV
 
 On the brain device:
@@ -159,6 +167,19 @@ To export only your account’s signals:
 ```bash
 python3 scripts/telemetry_export_csv.py --email you@example.com --since-hours 168 --out storage/telemetry_you.csv
 ```
+
+#### Phone child ↔ laptop brain sharing loop
+
+For your setup (laptop = main brain, phone = child):
+
+1) Laptop brain runs Parent Hub (Tailscale/LAN reachable).
+2) Phone installs PWA and logs in for nudges + approve/reject actions.
+3) Optional on phone (Termux): run notification poller to receive nudges even when browser is closed.
+4) Optional on phone/other devices: run child ingest (`run_child.sh`) with same `HIVE_INGEST_TOKEN` and unique `NEXUS_DEVICE_ID`.
+
+This gives two-way collaboration:
+- child devices whisper updates to the laptop brain
+- laptop brain broadcasts insights/nudges back to users
 
 ## What changes in SaaS mode
 
@@ -273,6 +294,38 @@ Use this if you want local-first privacy (device brain), but also want a cloud c
 - Keep two Parent Hubs (local + Railway).
 - Use **different** `HIVE_INGEST_TOKEN`s so children don’t cross-stream accidentally.
 - Optionally run exports from local to cloud using your own sync rules (this repo has Hive outbox primitives, but a full two-way mirror is intentionally not automatic).
+
+## 2.5) Bring other users into the Hive
+
+### Quick invite (API)
+
+Use the helper script:
+
+```bash
+export BASE_URL="http://<brain-ip-or-tailscale>:8000"
+export OWNER_TOKEN="<owner-access-token>"
+export INVITE_EMAIL="friend@example.com"
+export INVITE_PASS="temporary-password"
+export INVITE_NAME="Friend"
+export PROJECT_ID="1"   # optional
+export ROLE="viewer"    # owner|editor|viewer
+
+bash scripts/hive_invite_user.sh
+```
+
+What this does:
+- creates the invited account (if it doesn’t already exist)
+- optionally adds them to a project (`POST /api/projects/{id}/members`)
+
+### Local-only invite (SQLite brain)
+
+If you prefer local shell creation:
+
+```bash
+python3 scripts/create_user.py --email friend@example.com --password 'temporary-password' --full-name 'Friend'
+```
+
+Then they can sign in to your laptop brain URL over Tailscale.
 
 ## 3) Child node (edge)
 
