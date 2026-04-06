@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 from sqlmodel import Session, select
 
+from mycelium_app.assistant_profile import get_assistant_profile_effective
 from mycelium_app.models import NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.settings import settings
@@ -172,8 +173,13 @@ def maybe_queue_telemetry_assistant_nudge(
     if actions_enabled and proposed_actions:
         title = "Assistant proposal"
 
+    ap = get_assistant_profile_effective(session, user_id=int(user_id), project_id=project_id)
+    given_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
+    vocal_preset = str(ap.get("vocal_preset", "alloy")).strip().lower() or "alloy"
+    gender_identity = str(ap.get("gender_identity", "neutral")).strip().lower() or "neutral"
+
     msg = (
-        "I’ve observed a stable pattern in your recent signals. "
+        f"I’m {given_name}. I’ve observed a stable pattern in your recent signals. "
         "If you want, I can propose a small, reversible optimization and learn from your feedback."
     )
 
@@ -190,6 +196,11 @@ def maybe_queue_telemetry_assistant_nudge(
             "require_confirm": bool(actions_cfg.get("require_confirm", True)),
             "device_control_enabled": bool(device_control_enabled),
             "min_confidence": float(min_confidence),
+        },
+        "assistant_profile": {
+            "given_name": given_name,
+            "vocal_preset": vocal_preset,
+            "gender_identity": gender_identity,
         },
         "device_id": resolved_device_id,
         "project_role": project_role,

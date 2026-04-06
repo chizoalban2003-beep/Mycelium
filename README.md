@@ -181,8 +181,10 @@ Personalize assistant identity:
 - API:
 	- `GET /api/nexus/identity/assistant/profile`
 	- `POST /api/nexus/identity/assistant/profile`
+	- `POST /api/nexus/assistant/configure` (compat alias)
 
 This updates identity presentation so the assistant is addressed by the configured name.
+Telemetry assistant nudges also include the configured assistant name/voice traits.
 
 SelfReflection (analyze best sweeps):
 

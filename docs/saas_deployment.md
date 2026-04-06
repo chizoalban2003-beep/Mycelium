@@ -83,6 +83,8 @@ API:
 
 - `GET /api/nexus/identity/assistant/profile`
 - `POST /api/nexus/identity/assistant/profile`
+- `GET /api/nexus/assistant/configure` (compat route)
+- `POST /api/nexus/assistant/configure` (compat route)
 
 Web UI:
 
@@ -96,6 +98,8 @@ Fields:
 
 Identity presentation (`/api/nexus/identity/presentation`) now uses this profile
 for personalized assistant display naming.
+
+Project-scoped identity updates are owner-gated by ProjectMembrane.
 
 ### Child trajectory capture: manual first, auto optional
 
