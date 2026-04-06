@@ -12,7 +12,7 @@ import pandas as pd
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import User
-from mycelium_app.knowledge_sync import compute_signature, extract_recallable_kwargs, recall_best_kwargs, store_ledger_entry
+from mycelium_app.knowledge_sync import MemoryManager
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
 from mycelium_app.presets import (
     PRODUCTION_CLASSIFICATION_BALANCED_KWARGS,
@@ -238,42 +238,45 @@ async def electrophoresis_predict(
             base_kwargs = merged
             preset_applied = PRODUCTION_REGRESSION_PRESET_NAME
 
-        # Optional: recall prior best physics knobs for similar schemas (fast-cache memory).
-        if (
-            bool(use_ledger)
-            and settings.predictor_physics_ledger_enabled
-            and settings.predictor_physics_ledger_recall_enabled
-        ):
-            locked = preset_applied is not None
-            if (not locked) or bool(settings.predictor_physics_ledger_allow_override_locked_presets):
-                sig = compute_signature(df, target_col=target_col)
-                recalled, entry, jacc = recall_best_kwargs(
-                    session,
-                    user_id=int(current_user.id or 0),
-                    signature=sig,
-                    target_kind=str(tk),
-                    max_candidates=int(settings.predictor_physics_ledger_max_candidates),
-                    min_jaccard=float(settings.predictor_physics_ledger_min_jaccard),
-                )
-                if recalled and entry:
-                    # Merge recalled knobs (lowest priority is current request args).
-                    merged = dict(base_kwargs)
-                    merged.update(recalled)
-                    try:
-                        if not isinstance(merged.get("plane"), PhysicsPlane):
-                            merged["plane"] = PhysicsPlane(str(merged.get("plane")))
-                    except Exception:
-                        pass
-                    base_kwargs = merged
-                    ledger_info = {
-                        "recalled": True,
-                        "entry_id": int(entry.id or 0),
-                        "jaccard": float(jacc),
-                        "score_metric": entry.score_metric,
-                        "score_value": float(entry.score_value),
-                    }
-                else:
-                    ledger_info = {"recalled": False}
+        mm = MemoryManager(
+            enabled=bool(settings.predictor_physics_ledger_enabled),
+            recall_enabled=bool(settings.predictor_physics_ledger_recall_enabled),
+            store_enabled=bool(settings.predictor_physics_ledger_store_enabled),
+            allow_override_locked_presets=bool(settings.predictor_physics_ledger_allow_override_locked_presets),
+            max_candidates=int(settings.predictor_physics_ledger_max_candidates),
+            min_jaccard=float(settings.predictor_physics_ledger_min_jaccard),
+            min_r2_to_store=float(settings.predictor_physics_ledger_min_r2_to_store),
+            min_accuracy_to_store=float(settings.predictor_physics_ledger_min_accuracy_to_store),
+            min_gel_confidence_mean_to_store=float(settings.predictor_physics_ledger_min_gel_confidence_mean_to_store),
+        )
+
+        if bool(use_ledger):
+            recalled, decision, _entry = mm.recall(
+                session,
+                user_id=int(current_user.id or 0),
+                df=df,
+                target_col=str(target_col),
+                target_kind=str(tk),
+                locked_preset_applied=(preset_applied is not None),
+            )
+            if recalled:
+                merged = dict(base_kwargs)
+                merged.update(recalled)
+                try:
+                    if not isinstance(merged.get("plane"), PhysicsPlane):
+                        merged["plane"] = PhysicsPlane(str(merged.get("plane")))
+                except Exception:
+                    pass
+                base_kwargs = merged
+            if mm.enabled:
+                ledger_info = {
+                    "enabled": True,
+                    "recalled": bool(decision.recalled),
+                    "entry_id": decision.recalled_entry_id,
+                    "jaccard": decision.jaccard,
+                    "score_metric": decision.score_metric,
+                    "score_value": decision.score_value,
+                }
 
         t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
@@ -283,52 +286,37 @@ async def electrophoresis_predict(
         if pred.target_kind == "numeric":
             r2 = _r2_from_actual_pred(getattr(pred, "test_actual", None), getattr(pred, "test_predicted", None))
 
-        # Optional: store "successful trajectories" to the Physics Ledger for later recall.
-        stored_entry_id: int | None = None
-        if settings.predictor_physics_ledger_enabled and settings.predictor_physics_ledger_store_enabled:
-            sig = compute_signature(df, target_col=target_col)
-            score_metric = ""
-            score_value: float | None = None
-            if pred.target_kind == "numeric" and r2 is not None:
-                score_metric = "r2"
-                score_value = float(r2)
-                if score_value < float(settings.predictor_physics_ledger_min_r2_to_store):
-                    score_value = None
-            elif pred.target_kind == "categorical" and pred.metrics.accuracy is not None:
-                score_metric = "accuracy"
-                score_value = float(pred.metrics.accuracy)
-                if score_value < float(settings.predictor_physics_ledger_min_accuracy_to_store):
-                    score_value = None
+        stored_entry_id, stored_metric, stored_value = mm.maybe_store(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=None,
+            df=df,
+            target_col=str(target_col),
+            target_kind=str(tk),
+            preset_name=preset_applied,
+            preset_display=None
+            if preset_applied is None
+            else (
+                PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME
+                if preset_applied == PRODUCTION_REGRESSION_PRESET_NAME
+                else preset_applied
+            ),
+            applied_kwargs=dict(base_kwargs),
+            r2=r2,
+            accuracy=(None if pred.metrics.accuracy is None else float(pred.metrics.accuracy)),
+            gel_confidence_mean=(
+                None
+                if pred.metrics.gel_confidence_mean is None
+                else float(pred.metrics.gel_confidence_mean)
+            ),
+        )
 
-            if score_value is not None:
-                applied = extract_recallable_kwargs(dict(base_kwargs))
-                entry = store_ledger_entry(
-                    session,
-                    user_id=int(current_user.id or 0),
-                    project_id=None,
-                    signature=sig,
-                    target_kind=str(tk),
-                    target_col=str(target_col),
-                    preset_name=preset_applied,
-                    preset_display=None
-                    if preset_applied is None
-                    else (
-                        PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME
-                        if preset_applied == PRODUCTION_REGRESSION_PRESET_NAME
-                        else preset_applied
-                    ),
-                    applied_kwargs=applied,
-                    score_metric=score_metric,
-                    score_value=float(score_value),
-                )
-                stored_entry_id = int(entry.id or 0)
-
-        if ledger_info is None and (settings.predictor_physics_ledger_enabled):
+        if ledger_info is None and mm.enabled:
             ledger_info = {"enabled": True, "recalled": False}
-        elif ledger_info is not None:
-            ledger_info = {"enabled": True, **ledger_info}
         if ledger_info is not None and stored_entry_id is not None:
-            ledger_info["stored_entry_id"] = stored_entry_id
+            ledger_info["stored_entry_id"] = int(stored_entry_id)
+            ledger_info["stored_score_metric"] = stored_metric
+            ledger_info["stored_score_value"] = stored_value
 
         return {
             "ok": True,

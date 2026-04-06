@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     predictor_physics_ledger_min_jaccard: float = 0.70
     predictor_physics_ledger_min_r2_to_store: float = 0.05
     predictor_physics_ledger_min_accuracy_to_store: float = 0.55
+    predictor_physics_ledger_min_gel_confidence_mean_to_store: float = 0.95
 
 
 settings = Settings()

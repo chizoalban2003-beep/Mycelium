@@ -185,3 +185,145 @@ def extract_recallable_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
             out[k] = v
 
     return out
+
+
+@dataclass(frozen=True)
+class LedgerDecision:
+    recalled: bool
+    stored: bool
+    recalled_entry_id: int | None = None
+    stored_entry_id: int | None = None
+    jaccard: float | None = None
+    score_metric: str | None = None
+    score_value: float | None = None
+
+
+class MemoryManager:
+    """Stateful wrapper around the Physics Ledger.
+
+    This is the "brain" piece Gemini is describing: a single place where we decide:
+    - whether to recall prior physics knobs for similar schemas
+    - whether to store the current run's knobs for future recall
+
+    Defaults are conservative: it will not override locked presets unless allowed.
+    """
+
+    def __init__(
+        self,
+        *,
+        enabled: bool,
+        recall_enabled: bool,
+        store_enabled: bool,
+        allow_override_locked_presets: bool,
+        max_candidates: int,
+        min_jaccard: float,
+        min_r2_to_store: float,
+        min_accuracy_to_store: float,
+        min_gel_confidence_mean_to_store: float,
+    ) -> None:
+        self.enabled = bool(enabled)
+        self.recall_enabled = bool(recall_enabled)
+        self.store_enabled = bool(store_enabled)
+        self.allow_override_locked_presets = bool(allow_override_locked_presets)
+        self.max_candidates = int(max_candidates)
+        self.min_jaccard = float(min_jaccard)
+        self.min_r2_to_store = float(min_r2_to_store)
+        self.min_accuracy_to_store = float(min_accuracy_to_store)
+        self.min_gel_confidence_mean_to_store = float(min_gel_confidence_mean_to_store)
+
+    def recall(
+        self,
+        session: Session,
+        *,
+        user_id: int,
+        df: pd.DataFrame,
+        target_col: str,
+        target_kind: str,
+        locked_preset_applied: bool,
+    ) -> tuple[dict[str, Any] | None, LedgerDecision, PhysicsLedgerEntry | None]:
+        if not (self.enabled and self.recall_enabled):
+            return None, LedgerDecision(recalled=False, stored=False), None
+
+        if locked_preset_applied and (not self.allow_override_locked_presets):
+            return None, LedgerDecision(recalled=False, stored=False), None
+
+        sig = compute_signature(df, target_col=target_col)
+        recalled, entry, jacc = recall_best_kwargs(
+            session,
+            user_id=int(user_id),
+            signature=sig,
+            target_kind=str(target_kind),
+            max_candidates=int(self.max_candidates),
+            min_jaccard=float(self.min_jaccard),
+        )
+
+        if not recalled or not entry:
+            return None, LedgerDecision(recalled=False, stored=False), None
+
+        decision = LedgerDecision(
+            recalled=True,
+            stored=False,
+            recalled_entry_id=int(entry.id or 0),
+            jaccard=float(jacc),
+            score_metric=str(entry.score_metric),
+            score_value=float(entry.score_value),
+        )
+        return recalled, decision, entry
+
+    def maybe_store(
+        self,
+        session: Session,
+        *,
+        user_id: int,
+        project_id: int | None,
+        df: pd.DataFrame,
+        target_col: str,
+        target_kind: str,
+        preset_name: str | None,
+        preset_display: str | None,
+        applied_kwargs: dict[str, Any],
+        r2: float | None,
+        accuracy: float | None,
+        gel_confidence_mean: float | None,
+    ) -> tuple[int | None, str | None, float | None]:
+        if not (self.enabled and self.store_enabled):
+            return None, None, None
+
+        score_metric = ""
+        score_value: float | None = None
+        if str(target_kind) in ("numeric", "datetime"):
+            if r2 is None:
+                return None, None, None
+            score_metric = "r2"
+            score_value = float(r2)
+            if score_value < float(self.min_r2_to_store):
+                return None, None, None
+        else:
+            # For categorical, prefer a confidence signal if we have it.
+            if gel_confidence_mean is not None and float(gel_confidence_mean) >= float(self.min_gel_confidence_mean_to_store):
+                score_metric = "gel_confidence_mean"
+                score_value = float(gel_confidence_mean)
+            elif accuracy is not None:
+                score_metric = "accuracy"
+                score_value = float(accuracy)
+                if score_value < float(self.min_accuracy_to_store):
+                    return None, None, None
+            else:
+                return None, None, None
+
+        sig = compute_signature(df, target_col=target_col)
+        applied = extract_recallable_kwargs(dict(applied_kwargs))
+        entry = store_ledger_entry(
+            session,
+            user_id=int(user_id),
+            project_id=project_id,
+            signature=sig,
+            target_kind=str(target_kind),
+            target_col=str(target_col),
+            preset_name=preset_name,
+            preset_display=preset_display,
+            applied_kwargs=applied,
+            score_metric=score_metric,
+            score_value=float(score_value),
+        )
+        return int(entry.id or 0), score_metric, float(score_value)
