@@ -6,7 +6,8 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import Project, ProjectMember, ProjectRole, User
-from mycelium_app.schemas import MemberAdd, Message, ProjectCreate, ProjectPublic
+from mycelium_app.schemas import MemberAdd, Message, ProjectCreate, ProjectInviteRequest, ProjectInviteResponse, ProjectPublic
+from mycelium_app.security import hash_password
 
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -98,3 +99,66 @@ def add_member(
         session.add(ProjectMember(project_id=project_id, user_id=user.id, role=payload.role))
     session.commit()
     return Message(message="Member added")
+
+
+@router.post("/{project_id}/invite", response_model=ProjectInviteResponse)
+def invite_member(
+    project_id: int,
+    payload: ProjectInviteRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    # Owner-only onboarding path: create user (or update password optionally), then add membership.
+    owner = session.exec(
+        select(ProjectMember).where(
+            ProjectMember.project_id == project_id,
+            ProjectMember.user_id == current_user.id,
+            ProjectMember.role == ProjectRole.owner,
+        )
+    ).first()
+    if not owner:
+        raise HTTPException(status_code=403, detail="Owner role required")
+
+    created_user = False
+    updated_password = False
+    email = str(payload.email).strip().lower()
+
+    user = session.exec(select(User).where(User.email == email)).first()
+    if not user:
+        user = User(
+            email=email,
+            full_name=str(payload.full_name or "").strip(),
+            hashed_password=hash_password(payload.password),
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        created_user = True
+    else:
+        if bool(payload.reset_password_if_exists):
+            user.hashed_password = hash_password(payload.password)
+            if str(payload.full_name or "").strip():
+                user.full_name = str(payload.full_name).strip()
+            session.add(user)
+            session.commit()
+            updated_password = True
+
+    existing = session.exec(
+        select(ProjectMember).where(ProjectMember.project_id == project_id, ProjectMember.user_id == user.id)
+    ).first()
+    added_member = False
+    if existing:
+        existing.role = payload.role
+        session.add(existing)
+    else:
+        session.add(ProjectMember(project_id=project_id, user_id=user.id, role=payload.role))
+        added_member = True
+    session.commit()
+
+    return ProjectInviteResponse(
+        ok=True,
+        message="Invite processed",
+        created_user=bool(created_user),
+        updated_password=bool(updated_password),
+        added_member=bool(added_member),
+    )

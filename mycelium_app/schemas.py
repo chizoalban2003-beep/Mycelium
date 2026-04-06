@@ -48,6 +48,22 @@ class MemberAdd(BaseModel):
     role: ProjectRole = ProjectRole.viewer
 
 
+class ProjectInviteRequest(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str = ""
+    role: ProjectRole = ProjectRole.viewer
+    reset_password_if_exists: bool = False
+
+
+class ProjectInviteResponse(BaseModel):
+    ok: bool = True
+    message: str
+    created_user: bool = False
+    updated_password: bool = False
+    added_member: bool = False
+
+
 class TreeNodeCreate(BaseModel):
     parent_id: Optional[int] = None
     name: str
