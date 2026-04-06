@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     hive_enabled: bool = False
     hive_export_enabled_default: bool = False
 
+    # Hive Health dashboard access control.
+    # If set (comma-separated emails), only these accounts can access /api/hive/health and /hive/health.
+    hive_health_allowlist_emails_csv: str = ""
+
     # Validation Shadow (Empirical Nudges)
     # Disabled by default: when enabled and configured with a local CSV, the
     # system will benchmark old vs new Hive wisdom and only claim improvements

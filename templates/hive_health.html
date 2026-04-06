@@ -14,6 +14,19 @@
         <option value="90">90d</option>
         <option value="180">180d</option>
       </select>
+      <label class="text-xs text-slate-300 flex items-center gap-1 select-none">
+        <input id="optRegression" type="checkbox" class="accent-slate-300" checked>
+        regression
+      </label>
+      <label class="text-xs text-slate-300 flex items-center gap-1 select-none">
+        <input id="optSmoothing" type="checkbox" class="accent-slate-300">
+        smoothing
+      </label>
+      <input id="smoothingWindow" value="7" class="w-12 text-xs bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100" title="Smoothing window (days)">
+      <label class="text-xs text-slate-300 flex items-center gap-1 select-none">
+        <input id="optBroadcast" type="checkbox" class="accent-slate-300">
+        broadcast impact
+      </label>
       <button id="refreshHealth" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">Refresh</button>
     </div>
   </div>
@@ -35,6 +48,19 @@
   <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
     <div class="font-semibold text-slate-100">Growth curve (per day)</div>
     <div id="curve" class="text-sm text-slate-200 mt-3 overflow-x-auto"></div>
+    <div id="curveSmoothed" class="text-sm text-slate-200 mt-3 overflow-x-auto"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Regression sentinel</div>
+    <div class="text-xs text-slate-400 mt-1">Flags global metric regressions vs a rolling baseline.</div>
+    <div id="alerts" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Broadcast impact (optional)</div>
+    <div class="text-xs text-slate-400 mt-1">Correlation lens: pre/post metric shifts around wisdom-whisper days.</div>
+    <div id="impact" class="text-sm text-slate-200 mt-3 space-y-1"></div>
   </div>
 
   <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
@@ -76,23 +102,63 @@
     </table>`;
   }
 
+  function tableSmoothed(points) {
+    const rows = points.map((p) => {
+      return `<tr class="border-t border-slate-800">
+        <td class="py-1 pr-3 text-xs text-slate-400">${esc(p.date)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(Number(p.global_updates_ma).toFixed(3))}</td>
+        <td class="py-1 pr-3 text-xs">${esc(Number(p.wisdom_whispers_ma).toFixed(3))}</td>
+        <td class="py-1 pr-3 text-xs">${esc(Number(p.curiosity_concepts_ma).toFixed(3))}</td>
+      </tr>`;
+    }).join('');
+
+    return `<table class="min-w-full">
+      <thead>
+        <tr class="text-xs text-slate-400">
+          <th class="text-left py-1 pr-3">day</th>
+          <th class="text-left py-1 pr-3">global_updates_ma</th>
+          <th class="text-left py-1 pr-3">wisdom_whispers_ma</th>
+          <th class="text-left py-1 pr-3">curiosity_concepts_ma</th>
+        </tr>
+      </thead>
+      <tbody>${rows || ''}</tbody>
+    </table>`;
+  }
+
   async function loadHealth() {
     const meta = document.getElementById('healthMeta');
     const totalsEl = document.getElementById('totals');
     const msgsEl = document.getElementById('messages');
     const curveEl = document.getElementById('curve');
+    const curveSmoothEl = document.getElementById('curveSmoothed');
+    const alertsEl = document.getElementById('alerts');
+    const impactEl = document.getElementById('impact');
     const trendsEl = document.getElementById('trends');
 
     meta.textContent = 'Loading…';
     totalsEl.innerHTML = '';
     msgsEl.innerHTML = '';
     curveEl.innerHTML = '';
+    curveSmoothEl.innerHTML = '';
+    alertsEl.innerHTML = '';
+    impactEl.innerHTML = '';
     trendsEl.innerHTML = '';
 
     const windowDays = document.getElementById('windowDays').value || '30';
+    const includeRegression = !!document.getElementById('optRegression').checked;
+    const includeSmoothing = !!document.getElementById('optSmoothing').checked;
+    const smoothingWindow = document.getElementById('smoothingWindow').value || '7';
+    const includeBroadcast = !!document.getElementById('optBroadcast').checked;
 
     try {
-      const r = await fetch(`/api/hive/health?window_days=${encodeURIComponent(windowDays)}`, { credentials: 'same-origin' });
+      const qp = new URLSearchParams({
+        window_days: String(windowDays),
+        include_regression: includeRegression ? 'true' : 'false',
+        include_smoothing: includeSmoothing ? 'true' : 'false',
+        smoothing_window: String(smoothingWindow),
+        include_broadcast_impact: includeBroadcast ? 'true' : 'false',
+      });
+      const r = await fetch(`/api/hive/health?${qp.toString()}`, { credentials: 'same-origin' });
       const data = await r.json();
       if (!r.ok) {
         meta.textContent = (data && data.detail) ? String(data.detail) : 'Failed to load hive health.';
@@ -111,6 +177,40 @@
 
       const curve = Array.isArray(data.growth_curve) ? data.growth_curve : [];
       curveEl.innerHTML = curve.length ? table(curve.slice(-90)) : '<div class="text-xs text-slate-400">No updates in window.</div>';
+
+      const smooth = Array.isArray(data.growth_curve_smoothed) ? data.growth_curve_smoothed : [];
+      curveSmoothEl.innerHTML = smooth.length ? `<div class="text-xs text-slate-400 mb-2">Smoothed (${esc(smoothingWindow)}d rolling mean)</div>${tableSmoothed(smooth.slice(-90))}` : '';
+
+      const alerts = Array.isArray(data.regression_alerts) ? data.regression_alerts : [];
+      if (!includeRegression) {
+        alertsEl.innerHTML = '<div class="text-xs text-slate-400">Regression sentinel disabled.</div>';
+      } else if (!alerts.length) {
+        alertsEl.innerHTML = '<div class="text-xs text-slate-400">No regressions detected in window.</div>';
+      } else {
+        alertsEl.innerHTML = alerts.slice(0, 50).map((a) => {
+          const sev = (a.severity === 'critical') ? 'text-rose-300' : 'text-amber-300';
+          const deltaPct = Number(a.delta_pct || 0) * 100.0;
+          return `<div class="flex items-center justify-between gap-3 text-xs">
+            <span class="text-slate-300">${esc(a.metric_name)} • ${esc(a.date)} • baseline=${esc(Number(a.baseline_avg).toFixed(6))} (n=${esc(a.baseline_n)})</span>
+            <span class="${sev}">last=${esc(Number(a.last_avg).toFixed(6))} (n=${esc(a.last_n)}) • Δ=${esc(Number(a.delta).toFixed(6))} (${esc(deltaPct.toFixed(2))}%)</span>
+          </div>`;
+        }).join('');
+      }
+
+      const impact = Array.isArray(data.broadcast_impact) ? data.broadcast_impact : [];
+      if (!includeBroadcast) {
+        impactEl.innerHTML = '<div class="text-xs text-slate-400">Broadcast impact disabled.</div>';
+      } else if (!impact.length) {
+        impactEl.innerHTML = '<div class="text-xs text-slate-400">No broadcast-impact events computed.</div>';
+      } else {
+        impactEl.innerHTML = impact.slice(0, 50).map((e) => {
+          const deltaPct = Number(e.delta_pct || 0) * 100.0;
+          return `<div class="flex items-center justify-between gap-3 text-xs">
+            <span class="text-slate-300">${esc(e.broadcast_date)} • ${esc(e.metric_name)} • pre=${esc(Number(e.pre_avg).toFixed(6))} (n=${esc(e.pre_n)})</span>
+            <span class="text-slate-100">post=${esc(Number(e.post_avg).toFixed(6))} (n=${esc(e.post_n)}) • Δ=${esc(Number(e.delta).toFixed(6))} (${esc(deltaPct.toFixed(2))}%)</span>
+          </div>`;
+        }).join('');
+      }
 
       const trends = Array.isArray(data.metric_trends) ? data.metric_trends : [];
       if (!trends.length) {
@@ -135,6 +235,10 @@
 
   document.getElementById('refreshHealth').onclick = loadHealth;
   document.getElementById('windowDays').onchange = loadHealth;
+  document.getElementById('optRegression').onchange = loadHealth;
+  document.getElementById('optSmoothing').onchange = loadHealth;
+  document.getElementById('smoothingWindow').onchange = loadHealth;
+  document.getElementById('optBroadcast').onchange = loadHealth;
   loadHealth();
 </script>
 {% endblock %}

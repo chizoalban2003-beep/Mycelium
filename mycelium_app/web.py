@@ -387,6 +387,14 @@ def hive_health_page(
     current_user = _get_web_user(request, session)
     if not current_user:
         return RedirectResponse(url="/login", status_code=302)
+
+    allow_csv = str(getattr(settings, "hive_health_allowlist_emails_csv", "") or "").strip()
+    if allow_csv:
+        allow = {p.strip().lower() for p in allow_csv.split(",") if p.strip()}
+        email = str(getattr(current_user, "email", "") or "").strip().lower()
+        if not email or (email not in allow):
+            raise HTTPException(status_code=403, detail="Hive Health restricted")
+
     return templates.TemplateResponse(
         "hive_health.html",
         {"request": request, "user": current_user, "app_name": settings.app_name},

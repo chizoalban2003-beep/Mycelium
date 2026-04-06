@@ -27,7 +27,9 @@ from mycelium_app.schemas import (
     HiveCuriosityConceptImportResponse,
     HiveCuriosityFeedbackImportRequest,
     HiveCuriosityFeedbackImportResponse,
+    HiveBroadcastImpactEvent,
     HiveHealthPoint,
+    HiveHealthSmoothedPoint,
     HiveHealthResponse,
     HiveGlobalUpdateImportRequest,
     HiveGlobalUpdateImportResponse,
@@ -40,6 +42,7 @@ from mycelium_app.schemas import (
     HiveOutboxMessagePublic,
     HiveOutboxMessageStoreResponse,
     HiveOutboxStoreResponse,
+    HiveRegressionAlert,
     HiveReportBuildRequest,
     HiveReportBuildResponse,
     HiveReportPublic,
@@ -51,6 +54,52 @@ from mycelium_app.settings import settings
 
 
 router = APIRouter(prefix="/api/hive", tags=["hive"])
+
+
+def _csv_set(s: str | None) -> set[str]:
+    if not s:
+        return set()
+    parts = [p.strip().lower() for p in str(s).split(",")]
+    return {p for p in parts if p}
+
+
+def _require_health_access(user: User) -> None:
+    allow = _csv_set(getattr(settings, "hive_health_allowlist_emails_csv", ""))
+    if not allow:
+        return
+    email = str(getattr(user, "email", "") or "").strip().lower()
+    if email and (email in allow):
+        return
+    raise HTTPException(status_code=403, detail="Hive Health restricted")
+
+
+def _metric_higher_is_better(metric_name: str) -> bool:
+    m = (metric_name or "").strip().lower()
+    # Default stance: most error metrics (mae/rmse/mape) are lower-is-better.
+    return any(k in m for k in ("accuracy", "acc", "f1", "precision", "recall", "auc", "r2"))
+
+
+def _safe_pct(delta: float, baseline: float) -> float:
+    denom = abs(float(baseline))
+    if denom <= 1e-12:
+        return 0.0
+    return float(delta) / denom
+
+
+def _rolling_mean(xs: list[float], window: int) -> list[float]:
+    if window <= 1:
+        return [float(x) for x in xs]
+    out: list[float] = []
+    buf: list[float] = []
+    s = 0.0
+    for x in xs:
+        xf = float(x)
+        buf.append(xf)
+        s += xf
+        if len(buf) > window:
+            s -= buf.pop(0)
+        out.append(s / float(len(buf)))
+    return out
 
 
 def _day_key(dt: datetime) -> str:
@@ -485,6 +534,17 @@ def wisdom_latest(
 @router.get("/health", response_model=HiveHealthResponse)
 def hive_health(
     window_days: int = 30,
+    include_smoothing: bool = False,
+    smoothing_window: int = 7,
+    include_regression: bool = True,
+    regression_baseline_days: int = 14,
+    regression_min_last_n: int = 5,
+    regression_min_baseline_n: int = 30,
+    regression_min_delta: float = 0.01,
+    include_broadcast_impact: bool = False,
+    broadcast_pre_days: int = 3,
+    broadcast_post_days: int = 3,
+    broadcast_limit: int = 25,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -497,8 +557,17 @@ def hive_health(
         raise HTTPException(status_code=403, detail="Hive disabled")
 
     _ = int(current_user.id or 0)  # auth only; endpoint is global
+    _require_health_access(current_user)
 
     window_days = max(1, min(int(window_days), 180))
+    smoothing_window = max(1, min(int(smoothing_window), 30))
+    regression_baseline_days = max(1, min(int(regression_baseline_days), 60))
+    regression_min_last_n = max(1, min(int(regression_min_last_n), 10_000))
+    regression_min_baseline_n = max(1, min(int(regression_min_baseline_n), 100_000))
+    regression_min_delta = float(regression_min_delta)
+    broadcast_pre_days = max(1, min(int(broadcast_pre_days), 30))
+    broadcast_post_days = max(1, min(int(broadcast_post_days), 30))
+    broadcast_limit = max(1, min(int(broadcast_limit), 200))
     since = datetime.utcnow() - timedelta(days=int(window_days))
     as_of = datetime.utcnow()
 
@@ -560,6 +629,24 @@ def hive_health(
             )
         )
 
+    growth_curve_smoothed: list[HiveHealthSmoothedPoint] = []
+    if include_smoothing and growth_curve:
+        xs_global = [float(p.n_global_updates) for p in growth_curve]
+        xs_whisper = [float(p.n_wisdom_whispers) for p in growth_curve]
+        xs_concept = [float(p.n_curiosity_concepts) for p in growth_curve]
+        ma_global = _rolling_mean(xs_global, window=int(smoothing_window))
+        ma_whisper = _rolling_mean(xs_whisper, window=int(smoothing_window))
+        ma_concept = _rolling_mean(xs_concept, window=int(smoothing_window))
+        for p, g, w, c in zip(growth_curve, ma_global, ma_whisper, ma_concept, strict=False):
+            growth_curve_smoothed.append(
+                HiveHealthSmoothedPoint(
+                    date=p.date,
+                    global_updates_ma=float(g),
+                    wisdom_whispers_ma=float(w),
+                    curiosity_concepts_ma=float(c),
+                )
+            )
+
     metric_trends: list[HiveMetricTrend] = []
     for metric_name in sorted(metric_points.keys()):
         days = metric_points[metric_name]
@@ -570,6 +657,105 @@ def hive_health(
                 continue
             pts.append(HiveMetricTrendPoint(date=day, n=int(len(xs)), avg=float(sum(xs) / float(len(xs)))))
         metric_trends.append(HiveMetricTrend(metric_name=metric_name, points=pts))
+
+    regression_alerts: list[HiveRegressionAlert] = []
+    if include_regression and metric_trends:
+        for trend in metric_trends:
+            pts = list(trend.points or [])
+            if len(pts) < 2:
+                continue
+            last = pts[-1]
+            if int(last.n) < int(regression_min_last_n):
+                continue
+
+            baseline_pts = pts[-(int(regression_baseline_days) + 1) : -1]
+            baseline_n = sum(int(p.n) for p in baseline_pts)
+            if baseline_n < int(regression_min_baseline_n):
+                continue
+            baseline_sum = sum(float(p.avg) * float(p.n) for p in baseline_pts)
+            baseline_avg = baseline_sum / float(baseline_n)
+
+            last_avg = float(last.avg)
+            delta = float(last_avg - baseline_avg)
+            delta_pct = float(_safe_pct(delta, baseline_avg))
+
+            higher_better = _metric_higher_is_better(trend.metric_name)
+            direction = "higher_better" if higher_better else "lower_better"
+            is_regression = (delta < -abs(regression_min_delta)) if higher_better else (delta > abs(regression_min_delta))
+            if not is_regression:
+                continue
+
+            severity = "critical" if abs(delta) >= (2.0 * abs(regression_min_delta)) else "warn"
+            regression_alerts.append(
+                HiveRegressionAlert(
+                    metric_name=str(trend.metric_name or "unknown"),
+                    date=str(last.date),
+                    direction=direction,
+                    baseline_days=int(regression_baseline_days),
+                    baseline_n=int(baseline_n),
+                    baseline_avg=float(baseline_avg),
+                    last_n=int(last.n),
+                    last_avg=float(last_avg),
+                    delta=float(delta),
+                    delta_pct=float(delta_pct),
+                    severity=severity,
+                )
+            )
+
+    broadcast_impact: list[HiveBroadcastImpactEvent] = []
+    if include_broadcast_impact and growth_curve and metric_trends:
+        broadcast_days = [p.date for p in growth_curve if int(p.n_wisdom_whispers) > 0]
+        if broadcast_days:
+            # Build quick index for per-metric day->(avg,n)
+            metric_day: dict[str, dict[str, tuple[float, int]]] = {}
+            for t in metric_trends:
+                d: dict[str, tuple[float, int]] = {}
+                for p in (t.points or []):
+                    d[str(p.date)] = (float(p.avg), int(p.n))
+                metric_day[str(t.metric_name or "unknown")] = d
+
+            # Need a stable ordered list of days for window slicing.
+            all_days = sorted({p.date for p in growth_curve})
+            day_pos = {d: i for i, d in enumerate(all_days)}
+
+            events: list[HiveBroadcastImpactEvent] = []
+            for bday in broadcast_days:
+                i = day_pos.get(bday)
+                if i is None:
+                    continue
+                pre_slice = all_days[max(0, i - int(broadcast_pre_days)) : i]
+                post_slice = all_days[i + 1 : min(len(all_days), i + 1 + int(broadcast_post_days))]
+                if not pre_slice or not post_slice:
+                    continue
+
+                for metric_name, dmap in metric_day.items():
+                    pre_vals = [(dmap[d][0], dmap[d][1]) for d in pre_slice if d in dmap]
+                    post_vals = [(dmap[d][0], dmap[d][1]) for d in post_slice if d in dmap]
+                    pre_n = sum(n for _, n in pre_vals)
+                    post_n = sum(n for _, n in post_vals)
+                    if pre_n <= 0 or post_n <= 0:
+                        continue
+                    pre_avg = sum(avg * n for avg, n in pre_vals) / float(pre_n)
+                    post_avg = sum(avg * n for avg, n in post_vals) / float(post_n)
+                    delta = float(post_avg - pre_avg)
+                    events.append(
+                        HiveBroadcastImpactEvent(
+                            broadcast_date=str(bday),
+                            metric_name=str(metric_name),
+                            pre_days=int(broadcast_pre_days),
+                            post_days=int(broadcast_post_days),
+                            pre_n=int(pre_n),
+                            post_n=int(post_n),
+                            pre_avg=float(pre_avg),
+                            post_avg=float(post_avg),
+                            delta=float(delta),
+                            delta_pct=float(_safe_pct(delta, pre_avg)),
+                        )
+                    )
+
+            # Keep the most informative events (largest absolute delta).
+            events.sort(key=lambda e: abs(float(e.delta)), reverse=True)
+            broadcast_impact = events[: int(broadcast_limit)]
 
     totals = {
         "n_global_updates": int(len(updates)),
@@ -589,7 +775,10 @@ def hive_health(
         totals=totals,
         messages_by_kind=dict(messages_by_kind),
         growth_curve=growth_curve,
+        growth_curve_smoothed=growth_curve_smoothed,
         metric_trends=metric_trends,
+        regression_alerts=regression_alerts,
+        broadcast_impact=broadcast_impact,
     )
 
 

@@ -248,6 +248,13 @@ class HiveHealthPoint(BaseModel):
     n_curiosity_concepts: int = 0
 
 
+class HiveHealthSmoothedPoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    global_updates_ma: float = 0.0
+    wisdom_whispers_ma: float = 0.0
+    curiosity_concepts_ma: float = 0.0
+
+
 class HiveMetricTrendPoint(BaseModel):
     date: str  # YYYY-MM-DD
     n: int = 0
@@ -259,6 +266,33 @@ class HiveMetricTrend(BaseModel):
     points: list[HiveMetricTrendPoint] = Field(default_factory=list)
 
 
+class HiveRegressionAlert(BaseModel):
+    metric_name: str
+    date: str  # last day evaluated
+    direction: str  # higher_better|lower_better
+    baseline_days: int
+    baseline_n: int
+    baseline_avg: float
+    last_n: int
+    last_avg: float
+    delta: float  # last_avg - baseline_avg
+    delta_pct: float  # (last-baseline)/abs(baseline)
+    severity: str = "warn"  # warn|critical
+
+
+class HiveBroadcastImpactEvent(BaseModel):
+    broadcast_date: str
+    metric_name: str
+    pre_days: int
+    post_days: int
+    pre_n: int
+    post_n: int
+    pre_avg: float
+    post_avg: float
+    delta: float
+    delta_pct: float
+
+
 class HiveHealthResponse(BaseModel):
     ok: bool = True
     as_of: datetime
@@ -266,7 +300,10 @@ class HiveHealthResponse(BaseModel):
     totals: dict[str, int] = Field(default_factory=dict)
     messages_by_kind: dict[str, int] = Field(default_factory=dict)
     growth_curve: list[HiveHealthPoint] = Field(default_factory=list)
+    growth_curve_smoothed: list[HiveHealthSmoothedPoint] = Field(default_factory=list)
     metric_trends: list[HiveMetricTrend] = Field(default_factory=list)
+    regression_alerts: list[HiveRegressionAlert] = Field(default_factory=list)
+    broadcast_impact: list[HiveBroadcastImpactEvent] = Field(default_factory=list)
 
 
 class HiveGlobalUpdatePublic(BaseModel):
