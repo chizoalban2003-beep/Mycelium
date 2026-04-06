@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     hive_enabled: bool = False
     hive_export_enabled_default: bool = False
 
+    # Optional shared secret to allow headless child devices to ingest into the Parent Hub.
+    # When set, child nodes can call Hive import endpoints with header: X-Hive-Token: <token>
+    hive_ingest_token: str = ""
+
     # Hive Health dashboard access control.
     # If set (comma-separated emails), only these accounts can access /api/hive/health and /hive/health.
     hive_health_allowlist_emails_csv: str = ""

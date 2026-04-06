@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
-from mycelium_app.deps import get_current_user
+from mycelium_app.deps import get_current_user, require_hive_ingest_principal
 from mycelium_app.hive_empathy import compute_wisdom_latest, queue_wisdom_whisper
 from mycelium_app.hive_sync import build_anonymized_report
 from mycelium_app.models import (
@@ -149,6 +149,39 @@ def _loads_dict(s: str | None) -> dict:
         return v if isinstance(v, dict) else {}
     except Exception:
         return {}
+
+
+def _extract_device_id_any(obj: object, *, depth: int = 0, max_depth: int = 6) -> str:
+    """Best-effort device_id extraction from nested Hive update payloads.
+
+    Children include `meta.device_id` inside whisper/concept/feedback objects.
+    Hive Health uses this to estimate how many distinct nodes have reported in.
+    """
+
+    if depth > max_depth:
+        return ""
+
+    if isinstance(obj, dict):
+        meta = obj.get("meta")
+        if isinstance(meta, dict):
+            did = meta.get("device_id")
+            if isinstance(did, str) and did.strip():
+                return did.strip()
+
+        for v in obj.values():
+            did = _extract_device_id_any(v, depth=depth + 1, max_depth=max_depth)
+            if did:
+                return did
+        return ""
+
+    if isinstance(obj, list):
+        for v in obj:
+            did = _extract_device_id_any(v, depth=depth + 1, max_depth=max_depth)
+            if did:
+                return did
+        return ""
+
+    return ""
 
 
 def _to_report_public(report: dict[str, object], *, project_id: int | None) -> HiveReportPublic:
@@ -326,7 +359,7 @@ def queue_whisper(
 @router.post("/whisper/import", response_model=HiveWhisperImportResponse)
 def import_whisper_as_global_update(
     payload: HiveWhisperImportRequest,
-    current_user: User = Depends(get_current_user),
+    principal: User | None = Depends(require_hive_ingest_principal),
     session: Session = Depends(get_session),
 ):
     """Import a wisdom whisper as a HiveGlobalUpdate.
@@ -339,7 +372,7 @@ def import_whisper_as_global_update(
     if not bool(settings.hive_enabled):
         raise HTTPException(status_code=403, detail="HiveSync disabled")
 
-    _ = current_user
+    _ = principal
 
     whisper = payload.whisper or {}
     if not isinstance(whisper, dict):
@@ -376,7 +409,7 @@ def import_whisper_as_global_update(
 @router.post("/curiosity/import", response_model=HiveCuriosityFeedbackImportResponse)
 def import_curiosity_feedback_as_global_update(
     payload: HiveCuriosityFeedbackImportRequest,
-    current_user: User = Depends(get_current_user),
+    principal: User | None = Depends(require_hive_ingest_principal),
     session: Session = Depends(get_session),
 ):
     """Import Active Curiosity feedback as a HiveGlobalUpdate.
@@ -388,7 +421,7 @@ def import_curiosity_feedback_as_global_update(
     if not bool(settings.hive_enabled):
         raise HTTPException(status_code=403, detail="HiveSync disabled")
 
-    _ = current_user
+    _ = principal
 
     fb = payload.feedback or {}
     if not isinstance(fb, dict):
@@ -425,7 +458,7 @@ def import_curiosity_feedback_as_global_update(
 @router.post("/curiosity/concept/import", response_model=HiveCuriosityConceptImportResponse)
 def import_curiosity_concept_as_global_update(
     payload: HiveCuriosityConceptImportRequest,
-    current_user: User = Depends(get_current_user),
+    principal: User | None = Depends(require_hive_ingest_principal),
     session: Session = Depends(get_session),
 ):
     """Import UserFeedbackIonizer concept messages as a HiveGlobalUpdate.
@@ -437,7 +470,7 @@ def import_curiosity_concept_as_global_update(
     if not bool(settings.hive_enabled):
         raise HTTPException(status_code=403, detail="HiveSync disabled")
 
-    _ = current_user
+    _ = principal
 
     concept = payload.concept or {}
     if not isinstance(concept, dict):
@@ -571,6 +604,9 @@ def hive_health(
     since = datetime.utcnow() - timedelta(days=int(window_days))
     as_of = datetime.utcnow()
 
+    device_ids: set[str] = set()
+    user_ids: set[int] = set()
+
     updates = session.exec(
         select(HiveGlobalUpdate).where(HiveGlobalUpdate.created_at >= since).order_by(HiveGlobalUpdate.created_at.asc())
     ).all()
@@ -584,6 +620,12 @@ def hive_health(
         kind = _extract_update_kind(obj)
         if not kind:
             continue
+
+        # Count nodes that have reported in (even if they only do parent-side imports).
+        did = _extract_device_id_any(obj)
+        if did:
+            device_ids.add(str(did))
+
         kinds_total[kind] += 1
         by_day[day]["global_updates"] += 1
         if kind == "wisdom_whisper":
@@ -595,8 +637,6 @@ def hive_health(
         select(HiveOutboxMessage).where(HiveOutboxMessage.created_at >= since).order_by(HiveOutboxMessage.created_at.asc())
     ).all()
     messages_by_kind: Counter[str] = Counter()
-    device_ids: set[str] = set()
-    user_ids: set[int] = set()
     for m in msgs:
         messages_by_kind[str(m.kind or "").strip() or "unknown"] += 1
         if m.device_id:
@@ -785,13 +825,13 @@ def hive_health(
 @router.post("/updates/import", response_model=HiveGlobalUpdateImportResponse)
 def import_global_update(
     payload: HiveGlobalUpdateImportRequest,
-    current_user: User = Depends(get_current_user),
+    principal: User | None = Depends(require_hive_ingest_principal),
     session: Session = Depends(get_session),
 ):
     if not bool(settings.hive_enabled):
         raise HTTPException(status_code=403, detail="HiveSync disabled")
 
-    _ = current_user
+    _ = principal
 
     update_uuid = (payload.update_uuid or "").strip() or None
     if update_uuid:

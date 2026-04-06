@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import secrets
 from typing import Optional
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session, select
 
@@ -39,6 +40,29 @@ def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
+
+
+def require_hive_ingest_principal(
+    request: Request,
+    session: Session = Depends(get_session),
+    token: str | None = Depends(oauth2_scheme),
+    hive_token: str | None = Header(default=None, alias="X-Hive-Token"),
+) -> User | None:
+    """Authorize calls intended for Parent-side Hive ingest endpoints.
+
+    If `settings.hive_ingest_token` is set and matches `X-Hive-Token`, allow
+    the request without requiring interactive user auth.
+
+    Otherwise, fall back to normal `get_current_user`.
+    """
+
+    expected = str(getattr(settings, "hive_ingest_token", "") or "").strip()
+    if expected:
+        presented = str(hive_token or "")
+        if presented and secrets.compare_digest(presented, expected):
+            return None
+
+    return get_current_user(request, session=session, token=token)
 
 
 def require_project_role(project_id: int, minimum: ProjectRole):
