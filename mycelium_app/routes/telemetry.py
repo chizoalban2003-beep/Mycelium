@@ -83,20 +83,20 @@ def deep_freeze_sweep(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-        """Run a deterministic 'Deep Freeze' sweep over recent telemetry.
+    """Run a deterministic 'Deep Freeze' sweep over recent telemetry.
 
-        Model:
-        - Build a transition table from app A -> next app B counts.
-        - Predict next app as argmax_B count(A->B) (a simple Markov-1 baseline).
+    Model:
+    - Build a transition table from app A -> next app B counts.
+    - Predict next app as argmax_B count(A->B) (a simple Markov-1 baseline).
 
-        Output:
-        - Computes accuracy (exact-match next-app rate) and an R²-style proxy over a
-            stable integer encoding, then records the result in GrowthLedgerEntry as:
-            domain=telemetry_next_app, metric=r2.
+    Output:
+    - Computes accuracy (exact-match next-app rate) and an R²-style proxy over a
+      stable integer encoding, then records the result in GrowthLedgerEntry as:
+      domain=telemetry_next_app, metric=r2.
 
-        Design goal:
-        - Keep this sweep transparent, deterministic, and cheap to run locally.
-        """
+    Design goal:
+    - Keep this sweep transparent, deterministic, and cheap to run locally.
+    """
 
     user_id = int(current_user.id or 0)
     _ensure_project_access(session, user_id, payload.project_id)

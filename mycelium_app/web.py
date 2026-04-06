@@ -15,6 +15,7 @@ import pandas as pd
 from mycelium_app.db import get_session
 from mycelium_app.knowledge_sync import MemoryManager
 from mycelium_app.models import Project, ProjectMember, ProjectRole, TreeNode, User
+from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
 from mycelium_app.presets import (
     PRODUCTION_CLASSIFICATION_BALANCED_KWARGS,
@@ -862,6 +863,13 @@ async def predict_action(
                     "score_value": decision.score_value,
                 }
 
+        # Homeostasis bridge: shared policy (also used by API route).
+        base_kwargs, homeostasis_info = apply_homeostasis_from_db(
+            session,
+            user_id=int(current_user.id or 0),
+            base_kwargs=base_kwargs,
+        )
+
         t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
         elapsed_s = float(time.perf_counter() - t0)
@@ -915,6 +923,7 @@ async def predict_action(
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,
             "diagnostics": getattr(pred, "diagnostics", None),
+            "homeostasis": homeostasis_info,
             "ledger": ledger_info,
             "weights": [
                 {
