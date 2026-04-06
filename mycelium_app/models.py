@@ -145,6 +145,24 @@ class HiveGlobalUpdate(SQLModel, table=True):
     update_json: str = "{}"  # e.g. recommended knobs, safe allowlisted fields
 
 
+class HiveOutboxMessage(SQLModel, table=True):
+    """Generic Hive outbox message.
+
+    This is intentionally separate from HiveOutboxReport so we can add new
+    message kinds without changing existing table schemas.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    device_id: str = Field(default="", index=True)
+
+    kind: str = Field(default="", index=True)  # e.g. wisdom_whisper, homeostasis_failure
+    payload_json: str = "{}"  # JSON dict; must remain non-sensitive by policy
+    submitted_at: Optional[datetime] = Field(default=None, index=True)
+
+
 class SignalLedgerEvent(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

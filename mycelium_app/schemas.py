@@ -166,6 +166,36 @@ class HiveOutboxListResponse(BaseModel):
     reports: list[HiveReportPublic]
 
 
+class HiveOutboxMessagePublic(BaseModel):
+    created_at: datetime
+    device_id: str
+    project_id: int | None
+    kind: str
+    payload: dict[str, object]
+
+
+class HiveOutboxMessageStoreResponse(BaseModel):
+    ok: bool = True
+    message_id: int
+
+
+class HiveOutboxMessageListResponse(BaseModel):
+    messages: list[HiveOutboxMessagePublic]
+
+
+class HiveWhisperImportRequest(BaseModel):
+    update_uuid: str | None = None
+    source: str = "hive_empathy"
+    version: str = "whisper_v1"
+    whisper: dict[str, object]
+
+
+class HiveWhisperImportResponse(BaseModel):
+    ok: bool = True
+    update_uuid: str
+    imported: bool = True
+
+
 class HiveGlobalUpdatePublic(BaseModel):
     update_uuid: str
     created_at: datetime

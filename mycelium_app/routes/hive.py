@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime
 
@@ -8,8 +9,9 @@ from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
+from mycelium_app.hive_empathy import queue_wisdom_whisper
 from mycelium_app.hive_sync import build_anonymized_report
-from mycelium_app.models import ExperienceBufferEntry, HiveGlobalUpdate, HiveOutboxReport, ProjectMember, User
+from mycelium_app.models import ExperienceBufferEntry, HiveGlobalUpdate, HiveOutboxMessage, HiveOutboxReport, ProjectMember, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
     HiveGlobalUpdateImportRequest,
@@ -17,10 +19,15 @@ from mycelium_app.schemas import (
     HiveGlobalUpdateListResponse,
     HiveGlobalUpdatePublic,
     HiveOutboxListResponse,
+    HiveOutboxMessageListResponse,
+    HiveOutboxMessagePublic,
+    HiveOutboxMessageStoreResponse,
     HiveOutboxStoreResponse,
     HiveReportBuildRequest,
     HiveReportBuildResponse,
     HiveReportPublic,
+    HiveWhisperImportRequest,
+    HiveWhisperImportResponse,
 )
 from mycelium_app.settings import settings
 
@@ -40,6 +47,13 @@ def _ensure_project_access(session: Session, user_id: int, project_id: int | Non
 
 def _dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _stable_uuid_from_obj(obj: object) -> str:
+    """Compute deterministic UUID-like hex string for idempotent imports."""
+
+    b = _dumps(obj).encode("utf-8")
+    return hashlib.sha256(b).hexdigest()
 
 
 def _loads_dict(s: str | None) -> dict:
@@ -79,6 +93,16 @@ def _to_update_public(row: HiveGlobalUpdate) -> HiveGlobalUpdatePublic:
         source=row.source,
         version=row.version,
         update=_loads_dict(row.update_json),
+    )
+
+
+def _to_message_public(row: HiveOutboxMessage) -> HiveOutboxMessagePublic:
+    return HiveOutboxMessagePublic(
+        created_at=row.created_at,
+        device_id=row.device_id,
+        project_id=row.project_id,
+        kind=str(row.kind or ""),
+        payload=_loads_dict(row.payload_json),
     )
 
 
@@ -179,6 +203,112 @@ def list_outbox(
         )
 
     return HiveOutboxListResponse(reports=reports)
+
+
+@router.post("/whisper/queue", response_model=HiveOutboxMessageStoreResponse)
+def queue_whisper(
+    payload: HiveReportBuildRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Queue a wisdom whisper into the Hive outbox.
+
+    We reuse HiveReportBuildRequest shape for convenience:
+    - project_id selects scope
+    - limit controls how many PhysicsLedger entries to consider
+    """
+
+    if not bool(settings.hive_enabled):
+        raise HTTPException(status_code=403, detail="HiveSync disabled")
+
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, payload.project_id)
+
+    message_id, reason = queue_wisdom_whisper(
+        session,
+        user_id=user_id,
+        project_id=payload.project_id,
+        device_id=str(settings.nexus_device_id or "local"),
+        limit=int(payload.limit or 200),
+    )
+
+    if message_id is None:
+        raise HTTPException(status_code=403, detail=f"Whisper not queued: {reason or 'unknown'}")
+
+    return HiveOutboxMessageStoreResponse(ok=True, message_id=int(message_id))
+
+
+@router.post("/whisper/import", response_model=HiveWhisperImportResponse)
+def import_whisper_as_global_update(
+    payload: HiveWhisperImportRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Import a wisdom whisper as a HiveGlobalUpdate.
+
+    This is the 'parent-side' ingest path: it stores the whisper into the
+    Global Update table so other devices can fetch it as recommended baseline
+    settings.
+    """
+
+    if not bool(settings.hive_enabled):
+        raise HTTPException(status_code=403, detail="HiveSync disabled")
+
+    _ = current_user
+
+    whisper = payload.whisper or {}
+    if not isinstance(whisper, dict):
+        raise HTTPException(status_code=400, detail="Invalid whisper")
+
+    meta = whisper.get("meta") if isinstance(whisper.get("meta"), dict) else {}
+    if str(meta.get("kind", "")) != "wisdom_whisper":
+        raise HTTPException(status_code=400, detail="Not a wisdom_whisper payload")
+
+    update_uuid = (payload.update_uuid or "").strip() or _stable_uuid_from_obj(whisper)
+
+    existing = session.exec(select(HiveGlobalUpdate).where(HiveGlobalUpdate.update_uuid == update_uuid)).first()
+    if existing:
+        return HiveWhisperImportResponse(ok=True, update_uuid=existing.update_uuid, imported=False)
+
+    update_obj = {
+        "kind": "wisdom_whisper",
+        "whisper": whisper,
+    }
+
+    row = HiveGlobalUpdate(
+        source=(payload.source or "hive_empathy")[:64],
+        version=(payload.version or "whisper_v1")[:64],
+        update_json=_dumps(update_obj),
+    )
+    row.update_uuid = update_uuid
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    return HiveWhisperImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
+
+
+@router.get("/outbox/messages/recent", response_model=HiveOutboxMessageListResponse)
+def list_outbox_messages(
+    limit: int = 50,
+    kind: str | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if not bool(settings.hive_enabled):
+        raise HTTPException(status_code=403, detail="HiveSync disabled")
+
+    user_id = int(current_user.id or 0)
+    limit = max(1, min(int(limit), 500))
+    kind = (kind or "").strip() or None
+
+    q = select(HiveOutboxMessage).where(HiveOutboxMessage.created_by_user_id == user_id)
+    if kind is not None:
+        q = q.where(HiveOutboxMessage.kind == kind)
+    q = q.order_by(HiveOutboxMessage.created_at.desc()).limit(limit)
+
+    rows = session.exec(q).all()
+    return HiveOutboxMessageListResponse(messages=[_to_message_public(r) for r in rows])
 
 
 @router.post("/updates/import", response_model=HiveGlobalUpdateImportResponse)

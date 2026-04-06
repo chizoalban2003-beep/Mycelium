@@ -118,3 +118,62 @@ Add confusion matrices (raw + normalized):
   - cluster shattering into sub-zones (IDs 100+)
   - scavenger recycling
 - Regression (numeric) upgraded to multi-cycle residual refinement (boosting-style) + cascade.
+
+## 7) Nexus Homeostasis ("Body")
+
+Homeostasis is a small stability layer that periodically computes:
+- mood + identity hash (from recent telemetry/experience)
+- resource health (disk free/total)
+- optional pruning under low disk
+
+It persists a snapshot into `HomeostasisState` so other subsystems (like the predictor) can consult it.
+
+### Homeostasis failure behavior (policy)
+
+If Homeostasis throws an exception in the background daemon:
+- The app stays up ("degrade gracefully")
+- A throttled Hive outbox message is queued: `kind=homeostasis_failure` with `action=ask_parent`
+
+This creates a clear audit trail without crashing the server.
+
+## 8) HiveEmpathy (collective learning) — “wisdom whispers”
+
+HiveEmpathy is a lightweight, privacy-conservative protocol to share **best known stable predictor knobs** across devices.
+
+### What a whisper contains
+
+Queued as a Hive outbox message with `kind=wisdom_whisper`.
+
+Payload shape (high-level):
+- `meta`: created_at, device_id, project_id, kind, version
+- `homeostasis`: mood, identity_hash
+- `wisdom.recommended_kwargs`: **only allowlisted knobs** (same safety filtering as Physics Ledger recall)
+- `wisdom.evidence`: counts + coarse score stats (no raw feature names or dataset content)
+
+### Queue a whisper (server-side builder)
+
+- `POST /api/hive/whisper/queue`
+  - body: `{ "project_id": null, "limit": 200 }`
+
+This summarizes your top Physics Ledger entries and queues one message into the outbox.
+
+### List recent outbox messages
+
+- `GET /api/hive/outbox/messages/recent?limit=50`
+- Optional filter by kind:
+  - `GET /api/hive/outbox/messages/recent?kind=wisdom_whisper`
+  - `GET /api/hive/outbox/messages/recent?kind=homeostasis_failure`
+
+Notes:
+- All Hive export is gated by:
+  - `settings.hive_enabled = true`
+  - parental policy `privacy.export_enabled = true`
+
+### Parent-side ingest (store as Global Update)
+
+To ingest a `wisdom_whisper` from another device and make it available via global updates:
+
+- `POST /api/hive/whisper/import`
+  - body: `{ "whisper": { ...full whisper payload... } }`
+
+The server will upsert it into `HiveGlobalUpdate` idempotently using a deterministic UUID (SHA256 of the whisper JSON) unless you provide `update_uuid`.

@@ -8,6 +8,7 @@ from sqlmodel import Session
 
 from mycelium_app.db import create_db_and_tables
 from mycelium_app.db import engine
+from mycelium_app.hive_empathy import queue_homeostasis_failure
 from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.game import router as game_router
@@ -45,8 +46,21 @@ async def _homeostasis_daemon() -> None:
                 for uid in user_ids[:200]:
                     try:
                         tick_homeostasis(session, user_id=int(uid), project_id=None)
-                    except Exception:
+                    except Exception as e:
                         # Homeostasis should never take the app down.
+                        # Policy: degrade gracefully + ask parent (throttled).
+                        try:
+                            queue_homeostasis_failure(
+                                session,
+                                user_id=int(uid),
+                                project_id=None,
+                                device_id=str(settings.nexus_device_id or "local"),
+                                error_type=type(e).__name__,
+                                error_message=str(e),
+                                min_interval_minutes=30,
+                            )
+                        except Exception:
+                            pass
                         continue
         except Exception:
             pass
