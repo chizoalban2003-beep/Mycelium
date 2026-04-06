@@ -21,5 +21,15 @@ class Settings(BaseSettings):
     # preset hyperparameters unless explicitly overridden in code.
     predictor_lock_production_classification_preset: bool = True
 
+    # Optional persistent-memory layer ("Physics Ledger"). Disabled by default.
+    predictor_physics_ledger_enabled: bool = False
+    predictor_physics_ledger_recall_enabled: bool = False
+    predictor_physics_ledger_store_enabled: bool = False
+    predictor_physics_ledger_allow_override_locked_presets: bool = False
+    predictor_physics_ledger_max_candidates: int = 250
+    predictor_physics_ledger_min_jaccard: float = 0.70
+    predictor_physics_ledger_min_r2_to_store: float = 0.05
+    predictor_physics_ledger_min_accuracy_to_store: float = 0.55
+
 
 settings = Settings()

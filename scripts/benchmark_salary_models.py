@@ -121,7 +121,27 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Benchmark Mycelium vs sklearn regressors on a tabular CSV"
     )
-    parser.add_argument("--csv", required=True, help="Path to a CSV dataset")
+    parser.add_argument(
+        "--csv",
+        default="",
+        help="Path to a CSV dataset. If omitted, pass --generate-sample to create a synthetic dataset.",
+    )
+    parser.add_argument(
+        "--generate-sample",
+        action="store_true",
+        help="Generate a small synthetic salary dataset if --csv is missing (or points to a missing file).",
+    )
+    parser.add_argument(
+        "--generate-sample-out",
+        default="tmp_eval/sample_salary_dataset.csv",
+        help="Where to write the generated sample dataset (default: tmp_eval/sample_salary_dataset.csv)",
+    )
+    parser.add_argument(
+        "--generate-sample-rows",
+        type=int,
+        default=50_000,
+        help="Rows to generate for --generate-sample (default: 50000)",
+    )
     parser.add_argument(
         "--target",
         default="salary",
@@ -217,13 +237,29 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if not os.path.exists(args.csv):
+    csv_path = str(args.csv).strip()
+    if (not csv_path) or (csv_path and not os.path.exists(csv_path)):
+        if not bool(args.generate_sample):
+            raise SystemExit(
+                "Dataset not provided. Provide --csv /path/to/your.csv, or run with --generate-sample. "
+                "You can also generate one explicitly via: python scripts/sample_salary_dataset.py"
+            )
+        from scripts.sample_salary_dataset import make_sample_salary_dataset
+
+        out_path = str(args.generate_sample_out)
+        os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+        df_gen = make_sample_salary_dataset(int(args.generate_sample_rows), int(args.seed))
+        df_gen.to_csv(out_path, index=False)
+        csv_path = out_path
+        print(f"Generated sample dataset -> {csv_path}")
+
+    if not os.path.exists(csv_path):
         raise SystemExit(
-            f"CSV not found: {args.csv}. Provide a dataset path via --csv (the repo no longer ships the old job-salary dataset)."
+            f"CSV not found: {csv_path}. Provide a dataset path via --csv (the repo no longer ships the old job-salary dataset)."
         )
 
     nrows = None if int(args.nrows) == 0 else int(args.nrows)
-    df = pd.read_csv(args.csv, nrows=nrows)
+    df = pd.read_csv(csv_path, nrows=nrows)
 
     target = str(args.target)
     if target.lower() == "random":

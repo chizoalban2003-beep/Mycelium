@@ -118,6 +118,23 @@
                 </div>
               </div>
 
+              <div>
+                <label class="block text-sm text-slate-300">Physics Ledger</label>
+                {% if ledger_enabled and ledger_recall_enabled %}
+                  <label class="mt-1 flex items-center gap-2 text-sm text-slate-200">
+                    <input type="checkbox" name="use_ledger" {% if use_ledger %}checked{% endif %} />
+                    Recall best-known physics for similar data
+                  </label>
+                  <div class="mt-1 text-xs text-slate-500">
+                    Stores on success: {% if ledger_store_enabled %}ON{% else %}OFF{% endif %}. Does not override locked presets unless enabled in settings.
+                  </div>
+                {% elif ledger_enabled %}
+                  <div class="mt-1 text-xs text-slate-500">Ledger is enabled but recall is OFF in settings.</div>
+                {% else %}
+                  <div class="mt-1 text-xs text-slate-500">Disabled (enable via settings/.env).</div>
+                {% endif %}
+              </div>
+
               <div class="md:col-span-4">
                 <div class="mt-2 border-t border-slate-800 pt-3"></div>
                 <div class="text-sm text-slate-200 font-medium">Cleaning (preprocessing)</div>

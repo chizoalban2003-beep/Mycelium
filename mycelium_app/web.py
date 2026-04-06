@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 import pandas as pd
 
 from mycelium_app.db import get_session
+from mycelium_app.knowledge_sync import compute_signature, extract_recallable_kwargs, recall_best_kwargs, store_ledger_entry
 from mycelium_app.models import Project, ProjectMember, ProjectRole, TreeNode, User
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
 from mycelium_app.presets import (
@@ -251,6 +252,10 @@ def predict_page(
             "production_regression_preset": PRODUCTION_REGRESSION_PRESET_NAME,
             "production_regression_preset_display": PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME,
             "production_regression_kwargs": dict(PRODUCTION_REGRESSION_KWARGS),
+            "ledger_enabled": bool(settings.predictor_physics_ledger_enabled),
+            "ledger_recall_enabled": bool(settings.predictor_physics_ledger_recall_enabled),
+            "ledger_store_enabled": bool(settings.predictor_physics_ledger_store_enabled),
+            "use_ledger": False,
             "result": None,
             "error": None,
             "columns": None,
@@ -404,6 +409,7 @@ async def predict_action(
     cleaning_outlier_q_high: float = Form(0.995),
     cleaning_arbitrary_min: float | None = Form(None),
     cleaning_arbitrary_max: float | None = Form(None),
+    use_ledger: str | None = Form(None),
 ):
     current_user = _get_web_user(request, session)
     if not current_user:
@@ -426,6 +432,7 @@ async def predict_action(
     low_confidence_secondary_sieve_enabled_bool = bool(low_confidence_secondary_sieve_enabled)
     low_confidence_primary_sieve_enabled_bool = bool(low_confidence_primary_sieve_enabled)
     cleaning_enabled_bool = bool(cleaning_enabled)
+    use_ledger_bool = bool(use_ledger)
 
     try:
         plane_enum = PhysicsPlane(plane)
@@ -793,6 +800,7 @@ async def predict_action(
         })()
 
         preset_applied: str | None = None
+        ledger_info: dict[str, object] | None = None
         try:
             tk = infer_target_kind(df[target_col])
         except Exception:
@@ -814,6 +822,42 @@ async def predict_action(
             base_kwargs["plane"] = PhysicsPlane(str(PRODUCTION_REGRESSION_KWARGS.get("plane", "gas")))
             preset_applied = PRODUCTION_REGRESSION_PRESET_NAME
 
+        # Optional: recall prior best physics knobs for similar schemas (fast-cache memory).
+        if (
+            use_ledger_bool
+            and settings.predictor_physics_ledger_enabled
+            and settings.predictor_physics_ledger_recall_enabled
+        ):
+            locked = preset_applied is not None
+            if (not locked) or bool(settings.predictor_physics_ledger_allow_override_locked_presets):
+                sig = compute_signature(df, target_col=target_col)
+                recalled, entry, jacc = recall_best_kwargs(
+                    session,
+                    user_id=int(current_user.id or 0),
+                    signature=sig,
+                    target_kind=str(tk),
+                    max_candidates=int(settings.predictor_physics_ledger_max_candidates),
+                    min_jaccard=float(settings.predictor_physics_ledger_min_jaccard),
+                )
+                if recalled and entry:
+                    merged = dict(base_kwargs)
+                    merged.update(recalled)
+                    try:
+                        if not isinstance(merged.get("plane"), PhysicsPlane):
+                            merged["plane"] = PhysicsPlane(str(merged.get("plane")))
+                    except Exception:
+                        pass
+                    base_kwargs = merged
+                    ledger_info = {
+                        "recalled": True,
+                        "entry_id": int(entry.id or 0),
+                        "jaccard": float(jacc),
+                        "score_metric": entry.score_metric,
+                        "score_value": float(entry.score_value),
+                    }
+                else:
+                    ledger_info = {"recalled": False}
+
         t0 = time.perf_counter()
         pred = run_physics_prediction(df, **base_kwargs)
         elapsed_s = float(time.perf_counter() - t0)
@@ -821,6 +865,53 @@ async def predict_action(
         r2 = None
         if pred.target_kind == "numeric":
             r2 = _r2_from_actual_pred(getattr(pred, "test_actual", None), getattr(pred, "test_predicted", None))
+
+        # Optional: store "successful trajectories" to the Physics Ledger for later recall.
+        stored_entry_id: int | None = None
+        if settings.predictor_physics_ledger_enabled and settings.predictor_physics_ledger_store_enabled:
+            sig = compute_signature(df, target_col=target_col)
+            score_metric = ""
+            score_value: float | None = None
+            if pred.target_kind == "numeric" and r2 is not None:
+                score_metric = "r2"
+                score_value = float(r2)
+                if score_value < float(settings.predictor_physics_ledger_min_r2_to_store):
+                    score_value = None
+            elif pred.target_kind == "categorical" and pred.metrics.accuracy is not None:
+                score_metric = "accuracy"
+                score_value = float(pred.metrics.accuracy)
+                if score_value < float(settings.predictor_physics_ledger_min_accuracy_to_store):
+                    score_value = None
+
+            if score_value is not None:
+                applied = extract_recallable_kwargs(dict(base_kwargs))
+                entry = store_ledger_entry(
+                    session,
+                    user_id=int(current_user.id or 0),
+                    project_id=None,
+                    signature=sig,
+                    target_kind=str(tk),
+                    target_col=str(target_col),
+                    preset_name=preset_applied,
+                    preset_display=None
+                    if preset_applied is None
+                    else (
+                        PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME
+                        if preset_applied == PRODUCTION_REGRESSION_PRESET_NAME
+                        else preset_applied
+                    ),
+                    applied_kwargs=applied,
+                    score_metric=score_metric,
+                    score_value=float(score_value),
+                )
+                stored_entry_id = int(entry.id or 0)
+
+        if ledger_info is None and settings.predictor_physics_ledger_enabled:
+            ledger_info = {"enabled": True, "recalled": False}
+        elif ledger_info is not None:
+            ledger_info = {"enabled": True, **ledger_info}
+        if ledger_info is not None and stored_entry_id is not None:
+            ledger_info["stored_entry_id"] = stored_entry_id
 
         result = {
             "production_preset": preset_applied,
@@ -835,6 +926,7 @@ async def predict_action(
             "target_kind": pred.target_kind,
             "plane": pred.plane.value,
             "diagnostics": getattr(pred, "diagnostics", None),
+            "ledger": ledger_info,
             "weights": [
                 {
                     "feature": w.feature,
@@ -1005,6 +1097,14 @@ async def predict_action(
             "request": request,
             "user": current_user,
             "app_name": settings.app_name,
+            "production_lock_regression": bool(settings.predictor_lock_production_regression_preset),
+            "production_regression_preset": PRODUCTION_REGRESSION_PRESET_NAME,
+            "production_regression_preset_display": PRODUCTION_REGRESSION_PRESET_DISPLAY_NAME,
+            "production_regression_kwargs": dict(PRODUCTION_REGRESSION_KWARGS),
+            "ledger_enabled": bool(settings.predictor_physics_ledger_enabled),
+            "ledger_recall_enabled": bool(settings.predictor_physics_ledger_recall_enabled),
+            "ledger_store_enabled": bool(settings.predictor_physics_ledger_store_enabled),
+            "use_ledger": use_ledger_bool,
             "result": result,
             "error": error,
             "columns": columns,

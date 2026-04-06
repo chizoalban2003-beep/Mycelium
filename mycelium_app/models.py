@@ -72,3 +72,23 @@ class NodeRun(SQLModel, table=True):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     logs: str = ""
+
+
+class PhysicsLedgerEntry(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    target_kind: str = Field(index=True)
+    target_col: str = Field(default="", index=True)
+
+    feature_cols_json: str = "[]"
+    dtypes_json: str = "{}"
+
+    preset_name: str | None = Field(default=None, index=True)
+    preset_display: str | None = None
+
+    applied_kwargs_json: str = "{}"
+    score_metric: str = Field(default="", index=True)
+    score_value: float = 0.0
