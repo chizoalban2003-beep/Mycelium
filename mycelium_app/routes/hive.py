@@ -478,6 +478,16 @@ def import_whisper_as_global_update(
     if str(meta.get("kind", "")) != "wisdom_whisper":
         raise HTTPException(status_code=400, detail="Not a wisdom_whisper payload")
 
+    project_id = meta.get("project_id")
+    if project_id is not None:
+        try:
+            pid = int(project_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid meta.project_id")
+        if principal is None:
+            raise HTTPException(status_code=403, detail="Project-scoped whisper requires user authentication")
+        _ensure_project_access(session, int(principal.id or 0), pid)
+
     update_uuid = (payload.update_uuid or "").strip() or _stable_uuid_from_obj(whisper)
 
     existing = session.exec(select(HiveGlobalUpdate).where(HiveGlobalUpdate.update_uuid == update_uuid)).first()
@@ -541,6 +551,16 @@ def import_curiosity_feedback_as_global_update(
     if str(meta.get("kind", "")) != "curiosity_feedback":
         raise HTTPException(status_code=400, detail="Not a curiosity_feedback payload")
 
+    project_id = meta.get("project_id")
+    if project_id is not None:
+        try:
+            pid = int(project_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid meta.project_id")
+        if principal is None:
+            raise HTTPException(status_code=403, detail="Project-scoped curiosity import requires user authentication")
+        _ensure_project_access(session, int(principal.id or 0), pid)
+
     update_uuid = (payload.update_uuid or "").strip() or _stable_uuid_from_obj(fb)
 
     existing = session.exec(select(HiveGlobalUpdate).where(HiveGlobalUpdate.update_uuid == update_uuid)).first()
@@ -603,6 +623,16 @@ def import_curiosity_concept_as_global_update(
     meta = concept.get("meta") if isinstance(concept.get("meta"), dict) else {}
     if str(meta.get("kind", "")) != "curiosity_concept":
         raise HTTPException(status_code=400, detail="Not a curiosity_concept payload")
+
+    project_id = meta.get("project_id")
+    if project_id is not None:
+        try:
+            pid = int(project_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid meta.project_id")
+        if principal is None:
+            raise HTTPException(status_code=403, detail="Project-scoped concept import requires user authentication")
+        _ensure_project_access(session, int(principal.id or 0), pid)
 
     update_uuid = (payload.update_uuid or "").strip() or _stable_uuid_from_obj(concept)
 
@@ -687,6 +717,8 @@ def wisdom_latest(
     if principal is None:
         project_id = None
         include_project_scoped = False
+    else:
+        _ensure_project_access(session, int(principal.id or 0), project_id)
 
     res = compute_wisdom_latest(
         session,

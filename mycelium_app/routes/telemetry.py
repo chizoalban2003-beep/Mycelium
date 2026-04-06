@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.growth import compute_growth_stage
-from mycelium_app.models import GrowthLedgerEntry, NexusNudge, ProjectMember, SignalLedgerEvent, User
+from mycelium_app.models import GrowthLedgerEntry, NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.schemas import (
@@ -37,6 +37,20 @@ def _ensure_project_access(session: Session, user_id: int, project_id: int | Non
     ).first()
     if not member:
         raise HTTPException(status_code=403, detail="Not a project member")
+
+
+def _project_role(session: Session, user_id: int, project_id: int | None) -> ProjectRole | None:
+    if project_id is None:
+        return None
+    member = session.exec(
+        select(ProjectMember).where(ProjectMember.project_id == int(project_id), ProjectMember.user_id == int(user_id))
+    ).first()
+    if not member:
+        return None
+    try:
+        return member.role if isinstance(member.role, ProjectRole) else ProjectRole(str(member.role))
+    except Exception:
+        return None
 
 
 def _dumps(obj: object) -> str:
@@ -431,6 +445,14 @@ def assistant_action(
     require_confirm = bool(actions_cfg.get("require_confirm", True))
     if not actions_enabled:
         raise HTTPException(status_code=403, detail="Device actions disabled by parental policy")
+
+    # Project membrane: in project-scoped actions, only owner/editor can execute.
+    if nudge.project_id is not None:
+        role = _project_role(session, user_id, int(nudge.project_id))
+        if role is None:
+            raise HTTPException(status_code=403, detail="Not a project member")
+        if role not in {ProjectRole.owner, ProjectRole.editor}:
+            raise HTTPException(status_code=403, detail="Owner or editor role required for project actions")
 
     # Confirm this action is one of the proposed actions in nudge payload.
     nudge_payload = _loads_dict(nudge.payload_json)

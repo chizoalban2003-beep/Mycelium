@@ -336,6 +336,20 @@ python3 scripts/create_user.py --email friend@example.com --password 'temporary-
 
 Then they can sign in to your laptop brain URL over Tailscale.
 
+## 2.6) ProjectMembrane (project isolation)
+
+The current repo now enforces a project membrane for key collaboration paths:
+
+- Project-scoped Hive imports (`meta.project_id`) require authenticated user membership in that project.
+- Headless `X-Hive-Token` imports are restricted to global scope (no project-scoped ingest).
+- `GET /api/hive/wisdom/latest?project_id=...` requires project membership when authenticated.
+- Telemetry assistant action execution in project scope requires `owner` or `editor` role (`viewer` cannot execute actions).
+
+Practical effect:
+- Viewers can observe metrics/nudges.
+- Owners/editors can approve project-scoped telemetry actions.
+- Cross-project whispers are rejected when caller is not a member.
+
 ## 3) Child node (edge)
 
 Minimum connectivity test:

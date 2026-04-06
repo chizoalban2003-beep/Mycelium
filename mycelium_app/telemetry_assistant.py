@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from sqlmodel import Session, select
 
-from mycelium_app.models import NexusNudge, SignalLedgerEvent
+from mycelium_app.models import NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.settings import settings
 
@@ -104,8 +104,25 @@ def maybe_queue_telemetry_assistant_nudge(
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
     actions_enabled = bool(actions_cfg.get("enabled", False))
 
+    project_role: str | None = None
+    can_execute_project_actions = True
+    if project_id is not None:
+        member = session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == int(project_id),
+                ProjectMember.user_id == int(user_id),
+            )
+        ).first()
+        if member is not None:
+            try:
+                project_role = str(member.role.value if isinstance(member.role, ProjectRole) else member.role)
+            except Exception:
+                project_role = str(member.role or "")
+        if project_role == str(ProjectRole.viewer.value):
+            can_execute_project_actions = False
+
     proposed_actions: list[dict[str, object]] = []
-    if actions_enabled:
+    if actions_enabled and can_execute_project_actions:
         # Proposals only; execution is always user-confirmed.
         if "app_viscosity" in patterns:
             proposed_actions.append(
@@ -147,6 +164,8 @@ def maybe_queue_telemetry_assistant_nudge(
             "notify_only": bool(actions_cfg.get("notify_only", True)),
             "require_confirm": bool(actions_cfg.get("require_confirm", True)),
         },
+        "project_role": project_role,
+        "can_execute_actions": bool(actions_enabled and can_execute_project_actions),
     }
 
     n = NexusNudge(
