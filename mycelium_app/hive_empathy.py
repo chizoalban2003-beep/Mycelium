@@ -103,6 +103,10 @@ def recommended_kwargs_from_whisper(whisper: dict[str, Any]) -> dict[str, Any]:
     wisdom = whisper.get("wisdom") if isinstance(whisper.get("wisdom"), dict) else {}
     rec = wisdom.get("recommended_kwargs") if isinstance(wisdom.get("recommended_kwargs"), dict) else {}
 
+    # Backward-compat: some callers store recommended_kwargs at the whisper top-level.
+    if not rec:
+        rec = whisper.get("recommended_kwargs") if isinstance(whisper.get("recommended_kwargs"), dict) else {}
+
     # Re-filter defensively: never trust imported global updates.
     try:
         return extract_recallable_kwargs(dict(rec))
