@@ -92,6 +92,10 @@ python3 scripts/silent24_deep_freeze.py \
 	--device-id local
 ```
 
+SelfReflection (analyze best sweeps):
+
+- `GET /api/nexus/reflection?window_days=30&top_limit=5`
+
 Benchmarks / scratch data:
 - `tmp_eval/` is ignored by git (local outputs + datasets). This repo no longer ships the benchmark dataset.
 - Use your own CSV when running benchmark scripts, e.g. `python scripts/benchmark_salary_models.py --csv /path/to/data.csv --target salary`.

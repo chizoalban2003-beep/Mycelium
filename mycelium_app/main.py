@@ -11,6 +11,7 @@ from mycelium_app.routes.hive import router as hive_router
 from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.predict import router as predict_router
 from mycelium_app.routes.projects import router as projects_router
+from mycelium_app.routes.reflection import router as reflection_router
 from mycelium_app.routes.telemetry import router as telemetry_router
 from mycelium_app.routes.tree import router as tree_router
 from mycelium_app.settings import settings
@@ -36,6 +37,7 @@ app.include_router(hive_router)
 app.include_router(nexus_router)
 app.include_router(growth_router)
 app.include_router(telemetry_router)
+app.include_router(reflection_router)
 app.include_router(predict_router)
 app.include_router(projects_router)
 app.include_router(tree_router)

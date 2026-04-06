@@ -272,3 +272,13 @@ class GrowthStatusResponse(BaseModel):
 
 class GrowthRecentResponse(BaseModel):
     entries: list[GrowthSweepPublic]
+
+
+class SelfReflectionResponse(BaseModel):
+    ok: bool = True
+    mood: str
+    mood_signal: dict[str, float]
+    identity_hash: str
+    top_preferences: list[dict[str, object]]
+    causal_hints: list[str]
+    stats: dict[str, object]
