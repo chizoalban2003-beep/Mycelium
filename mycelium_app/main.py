@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
@@ -376,4 +377,5 @@ app.include_router(tree_router)
 app.include_router(web_router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+os.makedirs(".well-known", exist_ok=True)
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well_known")
