@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rounded border border-slate-800 bg-slate-900 p-4">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-lg font-semibold">Hive Health</h1>
+      <div class="text-sm text-slate-300 mt-1">Global intelligence growth curve and validation trends.</div>
+    </div>
+    <div class="flex items-center gap-2">
+      <select id="windowDays" class="text-xs bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100">
+        <option value="7">7d</option>
+        <option value="30" selected>30d</option>
+        <option value="90">90d</option>
+        <option value="180">180d</option>
+      </select>
+      <button id="refreshHealth" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">Refresh</button>
+    </div>
+  </div>
+
+  <div id="healthMeta" class="text-xs text-slate-400 mt-3"></div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Totals</div>
+      <div id="totals" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+    </div>
+
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Messages by kind</div>
+      <div id="messages" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+    </div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Growth curve (per day)</div>
+    <div id="curve" class="text-sm text-slate-200 mt-3 overflow-x-auto"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Metric trends (trial snapshots)</div>
+    <div class="text-xs text-slate-400 mt-1">Daily averages across all children.</div>
+    <div id="trends" class="text-sm text-slate-200 mt-3 space-y-3"></div>
+  </div>
+</div>
+
+<script>
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function kv(k, v) {
+    return `<div class="flex items-center justify-between gap-3"><span class="text-slate-300">${esc(k)}</span><span class="text-slate-100">${esc(v)}</span></div>`;
+  }
+
+  function table(points) {
+    const rows = points.map((p) => {
+      return `<tr class="border-t border-slate-800">
+        <td class="py-1 pr-3 text-xs text-slate-400">${esc(p.date)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(p.n_global_updates)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(p.n_wisdom_whispers)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(p.n_curiosity_concepts)}</td>
+      </tr>`;
+    }).join('');
+
+    return `<table class="min-w-full">
+      <thead>
+        <tr class="text-xs text-slate-400">
+          <th class="text-left py-1 pr-3">day</th>
+          <th class="text-left py-1 pr-3">global_updates</th>
+          <th class="text-left py-1 pr-3">wisdom_whispers</th>
+          <th class="text-left py-1 pr-3">curiosity_concepts</th>
+        </tr>
+      </thead>
+      <tbody>${rows || ''}</tbody>
+    </table>`;
+  }
+
+  async function loadHealth() {
+    const meta = document.getElementById('healthMeta');
+    const totalsEl = document.getElementById('totals');
+    const msgsEl = document.getElementById('messages');
+    const curveEl = document.getElementById('curve');
+    const trendsEl = document.getElementById('trends');
+
+    meta.textContent = 'Loading…';
+    totalsEl.innerHTML = '';
+    msgsEl.innerHTML = '';
+    curveEl.innerHTML = '';
+    trendsEl.innerHTML = '';
+
+    const windowDays = document.getElementById('windowDays').value || '30';
+
+    try {
+      const r = await fetch(`/api/hive/health?window_days=${encodeURIComponent(windowDays)}`, { credentials: 'same-origin' });
+      const data = await r.json();
+      if (!r.ok) {
+        meta.textContent = (data && data.detail) ? String(data.detail) : 'Failed to load hive health.';
+        return;
+      }
+
+      meta.textContent = `As of: ${data.as_of || 'unknown'} • window=${data.window_days || windowDays}d`;
+
+      const totals = (data.totals && typeof data.totals === 'object') ? data.totals : {};
+      const totalsKeys = Object.keys(totals);
+      totalsEl.innerHTML = totalsKeys.length ? totalsKeys.map((k) => kv(k, totals[k])).join('') : '<div class="text-xs text-slate-400">No totals.</div>';
+
+      const msgs = (data.messages_by_kind && typeof data.messages_by_kind === 'object') ? data.messages_by_kind : {};
+      const msgKeys = Object.keys(msgs).sort((a, b) => (msgs[b] || 0) - (msgs[a] || 0));
+      msgsEl.innerHTML = msgKeys.length ? msgKeys.map((k) => kv(k, msgs[k])).join('') : '<div class="text-xs text-slate-400">No messages.</div>';
+
+      const curve = Array.isArray(data.growth_curve) ? data.growth_curve : [];
+      curveEl.innerHTML = curve.length ? table(curve.slice(-90)) : '<div class="text-xs text-slate-400">No updates in window.</div>';
+
+      const trends = Array.isArray(data.metric_trends) ? data.metric_trends : [];
+      if (!trends.length) {
+        trendsEl.innerHTML = '<div class="text-xs text-slate-400">No metric snapshots found in window.</div>';
+      } else {
+        trendsEl.innerHTML = trends.map((t) => {
+          const points = Array.isArray(t.points) ? t.points : [];
+          const last = points.length ? points[points.length - 1] : null;
+          const head = last ? `last_avg=${Number(last.avg).toFixed(6)} (n=${last.n})` : 'no points';
+          const rows = points.slice(-14).map((p) => `<div class="flex items-center justify-between gap-3 text-xs"><span class="text-slate-400">${esc(p.date)}</span><span>${esc(Number(p.avg).toFixed(6))}</span><span class="text-slate-400">n=${esc(p.n)}</span></div>`).join('');
+          return `<div class="rounded border border-slate-800 bg-slate-900 p-2">
+            <div class="text-xs text-slate-400">${esc(t.metric_name || 'metric')} • ${esc(head)}</div>
+            <div class="mt-2 space-y-1">${rows || '<div class="text-xs text-slate-400">No points.</div>'}</div>
+          </div>`;
+        }).join('');
+      }
+
+    } catch (e) {
+      meta.textContent = 'Failed to load hive health.';
+    }
+  }
+
+  document.getElementById('refreshHealth').onclick = loadHealth;
+  document.getElementById('windowDays').onchange = loadHealth;
+  loadHealth();
+</script>
+{% endblock %}

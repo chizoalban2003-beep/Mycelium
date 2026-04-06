@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -11,17 +12,29 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.hive_empathy import compute_wisdom_latest, queue_wisdom_whisper
 from mycelium_app.hive_sync import build_anonymized_report
-from mycelium_app.models import ExperienceBufferEntry, HiveGlobalUpdate, HiveOutboxMessage, HiveOutboxReport, ProjectMember, User
+from mycelium_app.models import (
+    ExperienceBufferEntry,
+    HiveGlobalUpdate,
+    HiveOutboxMessage,
+    HiveOutboxReport,
+    MetricSnapshot,
+    ProjectMember,
+    User,
+)
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
     HiveCuriosityConceptImportRequest,
     HiveCuriosityConceptImportResponse,
     HiveCuriosityFeedbackImportRequest,
     HiveCuriosityFeedbackImportResponse,
+    HiveHealthPoint,
+    HiveHealthResponse,
     HiveGlobalUpdateImportRequest,
     HiveGlobalUpdateImportResponse,
     HiveGlobalUpdateListResponse,
     HiveGlobalUpdatePublic,
+    HiveMetricTrend,
+    HiveMetricTrendPoint,
     HiveOutboxListResponse,
     HiveOutboxMessageListResponse,
     HiveOutboxMessagePublic,
@@ -38,6 +51,24 @@ from mycelium_app.settings import settings
 
 
 router = APIRouter(prefix="/api/hive", tags=["hive"])
+
+
+def _day_key(dt: datetime) -> str:
+    try:
+        return dt.date().isoformat()
+    except Exception:
+        return "unknown"
+
+
+def _extract_update_kind(update_obj: dict) -> str:
+    if not isinstance(update_obj, dict):
+        return ""
+    k = update_obj.get("kind")
+    if isinstance(k, str) and k.strip():
+        return k.strip()
+    meta = update_obj.get("meta") if isinstance(update_obj.get("meta"), dict) else {}
+    mk = meta.get("kind")
+    return str(mk or "").strip()
 
 
 def _ensure_project_access(session: Session, user_id: int, project_id: int | None) -> None:
@@ -448,6 +479,117 @@ def wisdom_latest(
         n_whispers_used=int(res.n_whispers_used),
         recommended_kwargs=dict(res.recommended_kwargs),
         evidence=dict(res.evidence),
+    )
+
+
+@router.get("/health", response_model=HiveHealthResponse)
+def hive_health(
+    window_days: int = 30,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Hive health: global growth curve + message counts + metric trend.
+
+    Intended as a parent-side dashboard endpoint.
+    """
+
+    if not bool(settings.hive_enabled):
+        raise HTTPException(status_code=403, detail="Hive disabled")
+
+    _ = int(current_user.id or 0)  # auth only; endpoint is global
+
+    window_days = max(1, min(int(window_days), 180))
+    since = datetime.utcnow() - timedelta(days=int(window_days))
+    as_of = datetime.utcnow()
+
+    updates = session.exec(
+        select(HiveGlobalUpdate).where(HiveGlobalUpdate.created_at >= since).order_by(HiveGlobalUpdate.created_at.asc())
+    ).all()
+
+    by_day: dict[str, Counter[str]] = defaultdict(Counter)
+    kinds_total: Counter[str] = Counter()
+
+    for r in updates:
+        day = _day_key(r.created_at)
+        obj = _loads_dict(r.update_json)
+        kind = _extract_update_kind(obj)
+        if not kind:
+            continue
+        kinds_total[kind] += 1
+        by_day[day]["global_updates"] += 1
+        if kind == "wisdom_whisper":
+            by_day[day]["wisdom_whisper"] += 1
+        if kind == "curiosity_concept":
+            by_day[day]["curiosity_concept"] += 1
+
+    msgs = session.exec(
+        select(HiveOutboxMessage).where(HiveOutboxMessage.created_at >= since).order_by(HiveOutboxMessage.created_at.asc())
+    ).all()
+    messages_by_kind: Counter[str] = Counter()
+    device_ids: set[str] = set()
+    user_ids: set[int] = set()
+    for m in msgs:
+        messages_by_kind[str(m.kind or "").strip() or "unknown"] += 1
+        if m.device_id:
+            device_ids.add(str(m.device_id))
+        if m.created_by_user_id is not None:
+            user_ids.add(int(m.created_by_user_id))
+
+    snaps = session.exec(
+        select(MetricSnapshot)
+        .where(MetricSnapshot.created_at >= since)
+        .where(MetricSnapshot.phase == "trial")
+        .order_by(MetricSnapshot.created_at.asc())
+    ).all()
+
+    metric_points: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    for s in snaps:
+        day = _day_key(s.created_at)
+        name = str(s.metric_name or "").strip() or "unknown"
+        metric_points[name][day].append(float(s.metric_value or 0.0))
+
+    growth_curve: list[HiveHealthPoint] = []
+    for day in sorted(by_day.keys()):
+        c = by_day[day]
+        growth_curve.append(
+            HiveHealthPoint(
+                date=day,
+                n_global_updates=int(c.get("global_updates", 0)),
+                n_wisdom_whispers=int(c.get("wisdom_whisper", 0)),
+                n_curiosity_concepts=int(c.get("curiosity_concept", 0)),
+            )
+        )
+
+    metric_trends: list[HiveMetricTrend] = []
+    for metric_name in sorted(metric_points.keys()):
+        days = metric_points[metric_name]
+        pts: list[HiveMetricTrendPoint] = []
+        for day in sorted(days.keys()):
+            xs = days[day]
+            if not xs:
+                continue
+            pts.append(HiveMetricTrendPoint(date=day, n=int(len(xs)), avg=float(sum(xs) / float(len(xs)))))
+        metric_trends.append(HiveMetricTrend(metric_name=metric_name, points=pts))
+
+    totals = {
+        "n_global_updates": int(len(updates)),
+        "n_update_kinds": int(len(kinds_total)),
+        "n_outbox_messages": int(len(msgs)),
+        "n_devices_seen": int(len(device_ids)),
+        "n_users_seen": int(len(user_ids)),
+        "n_metric_snapshots_trial": int(len(snaps)),
+        "n_curiosity_concepts": int(kinds_total.get("curiosity_concept", 0)),
+        "n_wisdom_whispers": int(kinds_total.get("wisdom_whisper", 0)),
+    }
+
+    return HiveHealthResponse(
+        ok=True,
+        as_of=as_of,
+        window_days=int(window_days),
+        totals=totals,
+        messages_by_kind=dict(messages_by_kind),
+        growth_curve=growth_curve,
+        metric_trends=metric_trends,
     )
 
 

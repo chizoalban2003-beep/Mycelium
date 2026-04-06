@@ -241,6 +241,34 @@ class HiveWisdomLatestResponse(BaseModel):
     evidence: dict[str, object] = Field(default_factory=dict)
 
 
+class HiveHealthPoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    n_global_updates: int = 0
+    n_wisdom_whispers: int = 0
+    n_curiosity_concepts: int = 0
+
+
+class HiveMetricTrendPoint(BaseModel):
+    date: str  # YYYY-MM-DD
+    n: int = 0
+    avg: float = 0.0
+
+
+class HiveMetricTrend(BaseModel):
+    metric_name: str
+    points: list[HiveMetricTrendPoint] = Field(default_factory=list)
+
+
+class HiveHealthResponse(BaseModel):
+    ok: bool = True
+    as_of: datetime
+    window_days: int = 30
+    totals: dict[str, int] = Field(default_factory=dict)
+    messages_by_kind: dict[str, int] = Field(default_factory=dict)
+    growth_curve: list[HiveHealthPoint] = Field(default_factory=list)
+    metric_trends: list[HiveMetricTrend] = Field(default_factory=list)
+
+
 class HiveGlobalUpdatePublic(BaseModel):
     update_uuid: str
     created_at: datetime

@@ -379,6 +379,20 @@ def knowledge_page(
     )
 
 
+@router.get("/hive/health", response_class=HTMLResponse)
+def hive_health_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        "hive_health.html",
+        {"request": request, "user": current_user, "app_name": settings.app_name},
+    )
+
+
 @router.post("/curiosity/answer")
 def curiosity_answer_action(
     request: Request,
