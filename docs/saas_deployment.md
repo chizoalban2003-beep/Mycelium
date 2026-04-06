@@ -154,6 +154,15 @@ If your banner is crowded while testing, keep only the newest unseen nudge:
 python3 scripts/ack_old_nudges.py --email you@example.com --keep 1
 ```
 
+#### One-shot assistant bootstrap (register/login/tick/nudges)
+
+```bash
+export BASE_URL="http://<brain-ip-or-tailscale>:8000"
+export EMAIL="you@example.com"
+export PASS="your-password"
+./scripts/run_assistant_bootstrap.sh
+```
+
 #### Export your digital signals to CSV
 
 On the brain device:
