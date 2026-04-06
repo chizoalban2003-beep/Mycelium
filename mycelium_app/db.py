@@ -13,9 +13,25 @@ def _ensure_storage_dir() -> None:
 
 _ensure_storage_dir()
 
+
+def _normalize_database_url(url: str) -> str:
+    """Normalize provider URLs to SQLAlchemy dialect URLs.
+
+    Some providers (including Railway) expose Postgres URLs as `postgres://...`.
+    SQLAlchemy expects `postgresql+psycopg://...` when using psycopg v3.
+    """
+
+    u = str(url or "").strip()
+    if u.startswith("postgres://"):
+        return "postgresql+psycopg://" + u[len("postgres://") :]
+    if u.startswith("postgresql://") and "+" not in u.split("://", 1)[0]:
+        # Prefer psycopg v3 driver.
+        return "postgresql+psycopg://" + u[len("postgresql://") :]
+    return u
+
 engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if settings.database_url.startswith("sqlite") else {},
+    _normalize_database_url(settings.database_url),
+    connect_args={"check_same_thread": False} if str(settings.database_url).startswith("sqlite") else {},
 )
 
 

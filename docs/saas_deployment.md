@@ -67,6 +67,29 @@ Notes:
 - This repo already includes a production-oriented container entrypoint in `Dockerfile`.
 - For platforms like Render/Fly/Railway/App Runner, you typically just point the service at this repo and set the env vars above.
 
+### Railway (recommended for MVP)
+
+1) Create a new Railway Project → **Deploy from GitHub repo**.
+
+2) Add **PostgreSQL** to the project.
+
+3) Set service environment variables:
+- `DATABASE_URL` (from Railway Postgres)
+  - Railway often provides `postgres://...` URLs; the app will normalize this automatically.
+- `SECRET_KEY` (long random string)
+- `HIVE_ENABLED=true`
+- `HIVE_INGEST_TOKEN` (shared secret for Child → Parent Hive imports)
+- `COOKIE_SECURE=true` (Railway provides HTTPS)
+- Optional: `NEXUS_DEVICE_ID=parent-hub`
+
+4) Deploy and verify:
+```bash
+curl -sS https://<your-railway-domain>/health
+```
+
+If you are serving the UI using the built-in FastAPI templates on the same domain,
+you typically do **not** need CORS.
+
 ## 3) Child node (edge)
 
 Minimum connectivity test:

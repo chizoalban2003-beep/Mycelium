@@ -32,4 +32,6 @@ ENV HOST=0.0.0.0 \
 EXPOSE 8000
 
 # NOTE: For SQLite, keep workers=1. For Postgres, you can raise workers.
-CMD ["python", "-m", "uvicorn", "mycelium_app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Railway (and many PaaS) inject a dynamic PORT env var. The JSON-array CMD does
+# not expand env vars, so we use a shell command here.
+CMD ["sh", "-c", "python -m uvicorn mycelium_app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips '*'"]
