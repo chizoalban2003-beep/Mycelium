@@ -164,26 +164,40 @@ def _bench_classification(df: pd.DataFrame, *, target_col: str, seed: int, train
 
     rows: list[ClsRow] = []
 
+    hs_session = getattr(_bench_classification, "_hs_session", None)
+    hs_user_id = int(getattr(_bench_classification, "_hs_user_id", 0) or 0)
+
+    def _apply_homeostasis(kwargs: dict[str, object]) -> tuple[dict[str, object], dict[str, object] | None]:
+        if hs_session is None or hs_user_id <= 0:
+            return dict(kwargs), None
+        try:
+            from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
+
+            return apply_homeostasis_from_db(hs_session, user_id=hs_user_id, base_kwargs=kwargs)
+        except Exception:
+            return dict(kwargs), {"enabled": True, "error": "homeostasis_apply_failed"}
+
     def _run_mycelium(label: str, **kwargs: object) -> None:
         t0 = time.perf_counter()
-        pred = run_physics_prediction(
-            df,
-            target_col=target_col,
-            train_fraction=train_fraction,
-            random_seed=seed,
-            top_k_weights=30,
-            cascade_enabled=True,
-            competitive_inhibition=True,
-            thermal_noise=False,
-            stage2_cycles=2,
-            stage2_trigger_cycle=50,
-            stage2_shatter_complexes=True,
-            inhibition_strength=0.7,
-            scavenger_cycles=1,
-            low_confidence_mode="none",
-            return_predictions=True,
-            **kwargs,
-        )
+        call_kwargs: dict[str, object] = {
+            "target_col": target_col,
+            "train_fraction": train_fraction,
+            "random_seed": seed,
+            "top_k_weights": 30,
+            "cascade_enabled": True,
+            "competitive_inhibition": True,
+            "thermal_noise": False,
+            "stage2_cycles": 2,
+            "stage2_trigger_cycle": 50,
+            "stage2_shatter_complexes": True,
+            "inhibition_strength": 0.7,
+            "scavenger_cycles": 1,
+            "low_confidence_mode": "none",
+            "return_predictions": True,
+        }
+        call_kwargs.update(kwargs)
+        call_kwargs, _hs_info = _apply_homeostasis(call_kwargs)
+        pred = run_physics_prediction(df, **call_kwargs)
         dt = time.perf_counter() - t0
         y_true = np.array(pred.test_actual or [], dtype=str)
         y_pred = np.array(pred.test_predicted or [], dtype=str)
@@ -398,6 +412,19 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
 
     rows: list[RegRow] = []
 
+    hs_session = getattr(_bench_regression, "_hs_session", None)
+    hs_user_id = int(getattr(_bench_regression, "_hs_user_id", 0) or 0)
+
+    def _apply_homeostasis(kwargs: dict[str, object]) -> tuple[dict[str, object], dict[str, object] | None]:
+        if hs_session is None or hs_user_id <= 0:
+            return dict(kwargs), None
+        try:
+            from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
+
+            return apply_homeostasis_from_db(hs_session, user_id=hs_user_id, base_kwargs=kwargs)
+        except Exception:
+            return dict(kwargs), {"enabled": True, "error": "homeostasis_apply_failed"}
+
     def _run_mycelium(label: str, **kwargs: object) -> RegRow:
         t0 = time.perf_counter()
         call_kwargs: dict[str, object] = {
@@ -417,6 +444,7 @@ def _bench_regression(df: pd.DataFrame, *, target_col: str, seed: int, train_fra
             "return_predictions": True,
         }
         call_kwargs.update(kwargs)
+        call_kwargs, _hs_info = _apply_homeostasis(call_kwargs)
         pred = run_physics_prediction(df, **call_kwargs)
         dt = time.perf_counter() - t0
         y_true = np.array(pred.test_actual or [], dtype="float64")
@@ -753,7 +781,38 @@ def main() -> int:
     parser.add_argument("--mycelium-random-buffer-minmult-min", type=float, default=0.50)
     parser.add_argument("--mycelium-random-buffer-minmult-max", type=float, default=0.90)
     parser.add_argument("--mycelium-random-buffer-maxmult", type=float, default=1.00)
+
+    # Optional: apply the same Homeostasis→Predictor bridge as the API route.
+    parser.add_argument(
+        "--apply-homeostasis",
+        action="store_true",
+        help="If set, load HomeostasisState from the local DB and apply the shared allowlisted predictor knob adjustments.",
+    )
+    parser.add_argument(
+        "--user-id",
+        type=int,
+        default=0,
+        help="User id for homeostasis lookup (required if --apply-homeostasis).",
+    )
     args = parser.parse_args()
+
+    session = None
+    if bool(getattr(args, "apply_homeostasis", False)):
+        if int(getattr(args, "user_id", 0)) <= 0:
+            raise SystemExit("--apply-homeostasis requires --user-id > 0")
+        try:
+            from sqlmodel import Session as _Session
+
+            from mycelium_app.db import engine
+
+            session = _Session(engine)
+        except Exception as e:
+            raise SystemExit(f"Failed to open DB session for homeostasis: {type(e).__name__}: {e}")
+
+        _bench_classification._hs_session = session
+        _bench_classification._hs_user_id = int(args.user_id)
+        _bench_regression._hs_session = session
+        _bench_regression._hs_user_id = int(args.user_id)
 
     path = Path(args.path)
     if not path.exists():
@@ -781,7 +840,12 @@ def main() -> int:
         "amp_cap": float(args.mycelium_pcr_amp_cap),
         "require_stable": (not bool(args.mycelium_pcr_no_req_stable)),
     }
-    cls_rows = _bench_classification(df, target_col=str(args.cls_target), seed=int(args.seed), train_fraction=float(args.train_fraction))
+    cls_rows = _bench_classification(
+        df,
+        target_col=str(args.cls_target),
+        seed=int(args.seed),
+        train_fraction=float(args.train_fraction),
+    )
     print("| Model | Accuracy | F1 (macro) | Time (s) |")
     print("|---|---|---|---|")
     for r in cls_rows:
@@ -826,12 +890,22 @@ def main() -> int:
         "buffer_min_mult_max": float(args.mycelium_random_buffer_minmult_max),
         "buffer_max_mult": float(args.mycelium_random_buffer_maxmult),
     }
-    reg_rows = _bench_regression(df, target_col=str(args.reg_target), seed=int(args.seed), train_fraction=float(args.train_fraction))
+    reg_rows = _bench_regression(
+        df,
+        target_col=str(args.reg_target),
+        seed=int(args.seed),
+        train_fraction=float(args.train_fraction),
+    )
     print("| Model | MAE | RMSE | R2 | Time (s) |")
     print("|---|---|---|---|---|")
     for r in reg_rows:
         print(f"| {r.model} | {_fmt(r.mae, digits=2)} | {_fmt(r.rmse, digits=2)} | {_fmt(r.r2)} | {_fmt(r.seconds, digits=2)} |")
 
+    try:
+        if session is not None:
+            session.close()
+    except Exception:
+        pass
     return 0
 
 

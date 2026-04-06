@@ -181,7 +181,47 @@ def main() -> int:
     p.add_argument("--cycles", type=int, default=None, help="Override n_cycles for Mycelium (default: preset)")
     p.add_argument("--write-md", default=None, help="Write markdown report to this path")
 
+    # Optional: apply the same Homeostasis→Predictor bridge as the API route.
+    p.add_argument(
+        "--apply-homeostasis",
+        action="store_true",
+        help="If set, load HomeostasisState from the local DB and apply the shared allowlisted predictor knob adjustments.",
+    )
+    p.add_argument(
+        "--user-id",
+        type=int,
+        default=0,
+        help="User id for homeostasis lookup (required if --apply-homeostasis).",
+    )
+
     args = p.parse_args()
+
+    session = None
+    if bool(getattr(args, "apply_homeostasis", False)):
+        if int(getattr(args, "user_id", 0)) <= 0:
+            raise SystemExit("--apply-homeostasis requires --user-id > 0")
+        try:
+            from sqlmodel import Session as _Session
+
+            from mycelium_app.db import engine
+
+            session = _Session(engine)
+        except Exception as e:
+            raise SystemExit(f"Failed to open DB session for homeostasis: {type(e).__name__}: {e}")
+
+    def _apply_homeostasis(kwargs: dict[str, object]) -> tuple[dict[str, object], dict[str, object] | None]:
+        if session is None:
+            return dict(kwargs), None
+        try:
+            from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
+
+            return apply_homeostasis_from_db(
+                session,
+                user_id=int(args.user_id),
+                base_kwargs=kwargs,
+            )
+        except Exception:
+            return dict(kwargs), {"enabled": True, "error": "homeostasis_apply_failed"}
 
     data_path = Path(str(args.data)) if str(args.data).strip() else Path("")
     if (not str(args.data).strip()) or (data_path and not data_path.exists()):
@@ -264,6 +304,9 @@ def main() -> int:
         my_kwargs["n_cycles"] = int(args.cycles)
 
     my_kwargs["return_predictions"] = True
+    my_kwargs, hs_info = _apply_homeostasis(my_kwargs)
+    if hs_info is not None and hs_info.get("applied"):
+        print("Homeostasis applied:", hs_info)
     pred = run_physics_prediction(df_pre, **my_kwargs)
     if pred.target_kind != "numeric":
         raise PredictorError(f"Expected numeric target_kind, got {pred.target_kind}")
@@ -345,6 +388,11 @@ def main() -> int:
     if args.write_md:
         Path(args.write_md).write_text(md, encoding="utf-8")
 
+    try:
+        if session is not None:
+            session.close()
+    except Exception:
+        pass
     return 0
 
 
