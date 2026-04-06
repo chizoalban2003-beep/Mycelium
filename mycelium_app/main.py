@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
 
@@ -34,6 +35,24 @@ from mycelium_app.web import router as web_router
 
 
 app = FastAPI(title=settings.app_name)
+
+
+def _csv_list(s: str | None) -> list[str]:
+    if not s:
+        return []
+    parts = [p.strip() for p in str(s).split(",")]
+    return [p for p in parts if p]
+
+
+origins = _csv_list(getattr(settings, "cors_allow_origins_csv", ""))
+if origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=bool(getattr(settings, "cors_allow_credentials", True)),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 
 async def _homeostasis_daemon() -> None:

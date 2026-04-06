@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mycelium
+      POSTGRES_USER: mycelium
+      POSTGRES_PASSWORD: mycelium
+    volumes:
+      - mycelium_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mycelium -d mycelium"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      # App
+      APP_NAME: Proofgrid
+      SECRET_KEY: change-me-please
+      COOKIE_SECURE: "false"  # set true behind HTTPS
+
+      # Postgres
+      DATABASE_URL: postgresql+psycopg://mycelium:mycelium@db:5432/mycelium
+
+      # Hive
+      HIVE_ENABLED: "true"
+      HIVE_INGEST_TOKEN: dev-ingest-token
+      NEXUS_DEVICE_ID: parent-hub
+
+      # Optional: enable homeostasis daemon
+      NEXUS_HOMEOSTASIS_ENABLED: "true"
+
+volumes:
+  mycelium_pg:

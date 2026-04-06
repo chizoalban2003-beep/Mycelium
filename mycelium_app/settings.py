@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     cookie_name: str = "mycelium_access_token"
     cookie_secure: bool = False
 
+    # CORS (for SaaS: when hosting API and frontend on different origins)
+    # Comma-separated origins, e.g. "https://app.example.com,https://admin.example.com"
+    cors_allow_origins_csv: str = ""
+    cors_allow_credentials: bool = True
+
     # When true, numeric targets (regression/datetime) will use the locked production
     # preset hyperparameters unless explicitly overridden in code.
     predictor_lock_production_regression_preset: bool = True
