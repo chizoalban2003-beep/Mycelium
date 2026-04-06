@@ -138,6 +138,21 @@ Operator targeting:
 - If `HIVE_HEALTH_ALLOWLIST_EMAILS_CSV` is set, the nudge is created only for those accounts.
 - Otherwise, the nudge is created for all active users.
 
+### Fetch Latest Wisdom (headless child)
+
+Children can fetch the aggregated global baseline via `GET /api/hive/wisdom/latest` using the same `X-Hive-Token`.
+
+Note: when authenticated via `X-Hive-Token`, the endpoint is restricted to **global wisdom only** (no project-scoped pulls).
+
+```bash
+export HIVE_URL="https://<your-railway-domain>"
+export HIVE_INGEST_TOKEN="..."
+
+curl -sS "$HIVE_URL/api/hive/wisdom/latest" \
+  -H "X-Hive-Token: $HIVE_INGEST_TOKEN" \
+  | python -c 'import sys,json; j=json.load(sys.stdin); print(j.get("recommended_kwargs", {}))'
+```
+
 ### Hive Health (authenticated curl)
 
 ```bash

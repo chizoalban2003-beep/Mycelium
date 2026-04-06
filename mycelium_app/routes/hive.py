@@ -670,7 +670,7 @@ def wisdom_latest(
     project_id: int | None = None,
     include_project_scoped: bool = False,
     limit: int = 50,
-    current_user: User = Depends(get_current_user),
+    principal: User | None = Depends(require_hive_ingest_principal),
     session: Session = Depends(get_session),
 ):
     """Broadcast aggregated Hive wisdom back to children.
@@ -683,7 +683,10 @@ def wisdom_latest(
     if not bool(settings.hive_enabled):
         raise HTTPException(status_code=403, detail="HiveSync disabled")
 
-    _ = current_user
+    # If called headlessly (X-Hive-Token), only allow global wisdom.
+    if principal is None:
+        project_id = None
+        include_project_scoped = False
 
     res = compute_wisdom_latest(
         session,
