@@ -277,3 +277,28 @@ class MetricSnapshot(SQLModel, table=True):
     # Repro context
     kwargs_json: str = "{}"
     notes: str = ""
+
+
+class MetricCausalTrace(SQLModel, table=True):
+    """Persisted explanation artifact for Validation Shadow.
+
+    Stored in its own table so existing SQLite DBs don't require ALTER TABLE.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    baseline_snapshot_id: int = Field(foreign_key="metricsnapshot.id", index=True)
+    trial_snapshot_id: int = Field(foreign_key="metricsnapshot.id", index=True)
+
+    dataset_digest: str = Field(default="", index=True)
+    wisdom_digest: str = Field(default="", index=True)
+
+    metric_name: str = Field(default="", index=True)
+    improvement_frac: float | None = None
+
+    method: str = Field(default="weights_shift", index=True)
+    narrative: str = ""
+    top_shifts_json: str = "[]"  # JSON list of top feature shifts

@@ -225,3 +225,12 @@ Optional tuning:
 - `NEXUS_VALIDATION_SHADOW_MAX_ROWS=5000`
 - `NEXUS_VALIDATION_SHADOW_N_CYCLES=12`
 - `NEXUS_VALIDATION_SHADOW_MIN_IMPROVEMENT_FRAC=0.02` (2%)
+
+## 11) CausalTrace (MetricCausalTrace) — “Why did it improve?”
+
+When Validation Shadow runs, the predictor also produces an explanation surface (`weights`).
+
+If both baseline + trial runs succeed, the system will:
+- compare baseline vs trial feature weights to find the biggest “pull” shifts
+- persist that explanation as a `MetricCausalTrace` row (linked to the baseline/trial `MetricSnapshot` IDs)
+- append a short explanatory clause to the `wisdom_update` nudge when an empirical improvement is reported

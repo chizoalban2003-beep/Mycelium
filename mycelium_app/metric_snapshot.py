@@ -9,6 +9,8 @@ from typing import Any
 import pandas as pd
 from sqlmodel import Session
 
+from mycelium_app.causal_trace import extract_causal_trace, dumps_top_shifts
+from mycelium_app.models import MetricCausalTrace
 from mycelium_app.models import MetricSnapshot
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, run_physics_prediction
 from mycelium_app.settings import settings
@@ -48,6 +50,10 @@ class ShadowResult:
     trial_value: float | None = None
     improvement_frac: float | None = None
     target_kind: str | None = None
+    baseline_snapshot_id: int | None = None
+    trial_snapshot_id: int | None = None
+    causal_trace_id: int | None = None
+    causal_narrative: str | None = None
     notes: str | None = None
 
 
@@ -161,27 +167,66 @@ def run_validation_shadow(
         else:
             improvement = (base_value - trial_value) / abs(base_value)
 
-    # Persist snapshots
-    def _store(phase: str, value: float, kwargs_obj: dict[str, Any]) -> None:
-        row = MetricSnapshot(
+    baseline_row: MetricSnapshot | None = None
+    trial_row: MetricSnapshot | None = None
+    causal_id: int | None = None
+    causal_narrative: str | None = None
+
+    if base_value is not None and trial_value is not None:
+        baseline_row = MetricSnapshot(
             created_by_user_id=int(user_id),
             project_id=int(project_id) if project_id is not None else None,
             dataset_digest=str(d_dig),
             wisdom_digest=str(wisdom_digest),
-            phase=str(phase),
+            phase="baseline",
             target_col=str(target_col),
             target_kind=str(tk2 or tk or ""),
             metric_name=str(metric_name),
-            metric_value=float(value),
-            kwargs_json=_dumps(kwargs_obj),
+            metric_value=float(base_value),
+            kwargs_json=_dumps(dict(baseline_kwargs or {})),
             notes=f"n_cycles={n_cycles};max_rows={max_rows}",
         )
-        session.add(row)
+        trial_row = MetricSnapshot(
+            created_by_user_id=int(user_id),
+            project_id=int(project_id) if project_id is not None else None,
+            dataset_digest=str(d_dig),
+            wisdom_digest=str(wisdom_digest),
+            phase="trial",
+            target_col=str(target_col),
+            target_kind=str(tk2 or tk or ""),
+            metric_name=str(metric_name),
+            metric_value=float(trial_value),
+            kwargs_json=_dumps(dict(trial_kwargs or {})),
+            notes=f"n_cycles={n_cycles};max_rows={max_rows}",
+        )
 
-    if base_value is not None and trial_value is not None:
-        _store("baseline", float(base_value), dict(baseline_kwargs or {}))
-        _store("trial", float(trial_value), dict(trial_kwargs or {}))
+        session.add(baseline_row)
+        session.add(trial_row)
         session.commit()
+
+        # Best-effort causal trace extraction from the predictor's explanation weights.
+        try:
+            trace = extract_causal_trace(base_res, trial_res, top_k=5)
+            if trace.ok and baseline_row.id is not None and trial_row.id is not None:
+                causal_narrative = str(trace.narrative or "").strip() or None
+                tr = MetricCausalTrace(
+                    created_by_user_id=int(user_id),
+                    project_id=int(project_id) if project_id is not None else None,
+                    baseline_snapshot_id=int(baseline_row.id),
+                    trial_snapshot_id=int(trial_row.id),
+                    dataset_digest=str(d_dig),
+                    wisdom_digest=str(wisdom_digest),
+                    metric_name=str(metric_name),
+                    improvement_frac=None if improvement is None else float(improvement),
+                    method=str(trace.method or "weights_shift"),
+                    narrative=str(causal_narrative or ""),
+                    top_shifts_json=dumps_top_shifts(trace),
+                )
+                session.add(tr)
+                session.commit()
+                causal_id = int(tr.id) if tr.id is not None else None
+        except Exception:
+            pass
 
     return ShadowResult(
         ok=True,
@@ -190,5 +235,9 @@ def run_validation_shadow(
         trial_value=trial_value,
         improvement_frac=improvement,
         target_kind=str(tk2 or tk or ""),
+        baseline_snapshot_id=(None if baseline_row is None else baseline_row.id),
+        trial_snapshot_id=(None if trial_row is None else trial_row.id),
+        causal_trace_id=causal_id,
+        causal_narrative=causal_narrative,
         notes=None,
     )

@@ -177,6 +177,8 @@ async def _wisdom_nudge_daemon() -> None:
                                     f"Integrated Hive wisdom. Local validation improved by {pct}% "
                                     f"on {metric}."
                                 )
+                                if str(getattr(shadow, "causal_narrative", "") or "").strip():
+                                    msg = msg + " " + str(shadow.causal_narrative).strip()
                             else:
                                 msg = (
                                     f"I learned an update from the Hive: {changed_keys} knob(s) changed "
@@ -197,6 +199,10 @@ async def _wisdom_nudge_daemon() -> None:
                                             "baseline": shadow.baseline_value,
                                             "trial": shadow.trial_value,
                                             "improvement_frac": shadow.improvement_frac,
+                                            "baseline_snapshot_id": getattr(shadow, "baseline_snapshot_id", None),
+                                            "trial_snapshot_id": getattr(shadow, "trial_snapshot_id", None),
+                                            "causal_trace_id": getattr(shadow, "causal_trace_id", None),
+                                            "causal_narrative": getattr(shadow, "causal_narrative", None),
                                             "notes": shadow.notes,
                                         },
                                         "as_of": (latest.as_of.isoformat() + "Z") if latest.as_of else None,
