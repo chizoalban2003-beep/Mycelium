@@ -32,6 +32,17 @@ def default_policy() -> dict[str, object]:
             "mode": str(getattr(settings, "nexus_intro_mode", "ask")),
             "observe_hours": int(getattr(settings, "nexus_observe_hours", 24)),
         },
+        "notifications": {
+            "enabled": False,
+            "telegram_enabled": False,
+            "telegram_chat_id": "",
+            "telegram_nudge_kinds": [
+                "telemetry_assistant",
+                "wisdom_update",
+                "child_connected",
+                "telemetry_focus_zone",
+            ],
+        },
     }
 
 
@@ -124,6 +135,29 @@ def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
         observe_hours_i = int(base["intro"]["observe_hours"])
     observe_hours_i = max(0, min(observe_hours_i, 168))
     merged["intro"] = {"mode": mode, "observe_hours": observe_hours_i}
+
+    notifications = merged.get("notifications")
+    if not isinstance(notifications, dict):
+        notifications = {}
+    base_notifications = base.get("notifications") if isinstance(base.get("notifications"), dict) else {}
+
+    kinds_raw = notifications.get("telegram_nudge_kinds", base_notifications.get("telegram_nudge_kinds", []))
+    if not isinstance(kinds_raw, list):
+        kinds_raw = []
+    telegram_nudge_kinds = [str(x).strip().lower()[:64] for x in kinds_raw if str(x).strip()][:30]
+
+    merged["notifications"] = {
+        **base_notifications,
+        **notifications,
+        "enabled": bool((notifications or {}).get("enabled", base_notifications.get("enabled", False))),
+        "telegram_enabled": bool(
+            (notifications or {}).get("telegram_enabled", base_notifications.get("telegram_enabled", False))
+        ),
+        "telegram_chat_id": str(
+            (notifications or {}).get("telegram_chat_id", base_notifications.get("telegram_chat_id", ""))
+        ).strip()[:64],
+        "telegram_nudge_kinds": telegram_nudge_kinds,
+    }
 
     return merged
 

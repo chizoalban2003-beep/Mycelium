@@ -124,6 +124,21 @@ Mycelium can queue local device operations only after explicit user permission.
 
 This keeps operations auditable and reversible while improving learning from accept/reject/execute outcomes.
 
+## Telegram nudge bridge (optional)
+
+For external messaging (without opening the app), enable:
+
+- `NOTIFICATIONS_BRIDGE_ENABLED=true`
+- `NOTIFICATIONS_TELEGRAM_BOT_TOKEN=<bot-token>`
+- `APP_PUBLIC_BASE_URL=https://<your-domain>`
+
+Then opt in per user via `POST /api/nexus/policy`:
+
+- `notifications.enabled=true`
+- `notifications.telegram_enabled=true`
+- `notifications.telegram_chat_id=<telegram-chat-id>`
+- Optional `notifications.telegram_nudge_kinds=["telemetry_assistant","wisdom_update"]`
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

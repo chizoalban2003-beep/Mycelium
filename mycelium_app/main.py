@@ -15,6 +15,7 @@ from mycelium_app.hive_empathy import queue_homeostasis_failure
 from mycelium_app.hive_empathy import compute_wisdom_latest, stable_digest, summarize_kwargs_diff
 from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.metric_snapshot import run_validation_shadow
+from mycelium_app.messaging_bridge import dispatch_pending_nudges
 from mycelium_app.models import NexusNudge, WisdomIntegrationState
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.routes.auth import router as auth_router
@@ -269,6 +270,23 @@ async def _wisdom_nudge_daemon() -> None:
         await asyncio.sleep(tick_s)
 
 
+async def _messaging_bridge_daemon() -> None:
+    """Background dispatcher for external messaging channels (Telegram)."""
+
+    await asyncio.sleep(2.0)
+    tick_s = max(5, min(int(getattr(settings, "notifications_dispatch_tick_seconds", 30) or 30), 3600))
+
+    while True:
+        try:
+            if bool(getattr(settings, "notifications_bridge_enabled", False)):
+                with Session(engine) as session:
+                    dispatch_pending_nudges(session)
+        except Exception:
+            pass
+
+        await asyncio.sleep(float(tick_s))
+
+
 async def _telemetry_assistant_daemon() -> None:
     """Background daemon that turns recent digital signals into nudges.
 
@@ -306,6 +324,8 @@ async def on_startup() -> None:
         asyncio.create_task(_wisdom_nudge_daemon())
     if bool(getattr(settings, "nexus_telemetry_assistant_enabled", False)):
         asyncio.create_task(_telemetry_assistant_daemon())
+    if bool(getattr(settings, "notifications_bridge_enabled", False)):
+        asyncio.create_task(_messaging_bridge_daemon())
 
 
 @app.get("/health")
@@ -330,3 +350,4 @@ app.include_router(tree_router)
 app.include_router(web_router)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/.well-known", StaticFiles(directory=".well-known"), name="well_known")

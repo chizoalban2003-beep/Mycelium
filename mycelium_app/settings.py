@@ -78,7 +78,21 @@ class Settings(BaseSettings):
     # Global Wisdom broadcast guardrails (ProjectMembrane companion).
     # A recommendation is published only when enough evidence exists.
     hive_wisdom_min_whispers: int = 2
-    hive_wisdom_min_devices: int = 1
+    hive_wisdom_min_devices: int = 3
+
+    # Public-ingest guardrail: throttle whisper imports to reduce abuse risk.
+    hive_whisper_import_rate_limit_enabled: bool = True
+    hive_whisper_import_rate_limit_window_seconds: int = 60
+    hive_whisper_import_rate_limit_max_per_source: int = 60
+    hive_whisper_import_rate_limit_max_per_device: int = 20
+
+    # Optional external messaging bridge (Telegram first).
+    app_public_base_url: str = ""
+    notifications_bridge_enabled: bool = False
+    notifications_dispatch_tick_seconds: int = 30
+    notifications_dispatch_lookback_hours: int = 24
+    notifications_dispatch_max_per_tick: int = 50
+    notifications_telegram_bot_token: str = ""
     hive_wisdom_consensus_fraction: float = 0.50
 
     # Optional shared secret to allow headless child devices to ingest into the Parent Hub.

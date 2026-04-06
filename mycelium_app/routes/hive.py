@@ -144,6 +144,54 @@ def _stable_uuid_from_obj(obj: object) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+def _enforce_whisper_import_rate_limit(
+    session: Session,
+    *,
+    source: str,
+    device_id: str,
+) -> None:
+    if not bool(getattr(settings, "hive_whisper_import_rate_limit_enabled", True)):
+        return
+
+    window_s = max(1, min(int(getattr(settings, "hive_whisper_import_rate_limit_window_seconds", 60) or 60), 86_400))
+    max_per_source = max(1, min(int(getattr(settings, "hive_whisper_import_rate_limit_max_per_source", 60) or 60), 50_000))
+    max_per_device = max(1, min(int(getattr(settings, "hive_whisper_import_rate_limit_max_per_device", 20) or 20), 50_000))
+
+    since = datetime.utcnow() - timedelta(seconds=window_s)
+
+    q_source = select(HiveGlobalUpdate).where(
+        HiveGlobalUpdate.created_at >= since,
+        HiveGlobalUpdate.source == str(source or "hive_empathy")[:64],
+    )
+    n_source = len(session.exec(q_source).all())
+    if n_source >= max_per_source:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Whisper import throttled (source rate limit). "
+                f"Try again later. window={window_s}s limit={max_per_source}"
+            ),
+        )
+
+    did = str(device_id or "").strip()
+    if did:
+        needle = f'"device_id":"{did}"'
+        q_device = select(HiveGlobalUpdate).where(
+            HiveGlobalUpdate.created_at >= since,
+            HiveGlobalUpdate.source == str(source or "hive_empathy")[:64],
+            HiveGlobalUpdate.update_json.contains(needle),
+        )
+        n_device = len(session.exec(q_device).all())
+        if n_device >= max_per_device:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    "Whisper import throttled (device rate limit). "
+                    f"Try again later. window={window_s}s limit={max_per_device}"
+                ),
+            )
+
+
 def _loads_dict(s: str | None) -> dict:
     if not s:
         return {}
@@ -478,6 +526,10 @@ def import_whisper_as_global_update(
     if str(meta.get("kind", "")) != "wisdom_whisper":
         raise HTTPException(status_code=400, detail="Not a wisdom_whisper payload")
 
+    source = (payload.source or "hive_empathy")[:64]
+    device_id = str(meta.get("device_id") or "").strip()[:128]
+    _enforce_whisper_import_rate_limit(session, source=source, device_id=device_id)
+
     project_id = meta.get("project_id")
     if project_id is not None:
         try:
@@ -500,7 +552,7 @@ def import_whisper_as_global_update(
     }
 
     row = HiveGlobalUpdate(
-        source=(payload.source or "hive_empathy")[:64],
+        source=source,
         version=(payload.version or "whisper_v1")[:64],
         update_json=_dumps(update_obj),
     )
@@ -509,16 +561,11 @@ def import_whisper_as_global_update(
     session.commit()
     session.refresh(row)
 
-    device_id = ""
-    try:
-        device_id = str(meta.get("device_id") or "").strip()
-    except Exception:
-        device_id = ""
     if device_id:
         _maybe_nudge_child_connected(
             session,
             device_id=device_id,
-            source=(payload.source or "hive_empathy")[:64],
+            source=source,
             update_uuid=row.update_uuid,
             kind="wisdom_whisper",
         )

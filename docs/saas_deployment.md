@@ -1,9 +1,64 @@
-# SaaS Deployment (Cloud Parent Hub + Edge Children)
+# SaaS Deployment (Railway Public Hub + Android Distribution)
+
+## Public Alpha fast path (recommended)
+
+This is the current default strategy for market velocity:
+
+- Backend: Railway (public HTTPS domain)
+- App distribution: Android TWA/PWA wrapper (Google Play)
+- Security membrane: strict CORS + secure cookies + ingest throttling
+
+### Required Railway variables
+
+- `DATABASE_URL` (Railway Postgres)
+- `SECRET_KEY` (long random)
+- `COOKIE_SECURE=true`
+- `HIVE_ENABLED=true`
+- `HIVE_INGEST_TOKEN=<strong-random>`
+- `CORS_ALLOW_ORIGINS_CSV=https://<your-domain>`
+- `HIVE_WISDOM_MIN_WHISPERS=2`
+- `HIVE_WISDOM_MIN_DEVICES=3`
+
+### Android/TWA verification
+
+Host Digital Asset Links on your production domain:
+
+- `/.well-known/assetlinks.json`
+
+This repository now serves that path directly. Update package name and release
+certificate fingerprint before publishing your Play build.
+
+### Public-ingest protection
+
+`/api/hive/whisper/import` now has a basic rate limiter (windowed source/device
+caps) for public internet exposure. Tune with:
+
+- `HIVE_WHISPER_IMPORT_RATE_LIMIT_ENABLED`
+- `HIVE_WHISPER_IMPORT_RATE_LIMIT_WINDOW_SECONDS`
+- `HIVE_WHISPER_IMPORT_RATE_LIMIT_MAX_PER_SOURCE`
+- `HIVE_WHISPER_IMPORT_RATE_LIMIT_MAX_PER_DEVICE`
+
+### Optional: Telegram "Synapse Bridge"
+
+If you want nudges to arrive outside the app, enable Telegram dispatch:
+
+- `NOTIFICATIONS_BRIDGE_ENABLED=true`
+- `NOTIFICATIONS_TELEGRAM_BOT_TOKEN=<bot-token>`
+- `APP_PUBLIC_BASE_URL=https://<your-domain>`
+
+Per-user opt-in lives in `POST /api/nexus/policy` under `notifications`:
+
+- `notifications.enabled`
+- `notifications.telegram_enabled`
+- `notifications.telegram_chat_id`
+- `notifications.telegram_nudge_kinds`
+
+---
 
 This repo already runs as a local “Parent Hub” + “Child” model.
 This doc makes it deployable as a SaaS platform.
 
-## Fast path: your devices are the “main brain” (self-hosted Parent Hub)
+## Advanced path: your devices are the “main brain” (self-hosted Parent Hub)
 
 If you want *your* machine/home-server to be the primary brain, run the **Parent Hub** on one device and point your other devices at it as **Children**.
 
