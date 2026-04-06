@@ -209,6 +209,19 @@ class HiveCuriosityFeedbackImportResponse(BaseModel):
     imported: bool = True
 
 
+class HiveCuriosityConceptImportRequest(BaseModel):
+    update_uuid: str | None = None
+    source: str = "user_feedback_ionizer"
+    version: str = "concept_v1"
+    concept: dict[str, object]
+
+
+class HiveCuriosityConceptImportResponse(BaseModel):
+    ok: bool = True
+    update_uuid: str
+    imported: bool = True
+
+
 class HiveWisdomLatestResponse(BaseModel):
     ok: bool = True
     as_of: datetime | None = None
@@ -429,3 +442,21 @@ class CuriosityDismissResponse(BaseModel):
 class CuriosityExportSummaryResponse(BaseModel):
     ok: bool = True
     summary: dict[str, object] = Field(default_factory=dict)
+
+
+class NexusFeedbackIonizeRequest(BaseModel):
+    project_id: int | None = None
+    nudge_id: int | None = None
+    hint_tag: str
+    action: str = "confirm"  # confirm|correct
+    concept_text: str
+    export_to_hive: bool = False
+
+
+class NexusFeedbackIonizeResponse(BaseModel):
+    ok: bool = True
+    entry_uuid: str
+    entry_id: int
+    digest: str
+    exported_to_hive: bool = False
+    export_reason: str | None = None

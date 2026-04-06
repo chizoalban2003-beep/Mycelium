@@ -30,6 +30,8 @@
           <div>
             <div id="nudgeTitle" class="font-semibold text-slate-100"></div>
             <div id="nudgeMessage" class="text-sm text-slate-300 mt-1"></div>
+            <div id="nudgeHints" class="hidden mt-3"></div>
+            <div id="nudgeHintStatus" class="hidden mt-2 text-xs text-slate-400"></div>
           </div>
           <button id="nudgeDismiss" class="text-sm text-slate-300 hover:text-white">Dismiss</button>
         </div>
@@ -58,8 +60,10 @@
         const banner = document.getElementById('nudgeBanner');
         const titleEl = document.getElementById('nudgeTitle');
         const msgEl = document.getElementById('nudgeMessage');
+        const hintsEl = document.getElementById('nudgeHints');
+        const statusEl = document.getElementById('nudgeHintStatus');
         const dismissBtn = document.getElementById('nudgeDismiss');
-        if (!banner || !titleEl || !msgEl || !dismissBtn) return;
+        if (!banner || !titleEl || !msgEl || !dismissBtn || !hintsEl || !statusEl) return;
 
         try {
           const r = await fetch('/api/nexus/nudges/recent?limit=1&unseen_only=true', { credentials: 'same-origin' });
@@ -70,6 +74,111 @@
 
           titleEl.textContent = n.title || 'Nudge';
           msgEl.textContent = n.message || '';
+
+          // Render any Hive hints (curiosity tags) with confirm/correct actions.
+          const hints = (n.payload && Array.isArray(n.payload.curiosity_hints)) ? n.payload.curiosity_hints : [];
+          hintsEl.innerHTML = '';
+          hintsEl.classList.add('hidden');
+          statusEl.textContent = '';
+          statusEl.classList.add('hidden');
+
+          if (hints.length) {
+            const header = document.createElement('div');
+            header.className = 'text-xs text-slate-400';
+            header.textContent = 'Hive hints (confirm or correct):';
+            hintsEl.appendChild(header);
+
+            hints.slice(0, 6).forEach((hintTag) => {
+              const row = document.createElement('div');
+              row.className = 'mt-2 flex flex-wrap items-center gap-2';
+
+              const tag = document.createElement('span');
+              tag.className = 'text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700';
+              tag.textContent = String(hintTag || '').slice(0, 64);
+              row.appendChild(tag);
+
+              const input = document.createElement('input');
+              input.type = 'text';
+              input.value = String(hintTag || '').slice(0, 120);
+              input.placeholder = 'Concept (e.g., Rust programming)';
+              input.className = 'text-sm bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100 w-64';
+              row.appendChild(input);
+
+              const shareWrap = document.createElement('label');
+              shareWrap.className = 'text-xs text-slate-400 flex items-center gap-1 select-none';
+              const share = document.createElement('input');
+              share.type = 'checkbox';
+              share.className = 'accent-slate-300';
+              share.checked = false;
+              shareWrap.appendChild(share);
+              const shareTxt = document.createElement('span');
+              shareTxt.textContent = 'Share to Hive';
+              shareWrap.appendChild(shareTxt);
+              row.appendChild(shareWrap);
+
+              async function sendFeedback(action) {
+                statusEl.textContent = '';
+                statusEl.classList.add('hidden');
+
+                const concept = (input.value || '').trim();
+                if (!concept) {
+                  statusEl.textContent = 'Please enter a concept.';
+                  statusEl.classList.remove('hidden');
+                  return;
+                }
+
+                btnConfirm.disabled = true;
+                btnCorrect.disabled = true;
+                try {
+                  const r2 = await fetch('/api/nexus/feedback/ionize', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      project_id: n.project_id || null,
+                      nudge_id: n.id,
+                      hint_tag: String(hintTag || ''),
+                      action: String(action || 'confirm'),
+                      concept_text: concept,
+                      export_to_hive: !!share.checked,
+                    })
+                  });
+                  const data2 = await r2.json().catch(() => ({}));
+                  if (!r2.ok) {
+                    statusEl.textContent = (data2 && data2.detail) ? String(data2.detail) : 'Failed to save feedback.';
+                    statusEl.classList.remove('hidden');
+                    return;
+                  }
+                  const exportNote = data2.exported_to_hive ? ' (shared to Hive)' : '';
+                  statusEl.textContent = `Saved${exportNote}.`;
+                  statusEl.classList.remove('hidden');
+                } catch (e) {
+                  statusEl.textContent = 'Failed to save feedback.';
+                  statusEl.classList.remove('hidden');
+                } finally {
+                  btnConfirm.disabled = false;
+                  btnCorrect.disabled = false;
+                }
+              }
+
+              const btnConfirm = document.createElement('button');
+              btnConfirm.className = 'text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700';
+              btnConfirm.textContent = 'Confirm';
+              btnConfirm.onclick = () => sendFeedback('confirm');
+              row.appendChild(btnConfirm);
+
+              const btnCorrect = document.createElement('button');
+              btnCorrect.className = 'text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700';
+              btnCorrect.textContent = 'Correct';
+              btnCorrect.onclick = () => sendFeedback('correct');
+              row.appendChild(btnCorrect);
+
+              hintsEl.appendChild(row);
+            });
+
+            hintsEl.classList.remove('hidden');
+          }
+
           banner.classList.remove('hidden');
 
           dismissBtn.onclick = async () => {

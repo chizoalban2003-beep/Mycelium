@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+import re
+
 from sqlmodel import Session, select
 
 from mycelium_app.knowledge_sync import extract_recallable_kwargs
@@ -145,6 +147,25 @@ def curiosity_feedback_from_global_update(update_obj: dict[str, Any]) -> dict[st
     return None
 
 
+def curiosity_concept_from_global_update(update_obj: dict[str, Any]) -> dict[str, Any] | None:
+    """Pull curiosity_concept payload out of a HiveGlobalUpdate.update_json object."""
+
+    if not isinstance(update_obj, dict):
+        return None
+
+    # Preferred wrapper form produced by /curiosity/concept/import.
+    if str(update_obj.get("kind", "")) == "curiosity_concept":
+        c = update_obj.get("concept")
+        return c if isinstance(c, dict) else None
+
+    # Fallback: store the concept directly.
+    meta = update_obj.get("meta") if isinstance(update_obj.get("meta"), dict) else {}
+    if str(meta.get("kind", "")) == "curiosity_concept":
+        return update_obj
+
+    return None
+
+
 @dataclass(frozen=True)
 class WisdomLatest:
     as_of: datetime | None
@@ -173,7 +194,11 @@ def compute_wisdom_latest(
     as_of: datetime | None = None
 
     curiosity_tags: Counter[str] = Counter()
+    curiosity_concepts: Counter[str] = Counter()
     n_feedback_used = 0
+    n_concepts_used = 0
+
+    word_re = re.compile(r"[a-zA-Z0-9_\-\+\.]{2,}")
 
     for r in rows:
         update_obj = _loads_dict(r.update_json)
@@ -197,6 +222,37 @@ def compute_wisdom_latest(
                 if ts:
                     curiosity_tags[ts] += 1
             n_feedback_used += 1
+
+        concept = curiosity_concept_from_global_update(update_obj)
+        if concept:
+            meta_c = concept.get("meta") if isinstance(concept.get("meta"), dict) else {}
+            c_project_id = meta_c.get("project_id")
+            if project_id is not None:
+                if c_project_id != project_id:
+                    concept = None
+            else:
+                if (c_project_id is not None) and not include_project_scoped:
+                    concept = None
+
+        if concept:
+            obj = concept.get("concept") if isinstance(concept.get("concept"), dict) else {}
+            action = str(obj.get("action", "confirm")).strip().lower()
+            hint_tag = str(obj.get("hint_tag", "")).strip()
+            text = str(obj.get("text", "")).strip()
+
+            # Corrections are treated as new tag signals; confirmations reinforce existing tags.
+            if action == "correct" and text:
+                toks = [t.lower() for t in word_re.findall(text)][:10]
+                for t in toks:
+                    curiosity_tags[t] += 1
+                if toks:
+                    curiosity_concepts[" ".join(toks[:3])] += 1
+            else:
+                if hint_tag:
+                    curiosity_tags[hint_tag] += 1
+                if text:
+                    curiosity_concepts[text[:80]] += 1
+            n_concepts_used += 1
 
         whisper = whisper_from_global_update(update_obj)
         if not whisper:
@@ -225,7 +281,9 @@ def compute_wisdom_latest(
         "include_project_scoped": bool(include_project_scoped),
         "curiosity": {
             "n_feedback_used": int(n_feedback_used),
+            "n_concepts_used": int(n_concepts_used),
             "top_tags": [{"tag": k, "count": int(v)} for k, v in curiosity_tags.most_common(10)],
+            "top_concepts": [{"concept": k, "count": int(v)} for k, v in curiosity_concepts.most_common(5)],
         },
     }
 

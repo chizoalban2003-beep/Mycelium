@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
+from mycelium_app.feedback_ionizer import ionize_user_feedback
 from mycelium_app.models import ExperienceBufferEntry, ProjectMember, User
 from mycelium_app.nexus_ionizer import grammar_suggest, ionize_finance, style_profile
 from mycelium_app.parental_policy import get_policy, set_policy
@@ -20,6 +21,8 @@ from mycelium_app.schemas import (
     NexusIngestTextResponse,
     NexusIntroResponse,
     NexusListResponse,
+    NexusFeedbackIonizeRequest,
+    NexusFeedbackIonizeResponse,
     NexusPolicyPublic,
     NexusPolicyUpdateRequest,
 )
@@ -265,6 +268,38 @@ def export_entries(
         exported_at=datetime.utcnow(),
         entries=[_to_public(r) for r in rows],
     )
+
+
+@router.post("/feedback/ionize", response_model=NexusFeedbackIonizeResponse)
+def ionize_feedback(
+    payload: NexusFeedbackIonizeRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, payload.project_id)
+
+    text = (payload.concept_text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="concept_text is required")
+    if len(text) > 10_000:
+        raise HTTPException(status_code=413, detail="concept_text too large")
+
+    try:
+        res = ionize_user_feedback(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            nudge_id=payload.nudge_id,
+            hint_tag=payload.hint_tag,
+            concept_text=payload.concept_text,
+            action=payload.action,
+            export_to_hive=bool(payload.export_to_hive),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return NexusFeedbackIonizeResponse(**res)
 
 
 @router.post("/sync/import", response_model=NexusImportResponse)

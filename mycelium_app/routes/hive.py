@@ -14,6 +14,8 @@ from mycelium_app.hive_sync import build_anonymized_report
 from mycelium_app.models import ExperienceBufferEntry, HiveGlobalUpdate, HiveOutboxMessage, HiveOutboxReport, ProjectMember, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
+    HiveCuriosityConceptImportRequest,
+    HiveCuriosityConceptImportResponse,
     HiveCuriosityFeedbackImportRequest,
     HiveCuriosityFeedbackImportResponse,
     HiveGlobalUpdateImportRequest,
@@ -338,6 +340,55 @@ def import_curiosity_feedback_as_global_update(
     session.refresh(row)
 
     return HiveCuriosityFeedbackImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
+
+
+@router.post("/curiosity/concept/import", response_model=HiveCuriosityConceptImportResponse)
+def import_curiosity_concept_as_global_update(
+    payload: HiveCuriosityConceptImportRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Import UserFeedbackIonizer concept messages as a HiveGlobalUpdate.
+
+    This stores short parent-provided concepts (confirm/correct) so they can be
+    aggregated into WisdomBroadcast and reflected back as hints.
+    """
+
+    if not bool(settings.hive_enabled):
+        raise HTTPException(status_code=403, detail="HiveSync disabled")
+
+    _ = current_user
+
+    concept = payload.concept or {}
+    if not isinstance(concept, dict):
+        raise HTTPException(status_code=400, detail="Invalid concept")
+
+    meta = concept.get("meta") if isinstance(concept.get("meta"), dict) else {}
+    if str(meta.get("kind", "")) != "curiosity_concept":
+        raise HTTPException(status_code=400, detail="Not a curiosity_concept payload")
+
+    update_uuid = (payload.update_uuid or "").strip() or _stable_uuid_from_obj(concept)
+
+    existing = session.exec(select(HiveGlobalUpdate).where(HiveGlobalUpdate.update_uuid == update_uuid)).first()
+    if existing:
+        return HiveCuriosityConceptImportResponse(ok=True, update_uuid=existing.update_uuid, imported=False)
+
+    update_obj = {
+        "kind": "curiosity_concept",
+        "concept": concept,
+    }
+
+    row = HiveGlobalUpdate(
+        source=(payload.source or "user_feedback_ionizer")[:64],
+        version=(payload.version or "concept_v1")[:64],
+        update_json=_dumps(update_obj),
+    )
+    row.update_uuid = update_uuid
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    return HiveCuriosityConceptImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
 
 @router.get("/outbox/messages/recent", response_model=HiveOutboxMessageListResponse)
