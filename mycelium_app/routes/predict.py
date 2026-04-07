@@ -128,7 +128,7 @@ async def electrophoresis_predict(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """Run the Proofgrid electrophoresis engine and return JSON outputs for realtime polling clients."""
+    """Run the Mycelium electrophoresis engine and return JSON outputs for realtime polling clients."""
 
     _ = current_user
     try:

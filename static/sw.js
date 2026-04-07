@@ -2,7 +2,7 @@
  * We keep this intentionally small and non-invasive.
  */
 
-const CACHE = 'proofgrid-shell-v1';
+const CACHE = 'mycelium-shell-v2';
 const PRECACHE = [
   '/static/manifest.webmanifest',
   '/static/icon.svg'

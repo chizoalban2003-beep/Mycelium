@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,7 +41,7 @@ class Settings(BaseSettings):
     predictor_physics_ledger_min_accuracy_to_store: float = 0.55
     predictor_physics_ledger_min_gel_confidence_mean_to_store: float = 0.95
 
-    # Proofgrid Nexus (assistant) settings.
+    # Mycelium Nexus (assistant) settings.
     nexus_device_id: str = "local"
 
     # Telemetry assistant (nudges from digital signals).
@@ -73,7 +74,7 @@ class Settings(BaseSettings):
     nexus_intro_mode: str = "observe"  # ask | observe
     nexus_observe_hours: int = 24
 
-    # Proofgrid HiveSync (federated learning) MVP toggles.
+    # Mycelium HiveSync (federated learning) MVP toggles.
     hive_enabled: bool = False
     hive_export_enabled_default: bool = False
 
@@ -141,6 +142,16 @@ class Settings(BaseSettings):
     # When true, creating new cases will also create a throttled nudge.
     nexus_active_curiosity_nudge_enabled: bool = True
     nexus_active_curiosity_nudge_throttle_minutes: int = 120
+
+    @field_validator("app_name", mode="before")
+    @classmethod
+    def normalize_legacy_app_name(cls, value: object) -> str:
+        raw = str(value or "").strip()
+        if not raw:
+            return "Mycelium"
+        if raw.lower() == "proofgrid":
+            return "Mycelium"
+        return raw
 
 
 settings = Settings()
