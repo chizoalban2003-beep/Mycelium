@@ -533,9 +533,11 @@ Phase 1 (now): learning signal quality
 - Capture structured post-action feedback labels via `/verify`.
 - Monitor `feedback/summary` trends (`annoying`, `wrong_device`, `too_early`, etc.).
 
-Phase 2: adaptive memory
+Phase 2: adaptive memory and trust loop
 - Separate episodic, semantic, and procedural memory lanes.
 - Add reinforcement/decay so stable routines strengthen while stale behaviors fade.
+- Surface validation shadow, feedback summaries, and explainability in the Knowledge Audit and Hive Health views.
+- Keep the privacy membrane in front of Hive export so only consented lessons leave the device.
 
 Phase 2 API (implemented):
 
@@ -543,6 +545,7 @@ Phase 2 API (implemented):
 - `GET /api/nexus/memory/list`
 - `POST /api/nexus/memory/{memory_id}/reinforce`
 - `POST /api/nexus/memory/decay/run`
+- `GET /api/nexus/tasks/replicas/feedback/summary?window_hours=168`
 
 Automatic sync (implemented):
 
