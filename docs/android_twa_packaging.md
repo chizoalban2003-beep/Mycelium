@@ -32,6 +32,19 @@ Play Store / TWA quality notes:
 - Keep `display: standalone` and a dark `theme_color` for the Control Room look.
 - The current repo uses `/static/icon.svg` in the manifest, which is fine for development, but PNGs are the safer production path.
 
+You can generate the PNGs from the bundled SVG motif with:
+
+```bash
+python scripts/generate_twa_icons.py --out-dir static/twa-icons
+```
+
+The release checklist expects:
+
+- `static/twa-icons/mycelium-192.png`
+- `static/twa-icons/mycelium-192-maskable.png`
+- `static/twa-icons/mycelium-512.png`
+- `static/twa-icons/mycelium-512-maskable.png`
+
 Quick check:
 
 ```bash
@@ -58,6 +71,11 @@ bubblewrap init --manifest https://your-app.up.railway.app/static/manifest.webma
 ```
 
 This creates Android project files under a local folder (default `twa/`).
+
+Before packaging, confirm the versioning in your scaffold is set for release:
+
+- `versionName`: `1.0.0-alpha` (or your next release tag)
+- `versionCode`: increment this for every Play Store upload
 
 ## 4) Build APK / AAB
 
@@ -86,6 +104,12 @@ For full trusted behavior, host `assetlinks.json` on your web origin:
 - URL: `https://your-app.up.railway.app/.well-known/assetlinks.json`
 
 Bubblewrap prints the exact JSON you need after initialization/signing.
+
+If you do not already have a release keystore, create one before signing the APK/AAB:
+
+```bash
+keytool -genkeypair -v -keystore mycelium-release.jks -alias mycelium -keyalg RSA -keysize 2048 -validity 10000
+```
 
 ## 7) Web push support (future-ready)
 

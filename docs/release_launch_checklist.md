@@ -49,6 +49,31 @@ That gives you:
 - an AAB for Google Play submission
 - full-screen Android launch while keeping the web app as the source of truth
 
+### Asset generation
+
+Generate launcher icons from the built-in SVG motif:
+
+```bash
+python scripts/generate_twa_icons.py --out-dir static/twa-icons
+```
+
+Production icon targets:
+
+- `static/twa-icons/mycelium-192.png`
+- `static/twa-icons/mycelium-192-maskable.png`
+- `static/twa-icons/mycelium-512.png`
+- `static/twa-icons/mycelium-512-maskable.png`
+
+### Keystore
+
+If you do not already have a release keystore, create one before Play upload:
+
+```bash
+keytool -genkeypair -v -keystore mycelium-release.jks -alias mycelium -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Keep the keystore private and back it up offline.
+
 ## Launch checklist
 
 - [ ] Set production env vars
@@ -58,6 +83,9 @@ That gives you:
 - [ ] Verify `improvement_frac` appears in the reasoning card flow
 - [ ] Verify kill-switch blocks the synthetic stress-test route
 - [ ] Confirm asset links for Android TWA
+- [ ] Generate PNG launcher icons and maskable variants
+- [ ] Set versionName/versionCode in the TWA scaffold
+- [ ] Generate or confirm the release keystore
 - [ ] Build APK/AAB with Bubblewrap
 - [ ] Test install on one Android device
 - [ ] Submit to Play Store when branding, privacy policy, and screenshots are ready
