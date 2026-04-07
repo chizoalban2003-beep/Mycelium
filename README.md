@@ -202,6 +202,18 @@ Telemetry assistant nudges also include the configured assistant name/voice trai
 
 Mycelium learns from consented digital signals, including app launches, open/close activity, approved actions, chat messages, and explicit feedback.
 It is designed to grow from infancy to adulthood as a transparent assistant that stays user-controlled, visible, and reversible.
+
+## Human↔AI relationship
+
+Mycelium is meant to feel like a sci-fi co-pilot that earns trust over time.
+It should feel alive in tone, but never hidden in behavior.
+
+Suggestions that keep the relationship healthy:
+
+- Make every signal visible and explainable.
+- Keep permissions explicit, granular, and easy to revoke.
+- Increase autonomy only after repeated successful interactions.
+- Let the assistant speak in a consistent voice, but keep the user in charge.
 You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
 ## Live neural map + chat

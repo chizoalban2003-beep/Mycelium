@@ -309,6 +309,13 @@ Mycelium learns from signals the user intentionally generates or allows, such as
 If you enable device-side companions, they should start visibly and remain revocable by policy.
 The goal is an assistant that can grow from infancy to adulthood on the user's own device, but only within the permissions the user grants.
 
+Relationship design note:
+
+- Grow with Data means the assistant should learn visibly, not secretly.
+- The sci-fi feel comes from personality, timing, and context — not from hidden collection.
+- Human trust should rise before autonomy does.
+- The best behavior is explainable, reversible, and always user-owned.
+
 ### Child trajectory capture: manual first, auto optional
 
 Recommended rollout:
