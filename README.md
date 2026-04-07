@@ -1,6 +1,16 @@
 # Mycelium
 
-Mycelium is a multi-user, project-tree workspace for data/ML work (ETL → EDA → stats tests → feature engineering → modeling → dashboards → deployable predictions).
+Mycelium is evolving into a consent-first AI product: a visible, child-first assistant that grows with approved signals into a personal copilot and eventually a trust-gated Hive.
+
+The repo still includes the project-tree workspace foundation, but the product surface is now centered on growth, learning, and explainable autonomy.
+
+## Product shape
+
+- Guided child mode with visible learning
+- Daily summary and learning trail as the main UX
+- Memory, feedback, and policy controls the user can inspect
+- Consent-gated device actions and gradual autonomy
+- Hive sharing only after trust is earned
 
 This repo currently ships an MVP platform:
 
