@@ -21,6 +21,14 @@ This repo currently ships an MVP platform:
 - Projects (multi-user ready via roles)
 - A tree of nodes inside each project (foundation for ETL/EDA/ML steps)
 
+## Deployment options
+
+- Railway is the recommended production host for the backend and web UI.
+- Railway gives you a public HTTPS app, but it is not the app-download channel.
+- If you want a downloadable Android build, package the hosted web app as a Trusted Web Activity (TWA) and publish the generated APK/AAB to Google Play.
+- The Android packaging path is documented in [docs/android_twa_packaging.md](docs/android_twa_packaging.md).
+- For Railway production, use `requirements/prod.txt`, Postgres, `COOKIE_SECURE=true`, and `DB_MIGRATION_MODE=migrate`.
+
 ## Quickstart (Linux)
 
 1) Activate the project virtualenv (created earlier):

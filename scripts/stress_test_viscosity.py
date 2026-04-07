@@ -5,6 +5,7 @@ import http.cookiejar
 import json
 import os
 import sys
+from urllib.error import HTTPError
 from urllib import parse, request
 
 
@@ -62,8 +63,15 @@ def main() -> int:
         method="POST",
         headers={"Content-Type": "application/json"},
     )
-    with opener.open(stress_req, timeout=60) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
+    try:
+        with opener.open(stress_req, timeout=60) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+    except HTTPError as exc:
+        if int(getattr(exc, "code", 0)) == 423:
+            detail = exc.read().decode("utf-8", errors="replace")
+            print(json.dumps({"ok": False, "status": 423, "detail": detail}, indent=2, ensure_ascii=False, sort_keys=True))
+            return 0
+        raise
 
     audit_url = f"{base_url}/api/nexus/knowledge/audit?limit=5"
     audit_req = request.Request(url=audit_url, method="GET")

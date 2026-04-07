@@ -723,6 +723,11 @@ def diagnostics_stress_test(
     user_id = int(current_user.id or 0)
     _ensure_project_access(session, user_id, payload.project_id)
 
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    if bool(actions_cfg.get("kill_switch", False)):
+        raise HTTPException(status_code=423, detail="Action kill-switch is enabled")
+
     spike_label = str(payload.spike_label or "cpu_temp_spike").strip()[:64] or "cpu_temp_spike"
     node_id = str(payload.node_id or "node-0").strip()[:64] or "node-0"
     metric_name = str(payload.metric_name or "thermal_headroom").strip()[:64] or "thermal_headroom"
