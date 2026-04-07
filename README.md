@@ -187,6 +187,22 @@ This updates identity presentation so the assistant is addressed by the configur
 Telemetry assistant nudges also include the configured assistant name/voice traits.
 You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
+## Live neural map + chat
+
+- Live state API: `GET /api/nexus/live/state?window_minutes=30`
+- Visual map UI: `/hive/health`
+
+Chat APIs:
+
+- `POST /api/nexus/chat/send`
+- `GET /api/nexus/chat/history`
+
+Chat UI:
+
+- `/chat`
+
+`channel=telegram` is supported when the Telegram bridge and user notification policy are enabled.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

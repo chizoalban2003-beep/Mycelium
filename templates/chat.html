@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rounded border border-slate-800 bg-slate-900 p-4">
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <h1 class="text-lg font-semibold">Assistant Chat</h1>
+      <div class="text-sm text-slate-300">Talk in-app, or route replies through Telegram.</div>
+    </div>
+    <select id="chatChannel" class="text-xs bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100">
+      <option value="app" selected>In-app</option>
+      <option value="telegram">Telegram</option>
+    </select>
+  </div>
+
+  <div id="chatLog" class="mt-4 h-96 overflow-y-auto rounded border border-slate-800 bg-slate-950 p-3 space-y-2"></div>
+
+  <form id="chatForm" class="mt-3 flex items-center gap-2">
+    <input id="chatInput" maxlength="5000" placeholder="Ask about focus, telemetry, tasks..." class="flex-1 rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+    <button type="submit" class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-medium">Send</button>
+  </form>
+</div>
+
+<script>
+  const logEl = document.getElementById('chatLog');
+  const formEl = document.getElementById('chatForm');
+  const inputEl = document.getElementById('chatInput');
+  const channelEl = document.getElementById('chatChannel');
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function render(messages) {
+    logEl.innerHTML = (messages || []).map((m) => {
+      const me = (m.role === 'user');
+      const cls = me ? 'bg-indigo-900/40 border-indigo-800 ml-10' : 'bg-slate-900 border-slate-700 mr-10';
+      return `<div class="rounded border ${cls} px-3 py-2">
+        <div class="text-xs text-slate-400">${esc(m.role)} • ${esc(m.channel)} • ${esc(m.created_at)}</div>
+        <div class="text-sm text-slate-100 mt-1">${esc(m.content)}</div>
+      </div>`;
+    }).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  async function loadHistory() {
+    try {
+      const r = await fetch('/api/nexus/chat/history?limit=100&conversation_key=default', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return;
+      render(d.messages || []);
+    } catch (_) {}
+  }
+
+  formEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = (inputEl.value || '').trim();
+    if (!message) return;
+    inputEl.value = '';
+    try {
+      const r = await fetch('/api/nexus/chat/send', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, channel: String(channelEl.value || 'app'), conversation_key: 'default' }),
+      });
+      if (!r.ok) {
+        await loadHistory();
+        return;
+      }
+      await loadHistory();
+    } catch (_) {
+      await loadHistory();
+    }
+  });
+
+  loadHistory();
+  setInterval(loadHistory, 5000);
+</script>
+{% endblock %}

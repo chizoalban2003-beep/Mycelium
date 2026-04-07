@@ -11,7 +11,18 @@ This is the current default strategy for market velocity:
 ### Required Railway variables
 
 - `DATABASE_URL` (Railway Postgres)
-- `SECRET_KEY` (long random)
+- `SECRET_KEY` (lo# 1) bootstrap directive
+curl -X POST "https://<domain>/api/nexus/tasks/bootstrap/work-session" -H "Authorization: Bearer <TOKEN>"
+
+# 2) approve replica
+curl -X POST "https://<domain>/api/nexus/tasks/replicas/<REPLICA_ID>/decision" \
+  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
+  -d '{"decision":"approve"}'
+
+# 3) verify outcome
+python3 scripts/report_task_replica_focus.py \
+  --base-url "https://<domain>" --token "<TOKEN>" \
+  --replica-id <REPLICA_ID> --planned-minutes 45 --focused-minutes 45 --completedng random)
 - `COOKIE_SECURE=true`
 - `HIVE_ENABLED=true`
 - `HIVE_INGEST_TOKEN=<strong-random>`
@@ -101,6 +112,32 @@ Identity presentation (`/api/nexus/identity/presentation`) now uses this profile
 for personalized assistant display naming.
 
 Project-scoped identity updates are owner-gated by ProjectMembrane.
+
+### Real-time Live Neural Map
+
+Main-brain observability endpoint:
+
+- `GET /api/nexus/live/state?window_minutes=30`
+
+Web UI:
+
+- `/hive/health` now includes an animated flow map of signal → growth → assistant → nudge movement.
+
+### Omnichannel chat (app + messaging)
+
+Unified chat API:
+
+- `POST /api/nexus/chat/send`
+- `GET /api/nexus/chat/history`
+
+Channels (current):
+
+- `app` (in-product chat)
+- `telegram` (if bridge + policy are enabled)
+
+Web UI:
+
+- `/chat`
 
 ### Child trajectory capture: manual first, auto optional
 

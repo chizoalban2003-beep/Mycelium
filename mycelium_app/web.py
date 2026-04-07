@@ -417,6 +417,20 @@ def demo_page(
     )
 
 
+@router.get("/chat", response_class=HTMLResponse)
+def chat_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+    return templates.TemplateResponse(
+        "chat.html",
+        {"request": request, "user": current_user, "app_name": settings.app_name},
+    )
+
+
 @router.get("/assistant/profile", response_class=HTMLResponse)
 def assistant_profile_page(
     request: Request,

@@ -363,6 +363,21 @@ class MetricSnapshot(SQLModel, table=True):
     notes: str = ""
 
 
+class ConversationMessage(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    conversation_key: str = Field(default="default", index=True)
+    channel: str = Field(default="app", index=True)  # app|telegram|sms|email
+    role: str = Field(default="user", index=True)  # user|assistant|system
+    content: str = ""
+    metadata_json: str = "{}"
+
+    delivered_at: Optional[datetime] = Field(default=None, index=True)
+
+
 class MetricCausalTrace(SQLModel, table=True):
     """Persisted explanation artifact for Validation Shadow.
 

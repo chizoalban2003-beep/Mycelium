@@ -22,12 +22,14 @@ from mycelium_app.models import NexusNudge, WisdomIntegrationState
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.assistant import router as assistant_router
+from mycelium_app.routes.chat import router as chat_router
 from mycelium_app.routes.curiosity import router as curiosity_router
 from mycelium_app.routes.game import router as game_router
 from mycelium_app.routes.growth import router as growth_router
 from mycelium_app.routes.hive import router as hive_router
 from mycelium_app.routes.homeostasis import router as homeostasis_router
 from mycelium_app.routes.identity import router as identity_router
+from mycelium_app.routes.live import router as live_router
 from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.nudges import router as nudges_router
 from mycelium_app.routes.predict import router as predict_router
@@ -362,12 +364,14 @@ def assetlinks():
 
 app.include_router(auth_router)
 app.include_router(assistant_router)
+app.include_router(chat_router)
 app.include_router(curiosity_router)
 app.include_router(game_router)
 app.include_router(hive_router)
 app.include_router(homeostasis_router)
 app.include_router(nexus_router)
 app.include_router(identity_router)
+app.include_router(live_router)
 app.include_router(nudges_router)
 app.include_router(growth_router)
 app.include_router(telemetry_router)

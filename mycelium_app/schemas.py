@@ -643,6 +643,58 @@ class AssistantProfileUpdateRequest(BaseModel):
     assistant_avatar_url: str = ""
 
 
+class ChatSendRequest(BaseModel):
+    project_id: int | None = None
+    conversation_key: str = "default"
+    channel: str = "app"  # app|telegram
+    message: str
+
+
+class ChatMessagePublic(BaseModel):
+    id: int
+    created_at: datetime
+    project_id: int | None = None
+    conversation_key: str
+    channel: str
+    role: str
+    content: str
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ChatSendResponse(BaseModel):
+    ok: bool = True
+    user_message: ChatMessagePublic
+    assistant_message: ChatMessagePublic
+    delivered_external: bool = False
+
+
+class ChatHistoryResponse(BaseModel):
+    messages: list[ChatMessagePublic]
+
+
+class LiveHiveNode(BaseModel):
+    id: str
+    kind: str
+    label: str
+    weight: float = 0.0
+
+
+class LiveHiveEdge(BaseModel):
+    source: str
+    target: str
+    flow: float = 0.0
+    kind: str = "signal"
+
+
+class LiveHiveStateResponse(BaseModel):
+    ok: bool = True
+    as_of: datetime
+    window_minutes: int
+    counters: dict[str, int] = Field(default_factory=dict)
+    nodes: list[LiveHiveNode] = Field(default_factory=list)
+    edges: list[LiveHiveEdge] = Field(default_factory=list)
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime

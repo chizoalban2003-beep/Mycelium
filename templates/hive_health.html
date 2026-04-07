@@ -68,6 +68,13 @@
     <div class="text-xs text-slate-400 mt-1">Daily averages across all children.</div>
     <div id="trends" class="text-sm text-slate-200 mt-3 space-y-3"></div>
   </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Live Neural Map</div>
+    <div class="text-xs text-slate-400 mt-1">Animated real-time flow of signals, growth memory, and assistant nudges.</div>
+    <div id="liveMeta" class="text-xs text-slate-400 mt-2"></div>
+    <canvas id="liveMap" class="mt-2 w-full rounded border border-slate-800 bg-slate-950" width="960" height="280"></canvas>
+  </div>
 </div>
 
 <script>
@@ -77,6 +84,103 @@
 
   function kv(k, v) {
     return `<div class="flex items-center justify-between gap-3"><span class="text-slate-300">${esc(k)}</span><span class="text-slate-100">${esc(v)}</span></div>`;
+  }
+
+  let liveState = { nodes: [], edges: [], counters: {}, as_of: null, window_minutes: 30 };
+  let liveTicks = 0;
+
+  function nodePos(id, width, height) {
+    const map = {
+      'user': [0.12, 0.5],
+      'telemetry': [0.34, 0.35],
+      'growth': [0.56, 0.35],
+      'assistant': [0.78, 0.35],
+      'nudges': [0.90, 0.55],
+    };
+    const p = map[id] || [0.22 + ((id.length % 5) * 0.14), 0.68];
+    return { x: p[0] * width, y: p[1] * height };
+  }
+
+  function drawLiveMap() {
+    const canvas = document.getElementById('liveMap');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = canvas.width;
+    const height = canvas.height;
+    ctx.clearRect(0, 0, width, height);
+
+    const nodes = Array.isArray(liveState.nodes) ? liveState.nodes : [];
+    const edges = Array.isArray(liveState.edges) ? liveState.edges : [];
+
+    const byId = {};
+    nodes.forEach((n) => {
+      byId[n.id] = nodePos(String(n.id || ''), width, height);
+    });
+
+    edges.forEach((e, i) => {
+      const a = byId[e.source];
+      const b = byId[e.target];
+      if (!a || !b) return;
+      const flow = Math.max(0, Number(e.flow || 0));
+      const alpha = Math.min(0.9, 0.15 + flow / 60.0);
+      ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+      ctx.lineWidth = Math.min(5, 1 + flow / 20.0);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+
+      const t = ((liveTicks / 60) + (i * 0.17)) % 1;
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.95)';
+      ctx.beginPath();
+      ctx.arc(px, py, 2 + Math.min(4, flow / 15.0), 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    nodes.forEach((n) => {
+      const p = byId[n.id];
+      if (!p) return;
+      const w = Math.max(1, Number(n.weight || 1));
+      const r = Math.min(22, 8 + w * 1.5);
+      ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(125, 211, 252, 0.8)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(226, 232, 240, 1)';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(n.label || n.id || ''), p.x, p.y + 4);
+    });
+
+    liveTicks += 1;
+    requestAnimationFrame(drawLiveMap);
+  }
+
+  async function loadLiveState() {
+    const meta = document.getElementById('liveMeta');
+    try {
+      const r = await fetch('/api/nexus/live/state?window_minutes=30', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (meta) meta.textContent = 'Live map unavailable.';
+        return;
+      }
+      liveState = d || {};
+      if (meta) {
+        const c = liveState.counters || {};
+        meta.textContent = `as_of=${liveState.as_of || 'n/a'} • signals=${c.signals || 0} • growth=${c.growth_entries || 0} • unseen_nudges=${c.unseen_nudges || 0}`;
+      }
+    } catch (_) {
+      if (meta) meta.textContent = 'Live map unavailable.';
+    }
   }
 
   function table(points) {
@@ -240,5 +344,8 @@
   document.getElementById('smoothingWindow').onchange = loadHealth;
   document.getElementById('optBroadcast').onchange = loadHealth;
   loadHealth();
+  loadLiveState();
+  setInterval(loadLiveState, 5000);
+  requestAnimationFrame(drawLiveMap);
 </script>
 {% endblock %}
