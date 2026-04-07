@@ -593,6 +593,8 @@ Phase 5: productization
 - Package onboarding for the first customer segment.
 - Turn the learning trail and today summary into the primary acquisition demo.
 - Keep pricing aligned to value: personal assistant first, Hive expansion later.
+- Target the first customer segment as founders/operators who need a visible, consent-first assistant they can trust on day one.
+- Keep the acquisition story simple: guided child mode → visible learning trail → earned autonomy.
 
 Phase 4 API (implemented):
 
