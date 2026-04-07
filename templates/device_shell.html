@@ -73,43 +73,65 @@
   {% endif %}
 
   <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900 p-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center justify-between gap-3">
       <div>
-        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Quick actions</div>
-        <div class="text-sm text-slate-300">Open the surfaces that matter most for a live device product.</div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Quick launcher</div>
+        <div class="text-sm text-slate-300">Tap a surface to jump straight into work, summary, memory, or policy.</div>
       </div>
-      <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-        <form action="/device/bootstrap-work-session" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <input type="hidden" name="focus_app" value="mycelium" />
-          <input type="hidden" name="duration_minutes" value="45" />
-          <button type="submit" class="w-full rounded-md border border-emerald-700 bg-emerald-950/30 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-900/40 sm:w-auto">Start work session</button>
-        </form>
-        <form action="/device/daily-summary" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <input type="hidden" name="window_hours" value="24" />
-          <button type="submit" class="w-full rounded-md border border-indigo-700 bg-indigo-950/30 px-3 py-2 text-sm font-medium text-indigo-100 hover:bg-indigo-900/40 sm:w-auto">Daily summary</button>
-        </form>
-        <form action="/device/auto-handoff-launch" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <input type="hidden" name="window_minutes" value="120" />
-          <input type="hidden" name="base_duration_minutes" value="45" />
-          <input type="hidden" name="current_device_id" value="local" />
-          <input type="hidden" name="candidate_device_ids" value="local,laptop" />
-          <input type="hidden" name="focus_app" value="mycelium" />
-          <button type="submit" class="w-full rounded-md border border-fuchsia-700 bg-fuchsia-950/30 px-3 py-2 text-sm font-medium text-fuchsia-100 hover:bg-fuchsia-900/40 sm:w-auto">Auto-handoff launch</button>
-        </form>
-        <form action="/device/auto-handoff-launch-and-confirm" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <input type="hidden" name="window_minutes" value="120" />
-          <input type="hidden" name="base_duration_minutes" value="45" />
-          <input type="hidden" name="current_device_id" value="local" />
-          <input type="hidden" name="candidate_device_ids" value="local,laptop" />
-          <input type="hidden" name="focus_app" value="mycelium" />
-          <button type="submit" class="w-full rounded-md border border-fuchsia-500 bg-fuchsia-900/40 px-3 py-2 text-sm font-medium text-fuchsia-50 hover:bg-fuchsia-800/60 sm:w-auto">Launch + confirm</button>
-        </form>
-        <a href="/projects" class="rounded-md border border-cyan-700 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-900/40">Builder Copilot</a>
-        <a href="/hive/health" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">HIVE Health</a>
-        <a href="/chat" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">Chat</a>
-        <a href="/knowledge" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">Memory</a>
-        <a href="/assistant/profile" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">Child-Safe / Policy</a>
-      </div>
+      <div class="hidden text-xs text-slate-500 sm:block">Fast paths</div>
+    </div>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <form action="/device/bootstrap-work-session" method="post" class="rounded-xl border border-emerald-800 bg-emerald-950/20 p-3">
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <input type="hidden" name="duration_minutes" value="45" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-emerald-300/80">⚡ Work</div>
+        <div class="mt-1 text-sm text-slate-200">Start a focused 45-minute session.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-900/50">Launch</button>
+      </form>
+
+      <form action="/device/daily-summary" method="post" class="rounded-xl border border-indigo-800 bg-indigo-950/20 p-3">
+        <input type="hidden" name="window_hours" value="24" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-indigo-300/80">◌ Summary</div>
+        <div class="mt-1 text-sm text-slate-200">Generate the latest accepted-outcomes recap.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-2 text-sm font-medium text-indigo-100 hover:bg-indigo-900/50">Launch</button>
+      </form>
+
+      <form action="/device/auto-handoff-launch" method="post" class="rounded-xl border border-fuchsia-800 bg-fuchsia-950/20 p-3">
+        <input type="hidden" name="window_minutes" value="120" />
+        <input type="hidden" name="base_duration_minutes" value="45" />
+        <input type="hidden" name="current_device_id" value="local" />
+        <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-fuchsia-300/80">⟐ Launch</div>
+        <div class="mt-1 text-sm text-slate-200">Analyze the best node for the next session.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-fuchsia-700 bg-fuchsia-950/40 px-3 py-2 text-sm font-medium text-fuchsia-100 hover:bg-fuchsia-900/50">Launch</button>
+      </form>
+
+      <form action="/device/auto-handoff-launch-and-confirm" method="post" class="rounded-xl border border-fuchsia-600 bg-fuchsia-900/20 p-3">
+        <input type="hidden" name="window_minutes" value="120" />
+        <input type="hidden" name="base_duration_minutes" value="45" />
+        <input type="hidden" name="current_device_id" value="local" />
+        <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200/80">⇄ Handoff</div>
+        <div class="mt-1 text-sm text-slate-200">Launch and confirm in one step.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-fuchsia-500 bg-fuchsia-900/50 px-3 py-2 text-sm font-medium text-fuchsia-50 hover:bg-fuchsia-800/60">Go</button>
+      </form>
+
+      <a href="/projects" class="rounded-xl border border-cyan-800 bg-cyan-950/20 p-3">
+        <div class="text-[10px] uppercase tracking-[0.2em] text-cyan-300/80">◌ Projects</div>
+        <div class="mt-1 text-sm text-slate-200">Open the builder copilot workspace.</div>
+        <div class="mt-3 rounded-lg border border-cyan-700 bg-cyan-950/40 px-3 py-2 text-center text-sm font-medium text-cyan-100">Open</div>
+      </a>
+    </div>
+
+    <div class="mt-3 grid gap-2 sm:grid-cols-4 lg:grid-cols-5">
+      <a href="/hive/health" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">⟐ Hive Health</a>
+      <a href="/chat" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">✉ Chat</a>
+      <a href="/knowledge" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">▣ Memory</a>
+      <a href="/assistant/profile" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">⚑ Policy</a>
+      <a href="/device" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">Live Shell</a>
     </div>
   </div>
 
