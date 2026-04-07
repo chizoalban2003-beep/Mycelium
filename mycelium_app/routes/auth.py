@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import smtplib
 from datetime import datetime, timedelta
+from email.message import EmailMessage
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
@@ -57,6 +59,38 @@ def _send_telegram_message(*, bot_token: str, chat_id: str, text: str) -> tuple[
         return False, str(e)[:300]
 
 
+def _send_email_message(*, to_email: str, subject: str, text: str, base_url: str) -> tuple[bool, str]:
+    host = str(getattr(settings, "mail_smtp_host", "") or "").strip()
+    if not bool(getattr(settings, "mail_enabled", False)) or not host:
+        return False, "mail disabled"
+
+    port = int(getattr(settings, "mail_smtp_port", 587) or 587)
+    username = str(getattr(settings, "mail_smtp_username", "") or "").strip()
+    password = str(getattr(settings, "mail_smtp_password", "") or "").strip()
+    sender = str(getattr(settings, "mail_from_address", "") or "noreply@mycelium.local").strip()
+    timeout = max(1, min(int(getattr(settings, "mail_smtp_timeout_seconds", 10) or 10), 60))
+    use_tls = bool(getattr(settings, "mail_smtp_use_tls", True))
+    use_ssl = bool(getattr(settings, "mail_smtp_use_ssl", False))
+
+    message = EmailMessage()
+    message["From"] = sender
+    message["To"] = str(to_email).strip()
+    message["Subject"] = str(subject).strip()[:120]
+    message.set_content(text[:10000])
+
+    try:
+        smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+        with smtp_cls(host, port, timeout=timeout) as smtp:
+            if use_tls and not use_ssl:
+                smtp.starttls()
+            if username and password:
+                smtp.login(username, password)
+            smtp.send_message(message)
+        return True, ""
+    except Exception as e:
+        return False, str(e)[:300]
+
+
 def create_password_reset_request_link(
     session: Session,
     *,
@@ -99,6 +133,16 @@ def create_password_reset_request_link(
                 "If you did not request this, ignore it."
             ),
         )
+
+    mail_subject = "Mycelium recovery link"
+    reset_url = f"{str(base_url).rstrip('/')}/reset-password/{token}"
+    mail_text = (
+        "Mycelium account recovery\n\n"
+        "Use this one-time link to set a new password:\n"
+        f"{reset_url}\n\n"
+        "If you did not request this, you can ignore this message."
+    )
+    _send_email_message(to_email=user.email, subject=mail_subject, text=mail_text, base_url=base_url)
     return True, "If the account exists, a recovery link was prepared."
 
 

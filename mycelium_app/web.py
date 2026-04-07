@@ -4,6 +4,7 @@ import io
 import json
 import math
 import time
+from datetime import datetime
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -38,6 +39,7 @@ from mycelium_app.security import decode_token
 from mycelium_app.security import hash_password, hash_password_reset_token, verify_password, verify_password_reset_token
 from mycelium_app.settings import settings
 from mycelium_app.routes.auth import consume_password_reset_token, create_password_reset_request_link
+from mycelium_app.stimulus import record_stimulus_event
 
 
 templates = Jinja2Templates(directory="templates")
@@ -113,6 +115,22 @@ def recover_action(
     email: str = Form(...),
 ):
     base_url = str(getattr(settings, "app_public_base_url", "") or str(request.base_url)).rstrip("/")
+    try:
+        user = session.exec(select(User).where(User.email == str(email or "").strip().lower())).first()
+        if user:
+            record_stimulus_event(
+                session,
+                user_id=int(user.id or 0),
+                project_id=None,
+                device_id=str(settings.nexus_device_id or "local"),
+                source="web_form",
+                modality="identity",
+                signal_type="password_recovery_request",
+                stimulus={"form": "recover", "email_present": True},
+                occurred_at=datetime.utcnow(),
+            )
+    except Exception:
+        pass
     _, message = create_password_reset_request_link(session, email=email, base_url=base_url)
     return RedirectResponse(url=f"/login?notice={quote_plus(message)}", status_code=302)
 
@@ -157,6 +175,20 @@ def login_action(
     if not verify_password(password, user.hashed_password):
         return RedirectResponse(url="/login?error=Invalid+credentials", status_code=302)
     token = create_access_token(subject=str(user.id))
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="web_form",
+            modality="auth",
+            signal_type="login_success",
+            stimulus={"form": "login", "email_domain": email_value.split("@")[ -1] if "@" in email_value else ""},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
     response = RedirectResponse(url="/projects", status_code=302)
     response.set_cookie(
         key=settings.cookie_name,
@@ -196,6 +228,25 @@ def register_action(
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="web_form",
+            modality="identity",
+            signal_type="register_success",
+            stimulus={
+                "form": "register",
+                "has_name": bool(name_value),
+                "email_domain": email_value.split("@")[ -1] if "@" in email_value else "",
+            },
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     token = create_access_token(subject=str(user.id))
     response = RedirectResponse(url="/projects", status_code=302)
@@ -250,6 +301,27 @@ def create_project_action(
     session.refresh(project)
     session.add(ProjectMember(project_id=project.id, user_id=current_user.id, role=ProjectRole.owner))
     session.commit()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=int(project.id or 0),
+            device_id=str(settings.nexus_device_id or "local"),
+            source="web_form",
+            modality="workspace",
+            signal_type="project_create",
+            stimulus={
+                "form": "project_create",
+                "name_len": len(str(name or "")),
+                "has_description": bool(str(description or "").strip()),
+                "role": "owner",
+            },
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return RedirectResponse(url=f"/projects/{project.id}", status_code=302)
 
 
@@ -1269,9 +1341,7 @@ async def predict_action(
             "iteration_gains": [
                 {
                     "cycle": int(it.cycle),
-                    "test_accuracy": None
-                    if it.test_accuracy is None
-                    else round(float(it.test_accuracy), 6),
+                    "test_accuracy": None if it.test_accuracy is None else round(float(it.test_accuracy), 6),
                     "test_mae": None if it.test_mae is None else round(float(it.test_mae), 6),
                     "test_rmse": None if it.test_rmse is None else round(float(it.test_rmse), 6),
                     "lift_over_baseline": None
@@ -1365,6 +1435,31 @@ async def predict_action(
             },
             "preview": pred.preview_rows,
         }
+
+        try:
+            record_stimulus_event(
+                session,
+                user_id=int(current_user.id or 0),
+                project_id=None,
+                device_id=str(settings.nexus_device_id or "local"),
+                source="web_form",
+                modality="prediction",
+                signal_type="predict_submit",
+                stimulus={
+                    "form": "predict",
+                    "target_col": str(target_col or ""),
+                    "plane": str(plane_enum.value),
+                    "n_rows": int(df.shape[0]),
+                    "n_cols": int(df.shape[1]),
+                    "use_ledger": bool(use_ledger_bool),
+                    "cascade_enabled": bool(cascade_enabled_bool),
+                    "competitive_inhibition": bool(competitive_inhibition_bool),
+                    "thermal_noise": bool(thermal_noise_bool),
+                },
+                occurred_at=datetime.utcnow(),
+            )
+        except Exception:
+            pass
 
         # Predictor-level diagnostics (e.g. abstain reason breakdown).
         try:

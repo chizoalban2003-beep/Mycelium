@@ -377,6 +377,25 @@ class TelemetryIngestResponse(BaseModel):
     event_id: int
 
 
+class DigitalStimulusIngestRequest(BaseModel):
+    project_id: int | None = None
+    device_id: str | None = None
+    source: str = "stimulus"
+    modality: str = "auto"
+    signal_type: str | None = None
+    stimulus: object = Field(default_factory=dict)
+    occurred_at: datetime | None = None
+
+
+class DigitalStimulusIngestResponse(BaseModel):
+    ok: bool = True
+    event_id: int
+    signal_type: str
+    payload_kind: str
+    learning_profile: dict[str, object] = Field(default_factory=dict)
+    tabular: dict[str, object] = Field(default_factory=dict)
+
+
 class TelemetrySummaryResponse(BaseModel):
     ok: bool = True
     window_hours: int

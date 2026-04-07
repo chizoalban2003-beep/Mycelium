@@ -98,6 +98,51 @@ Inbound Telegram chat can be wired to:
 When `telegram_chat_id` matches a user policy, inbound messages are persisted to chat history and answered.
 Status prompts (e.g., "how are you") now include live viscosity-grounded response context.
 
+### Optional: Email recovery channel
+
+If you want account recovery to work without Telegram, configure SMTP delivery:
+
+- `MAIL_ENABLED=true`
+- `MAIL_FROM_ADDRESS=noreply@<your-domain>`
+- `MAIL_SMTP_HOST=<smtp-host>`
+- `MAIL_SMTP_PORT=587`
+- `MAIL_SMTP_USERNAME=<username>`
+- `MAIL_SMTP_PASSWORD=<password>`
+- `MAIL_SMTP_USE_TLS=true`
+- `MAIL_SMTP_USE_SSL=false`
+
+Recovery links sent from the login page will then be delivered to the user’s email address. Telegram remains optional and can be used in parallel.
+
+### Universal stimulus ingestion
+
+If you want the app to learn from more than text and app-open telemetry, route all meaningful digital interactions through the shared stimulus pipeline:
+
+- `POST /api/nexus/stimulus/ingest`
+
+Recommended production pattern:
+
+- Treat every user-visible action as an event first.
+- Normalize event metadata into flat columns immediately.
+- Keep raw payloads shallow, safe, and truncated.
+- Let tabular summaries drive prediction, memory reinforcement, and curiosity capture.
+
+For self-evaluation, keep one rule:
+
+- discrete outcomes → classification metrics (`accuracy`, `f1_macro`, `balanced_accuracy`, `log_loss`)
+- numeric outcomes → regression metrics (`mae`, `rmse`, `r2`, `median_ae`)
+
+The physics predictor stays the model engine; the metric layer decides how to score the result.
+
+Good stimulus candidates:
+
+- chat messages and replies
+- button clicks and form submissions
+- file imports and dataset previews
+- navigation transitions and focus changes
+- notification opens, dismissals, and accept/reject feedback
+
+This gives you a single “Grow with Data” path across web, mobile, and companion devices.
+
 Emergency brake commands (Telegram, implemented):
 
 - `/freeze` → enables `actions.kill_switch=true` and clears pending device actions

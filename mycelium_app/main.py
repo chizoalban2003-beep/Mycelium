@@ -37,6 +37,7 @@ from mycelium_app.routes.nudges import router as nudges_router
 from mycelium_app.routes.predict import router as predict_router
 from mycelium_app.routes.projects import router as projects_router
 from mycelium_app.routes.reflection import router as reflection_router
+from mycelium_app.routes.stimulus import router as stimulus_router
 from mycelium_app.routes.telemetry import router as telemetry_router
 from mycelium_app.routes.tasks import router as tasks_router
 from mycelium_app.routes.tree import router as tree_router
@@ -378,6 +379,7 @@ app.include_router(live_router)
 app.include_router(memory_router)
 app.include_router(nudges_router)
 app.include_router(growth_router)
+app.include_router(stimulus_router)
 app.include_router(telemetry_router)
 app.include_router(tasks_router)
 app.include_router(reflection_router)

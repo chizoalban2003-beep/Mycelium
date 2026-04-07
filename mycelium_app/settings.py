@@ -98,6 +98,17 @@ class Settings(BaseSettings):
     notifications_telegram_bot_token: str = ""
     notifications_telegram_webhook_secret: str = ""
 
+    # Optional SMTP mail delivery for account recovery.
+    mail_enabled: bool = False
+    mail_from_address: str = "noreply@mycelium.local"
+    mail_smtp_host: str = ""
+    mail_smtp_port: int = 587
+    mail_smtp_username: str = ""
+    mail_smtp_password: str = ""
+    mail_smtp_use_tls: bool = True
+    mail_smtp_use_ssl: bool = False
+    mail_smtp_timeout_seconds: int = 10
+
     # Hybrid predictor (physics governor + pattern timing score).
     hybrid_predictor_enabled: bool = True
     hybrid_predictor_window_minutes: int = 120

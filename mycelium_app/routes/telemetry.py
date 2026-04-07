@@ -12,6 +12,7 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.growth import compute_growth_stage
 from mycelium_app.models import GrowthLedgerEntry, HiveOutboxMessage, NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.schemas import (
     TelemetryAssistantActionRequest,
@@ -283,17 +284,17 @@ def ingest(
     if occurred_at > datetime.utcnow() + timedelta(minutes=5):
         occurred_at = datetime.utcnow()
 
-    row = SignalLedgerEvent(
-        created_at=occurred_at,
-        created_by_user_id=user_id,
+    row, _ = record_stimulus_event(
+        session,
+        user_id=user_id,
         project_id=payload.project_id,
         device_id=device_id,
+        source="telemetry",
+        modality="event",
         signal_type=signal_type,
-        payload_json=dumped,
+        stimulus=raw,
+        occurred_at=occurred_at,
     )
-    session.add(row)
-    session.commit()
-    session.refresh(row)
 
     return TelemetryIngestResponse(ok=True, event_id=int(row.id or 0))
 

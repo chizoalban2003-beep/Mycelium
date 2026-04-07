@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta
 from urllib import parse, request
@@ -21,6 +22,7 @@ from mycelium_app.models import (
 )
 from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.routes.hybrid import auto_handoff_confirm, auto_handoff_launch
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     AutoHandoffConfirmRequest,
     AutoHandoffLaunchRequest,
@@ -303,6 +305,27 @@ def send_chat(
     )
     session.add(user_row)
     session.flush()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="chat",
+            modality="text",
+            signal_type=f"chat_{channel}",
+            stimulus={
+                "conversation_key": conv_key,
+                "channel": channel,
+                "role": "user",
+                "message_len": len(msg),
+                "message_digest": hashlib.sha256(msg.encode("utf-8")).hexdigest()[:16],
+            },
+            occurred_at=user_row.created_at,
+        )
+    except Exception:
+        pass
 
     ap = get_assistant_profile_effective(session, user_id=user_id, project_id=payload.project_id)
     assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"

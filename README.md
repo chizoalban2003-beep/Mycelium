@@ -147,6 +147,23 @@ Telegram inbound webhook endpoint:
 - Add request header `X-Telegram-Bot-Api-Secret-Token: <secret-token>` when webhook secret is configured.
 - Telegram status prompts like "how are you" now return a viscosity-grounded state summary.
 
+## Email recovery channel (optional)
+
+Mycelium can also send password-reset links by email when SMTP is configured.
+
+Set these environment variables:
+
+- `MAIL_ENABLED=true`
+- `MAIL_FROM_ADDRESS=noreply@your-domain.com`
+- `MAIL_SMTP_HOST=smtp.your-provider.com`
+- `MAIL_SMTP_PORT=587`
+- `MAIL_SMTP_USERNAME=<username>`
+- `MAIL_SMTP_PASSWORD=<password>`
+- `MAIL_SMTP_USE_TLS=true`
+- `MAIL_SMTP_USE_SSL=false`
+
+Account recovery then uses the login page’s recovery form and sends a one-time reset link to the user’s email address, with Telegram as an optional extra channel if enabled.
+
 ## ActionSchema (task reproduction foundation)
 
 Behavioral mirroring now has a first API skeleton:
@@ -229,6 +246,46 @@ Current supported surfaces:
 - Clipboard copy for quick handoff to other apps
 - Native share sheet when the browser supports it
 - Termux notifications on Android for background alerts
+
+## Universal stimulus pipeline
+
+Mycelium now has a shared path for digital stimulus: app events, chat payloads, UI actions, telemetry, file-derived metadata, and other structured signals can all be normalized into the same ledger flow.
+
+Use the universal ingest endpoint when the source is not a plain text note:
+
+- `POST /api/nexus/stimulus/ingest`
+
+It stores:
+
+- a safe surface copy of the stimulus
+- a flattened tabular feature map
+- structural counts like depth, list length, and scalar mix
+- a stable digest for dedupe and replay
+- a learning profile that recommends the right metrics and model head
+
+Visible signal sources now include:
+
+- device boot and daemon startup
+- app opens and navigation/focus changes
+- chat messages, recovery requests, and assistant replies
+- project creation and workspace setup
+- member invites, role changes, and node creation
+- predictor uploads, corrections, and measured outcomes
+
+Suggested improvement loop:
+
+1. Emit every meaningful UI interaction as a stimulus event.
+2. Normalize it into a compact tabular row.
+3. Feed those rows into `SignalLedgerEvent`, `GrowthLedgerEntry`, and the predictor.
+4. Promote only stable, consented patterns into memory or Hive export.
+
+Self-evaluation rule:
+
+- Use classification metrics like `accuracy`, `f1_macro`, and `balanced_accuracy` for discrete outcomes.
+- Use regression metrics like `mae`, `rmse`, and `r2` for numeric outcomes.
+- Keep the physics model as the feature/pattern engine, and let the evaluation layer choose the scoreboard.
+
+That keeps the app aligned with the motto: Grow with Data.
 
 Design rule:
 

@@ -204,6 +204,38 @@ def _post_app_open(
         raise RuntimeError(f"telemetry ingest failed ({res.status}): {parsed}")
 
 
+def _post_device_boot(
+    *,
+    base_url: str,
+    token: str,
+    project_id: int | None,
+    device_id: str | None,
+    backend: str,
+    dry_run: bool,
+) -> None:
+    body: dict[str, object] = {
+        "project_id": project_id,
+        "device_id": device_id,
+        "signal_type": "device_boot",
+        "payload": {
+            "backend": backend,
+            "booted_at": _utc_now_iso(),
+            "process": "passive_telemetry_daemon",
+            "session_pid": os.getpid(),
+        },
+    }
+
+    if dry_run:
+        print(json.dumps({"would_post_boot": body}, ensure_ascii=False))
+        return
+
+    url = base_url.rstrip("/") + "/api/nexus/telemetry/ingest"
+    res = _request("POST", url, token=token, json_body=body)
+    if res.status != 200:
+        parsed = _parse_json_maybe(res.body_text)
+        raise RuntimeError(f"telemetry boot ingest failed ({res.status}): {parsed}")
+
+
 def _slug_app_token(app_token: str) -> str:
     s = str(app_token or "").strip().lower()
     s = re.sub(r"[^a-z0-9._-]+", "_", s)
@@ -339,6 +371,19 @@ def main() -> int:
             ensure_ascii=False,
         )
     )
+
+    try:
+        _post_device_boot(
+            base_url=str(args.base_url),
+            token=str(token or ""),
+            project_id=args.project_id,
+            device_id=args.device_id,
+            backend="x11",
+            dry_run=bool(args.dry_run),
+        )
+        print(json.dumps({"event": "device_boot", "at": _utc_now_iso()}, ensure_ascii=False))
+    except Exception as e:
+        print(json.dumps({"error": str(e), "event": "device_boot"}, ensure_ascii=False), file=sys.stderr)
 
     while not stop["value"]:
         wid = _active_window_id_x11()

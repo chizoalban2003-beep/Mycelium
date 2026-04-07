@@ -9,6 +9,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import NodeRun, NodeRunStatus, ProjectMember, ProjectRole, TreeNode, User
 from mycelium_app.schemas import NodeRunPublic, TreeNodeCreate, TreeNodePublic
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api", tags=["tree"])
@@ -67,6 +68,27 @@ def create_node(
     session.add(node)
     session.commit()
     session.refresh(node)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=project_id,
+            device_id="local",
+            source="tree_api",
+            modality="workspace",
+            signal_type="node_create",
+            stimulus={
+                "node_type": str(payload.node_type),
+                "name_len": len(str(payload.name or "")),
+                "has_parent": payload.parent_id is not None,
+                "config_len": len(str(payload.config_json or "")),
+            },
+            occurred_at=node.created_at,
+        )
+    except Exception:
+        pass
+
     return TreeNodePublic(
         id=node.id,
         project_id=node.project_id,
@@ -92,11 +114,41 @@ def run_node(node_id: int, current_user: User = Depends(get_current_user), sessi
     session.commit()
     session.refresh(run)
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=node.project_id,
+            device_id="local",
+            source="tree_api",
+            modality="execution",
+            signal_type="node_run",
+            stimulus={"node_type": str(node.node_type), "status": str(run.status), "name_len": len(str(node.name or ""))},
+            occurred_at=run.started_at or datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     run.status = NodeRunStatus.failed
     run.finished_at = datetime.utcnow()
     run.logs = "Node execution engine not implemented yet."
     session.add(run)
     session.commit()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=node.project_id,
+            device_id="local",
+            source="tree_api",
+            modality="execution",
+            signal_type="node_run_result",
+            stimulus={"node_type": str(node.node_type), "status": str(run.status), "result": "not_implemented"},
+            occurred_at=run.finished_at or datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return NodeRunPublic(
         id=run.id,
