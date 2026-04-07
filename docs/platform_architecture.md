@@ -45,6 +45,7 @@ Signal and memory processing:
 - [mycelium_app/metric_snapshot.py](../mycelium_app/metric_snapshot.py)
 - [mycelium_app/causal_trace.py](../mycelium_app/causal_trace.py)
 - [mycelium_app/self_reflection.py](../mycelium_app/self_reflection.py)
+- [mycelium_app/curiosity.py](../mycelium_app/curiosity.py)
 - [mycelium_app/routes/memory.py](../mycelium_app/routes/memory.py)
 
 Purpose:
@@ -53,6 +54,22 @@ Purpose:
 - normalize them into safe structured rows
 - turn events into summaries, memory, and explanations
 - preserve a visible learning trail
+
+### Explainability and active learning support
+
+These modules sit between learning and user-facing insight:
+
+- [mycelium_app/causal_trace.py](../mycelium_app/causal_trace.py)
+- [mycelium_app/metric_snapshot.py](../mycelium_app/metric_snapshot.py)
+- [mycelium_app/curiosity.py](../mycelium_app/curiosity.py)
+- [mycelium_app/self_reflection.py](../mycelium_app/self_reflection.py)
+
+Purpose:
+
+- explain why the system made a prediction or recommendation
+- capture surprising failures and open questions
+- summarize daily learning in human-readable form
+- feed the user’s feedback back into the system
 
 ### 3) Trust and governance layer
 
@@ -64,12 +81,37 @@ Policy and control surfaces:
 - [mycelium_app/routes/tasks.py](../mycelium_app/routes/tasks.py)
 - [mycelium_app/routes/chat.py](../mycelium_app/routes/chat.py)
 
+Route surfaces that belong to governance and control:
+
+- [mycelium_app/routes/assistant.py](../mycelium_app/routes/assistant.py)
+- [mycelium_app/routes/identity.py](../mycelium_app/routes/identity.py)
+- [mycelium_app/routes/nudges.py](../mycelium_app/routes/nudges.py)
+- [mycelium_app/routes/homeostasis.py](../mycelium_app/routes/homeostasis.py)
+- [mycelium_app/routes/reflection.py](../mycelium_app/routes/reflection.py)
+- [mycelium_app/routes/growth.py](../mycelium_app/routes/growth.py)
+- [mycelium_app/routes/nexus.py](../mycelium_app/routes/nexus.py)
+
 Purpose:
 
 - gate actions behind explicit permission
 - keep raw personal data local by default
 - allow revocation, replay, and audit
 - make the system reversible and inspectable
+
+### Shared intelligence layer
+
+Hive and cross-node reasoning:
+
+- [mycelium_app/hive_empathy.py](../mycelium_app/hive_empathy.py)
+- [mycelium_app/routes/hive.py](../mycelium_app/routes/hive.py)
+- [mycelium_app/routes/live.py](../mycelium_app/routes/live.py)
+
+Purpose:
+
+- aggregate allowlisted wisdom across devices or users
+- filter low-support or low-confidence shared lessons
+- surface the current network state in real time
+- keep shared intelligence coarse and consented
 
 ### 4) Timing and prediction layer
 
@@ -87,6 +129,20 @@ Purpose:
 - score flow state from live device conditions
 - adapt to context instead of pushing blindly
 
+### Neighbor modules in the prediction loop
+
+These are not the core predictor itself, but they feed or consume it:
+
+- [mycelium_app/routes/predict.py](../mycelium_app/routes/predict.py)
+- [mycelium_app/routes/hybrid.py](../mycelium_app/routes/hybrid.py)
+- [mycelium_app/routes/game.py](../mycelium_app/routes/game.py)
+
+Purpose:
+
+- expose predictions to the UI and API
+- coordinate work-session launches and handoffs
+- reuse the predictor for adjacent experiences
+
 ### 5) Platform runtime layer
 
 Core runtime and data contracts:
@@ -102,6 +158,61 @@ Purpose:
 - provide persistence and API contracts
 - wire the app together
 - expose the platform as a coherent runtime
+
+## Additional workspace modules
+
+These files are part of the platform even if they are not primary layers:
+
+### Identity and persona
+
+- [mycelium_app/assistant_profile.py](../mycelium_app/assistant_profile.py)
+- [mycelium_app/identity_presentation.py](../mycelium_app/identity_presentation.py)
+
+Use them to control the assistant’s name, voice, and presentation rules.
+
+### Messaging and delivery
+
+- [mycelium_app/messaging_bridge.py](../mycelium_app/messaging_bridge.py)
+- [mycelium_app/routes/chat.py](../mycelium_app/routes/chat.py)
+
+Use them to route the assistant through app chat, Telegram, notifications, and other surfaces.
+
+### Learning orchestration
+
+- [mycelium_app/telemetry_assistant.py](../mycelium_app/telemetry_assistant.py)
+- [mycelium_app/feedback_ionizer.py](../mycelium_app/feedback_ionizer.py)
+- [mycelium_app/stimulus.py](../mycelium_app/stimulus.py)
+- [mycelium_app/routes/stimulus.py](../mycelium_app/routes/stimulus.py)
+- [mycelium_app/routes/telemetry.py](../mycelium_app/routes/telemetry.py)
+
+Use them to turn raw device events into learning inputs and feedback loops.
+
+### Stability and self-repair
+
+- [mycelium_app/predictor_homeostasis.py](../mycelium_app/predictor_homeostasis.py)
+- [mycelium_app/homeostasis.py](../mycelium_app/homeostasis.py)
+- [mycelium_app/routes/homeostasis.py](../mycelium_app/routes/homeostasis.py)
+
+Use them to keep the platform stable, readable, and resilient.
+
+### Project and product surfaces
+
+- [mycelium_app/routes/projects.py](../mycelium_app/routes/projects.py)
+- [mycelium_app/routes/tree.py](../mycelium_app/routes/tree.py)
+- [mycelium_app/routes/knowledge.py](../mycelium_app/routes/knowledge.py)
+- [mycelium_app/routes/curiosity.py](../mycelium_app/routes/curiosity.py)
+
+Use them to keep the old workspace foundation useful inside the new platform.
+
+### Runtime glue
+
+- [mycelium_app/main.py](../mycelium_app/main.py)
+- [mycelium_app/models.py](../mycelium_app/models.py)
+- [mycelium_app/schemas.py](../mycelium_app/schemas.py)
+- [mycelium_app/db.py](../mycelium_app/db.py)
+- [mycelium_app/deps.py](../mycelium_app/deps.py)
+
+Use them as the shared contract layer for the entire platform.
 
 ## Data flow structure
 
@@ -170,6 +281,19 @@ The platform should expose the following surfaces:
 - Builder Copilot: focus, momentum, and next steps
 - Hive: shared intelligence and node observability
 - Child-Safe: stricter autonomy and parent-approved policy
+
+## How to incorporate the rest of the workspace
+
+The correct way to fold the remaining workspace into the platform is:
+
+1. Keep `main.py`, `models.py`, `schemas.py`, `db.py`, and `deps.py` as the runtime foundation.
+2. Treat `routes/` as the feature/API layer and wire each route into one platform surface.
+3. Treat the top-level modules as services: learning, prediction, identity, policy, memory, and shared intelligence.
+4. Keep templates as the human interface for the same platform layers.
+5. Use scripts as operational tools for rollout, evaluation, and demos.
+6. Preserve docs as the product contract and architecture guide.
+
+That means the rest of the workspace is not separate from the project — it is the platform.
 
 ## Platform summary
 
