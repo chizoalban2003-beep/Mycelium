@@ -1,0 +1,92 @@
+name: twa-release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      MYCELIUM_RAILWAY_DOMAIN: ${{ secrets.MYCELIUM_RAILWAY_DOMAIN }}
+      MYCELIUM_MANIFEST_URL: ${{ secrets.MYCELIUM_MANIFEST_URL }}
+      MYCELIUM_TWA_PACKAGE_ID: ${{ secrets.MYCELIUM_TWA_PACKAGE_ID }}
+      MYCELIUM_TWA_OUT_DIR: ${{ github.workspace }}/twa
+      MYCELIUM_KEYSTORE_PATH: ${{ github.workspace }}/twa/android.keystore
+      MYCELIUM_KEYSTORE_PASSWORD: ${{ secrets.MYCELIUM_KEYSTORE_PASSWORD }}
+      MYCELIUM_KEY_PASSWORD: ${{ secrets.MYCELIUM_KEY_PASSWORD }}
+      BUBBLEWRAP_KEYSTORE_PASSWORD: ${{ secrets.MYCELIUM_KEYSTORE_PASSWORD }}
+      BUBBLEWRAP_KEY_PASSWORD: ${{ secrets.MYCELIUM_KEY_PASSWORD }}
+      CONFIRMED_RAILWAY_SYNC: "true"
+      MYCELIUM_TWA_PRECHECK_CONFIRM: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Bubblewrap CLI
+        run: npm install -g @bubblewrap/cli
+
+      - name: Bootstrap Android SDK
+        run: yes | bubblewrap doctor
+
+      - name: Decode signing keystore
+        run: |
+          mkdir -p "$MYCELIUM_TWA_OUT_DIR"
+          printf '%s' '${{ secrets.MYCELIUM_RELEASE_KEYSTORE_B64 }}' | base64 -d > "$MYCELIUM_KEYSTORE_PATH"
+          chmod 600 "$MYCELIUM_KEYSTORE_PATH"
+
+      - name: Initialize TWA project if needed
+        if: ${{ hashFiles('twa/twa-manifest.json') == '' }}
+        run: |
+          printf '\n%.0s' {1..20} | bubblewrap init --manifest "${MYCELIUM_MANIFEST_URL:-https://${MYCELIUM_RAILWAY_DOMAIN}/static/manifest.webmanifest}" --directory "$MYCELIUM_TWA_OUT_DIR"
+
+      - name: Run TWA release forge
+        run: bash scripts/release_twa_build.sh --ci
+
+      - name: Collect release artifacts
+        run: |
+          mkdir -p release-artifacts
+          cp "$MYCELIUM_TWA_OUT_DIR/app-release-signed.apk" release-artifacts/ 2>/dev/null || true
+          cp "$MYCELIUM_TWA_OUT_DIR/app-release-bundle.aab" release-artifacts/ 2>/dev/null || true
+          cp version_bump.txt release-artifacts/
+          cp twa-keystore-fingerprint.txt release-artifacts/
+          ls -lah release-artifacts
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mycelium-twa-release-${{ github.ref_name }}
+          path: release-artifacts/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: ${{ github.event_name == 'push' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            release-artifacts/*.apk
+            release-artifacts/*.aab
+            release-artifacts/version_bump.txt
+            release-artifacts/twa-keystore-fingerprint.txt

@@ -65,7 +65,8 @@ DOMAIN="${MYCELIUM_RAILWAY_DOMAIN:-}"
 PACKAGE_ID="${MYCELIUM_TWA_PACKAGE_ID:-com.mycelium.nexus.alpha}"
 MANIFEST_URL="${MYCELIUM_MANIFEST_URL:-}"
 KEYSTORE_PATH="${MYCELIUM_KEYSTORE_PATH:-$ROOT_DIR/mycelium-release.jks}"
-KEYSTORE_ALIAS="${MYCELIUM_KEYSTORE_ALIAS:-mycelium}"
+KEYSTORE_ALIAS="${MYCELIUM_KEYSTORE_ALIAS:-android}"
+KEYSTORE_PASSWORD="${MYCELIUM_KEYSTORE_PASSWORD:-${BUBBLEWRAP_KEYSTORE_PASSWORD:-}}"
 OUT_DIR="${MYCELIUM_TWA_OUT_DIR:-$ROOT_DIR/twa}"
 FINGERPRINT_OUT="${MYCELIUM_FINGERPRINT_OUT:-$ROOT_DIR/twa-keystore-fingerprint.txt}"
 LOCAL_ENV_FILE="${MYCELIUM_TWA_LOCAL_ENV_FILE:-$ROOT_DIR/.env}"
@@ -104,7 +105,28 @@ fi
 if [[ ! -f "$KEYSTORE_PATH" ]]; then
   echo "Missing release keystore: $KEYSTORE_PATH" >&2
   echo "Generate one with:" >&2
-  echo "  keytool -genkeypair -v -keystore mycelium-release.jks -alias mycelium -keyalg RSA -keysize 2048 -validity 10000" >&2
+  echo "  keytool -genkeypair -v -keystore mycelium-release.jks -alias android -keyalg RSA -keysize 2048 -validity 10000" >&2
+  exit "$EXIT_MISSING_KEYSTORE"
+fi
+
+if [[ -z "$KEYSTORE_PASSWORD" ]]; then
+  KEYSTORE_PASSWORD="$(read_env_value MYCELIUM_KEYSTORE_PASSWORD "$LOCAL_ENV_FILE" || true)"
+fi
+if [[ -z "$KEYSTORE_PASSWORD" ]]; then
+  KEYSTORE_PASSWORD="$(read_env_value BUBBLEWRAP_KEYSTORE_PASSWORD "$LOCAL_ENV_FILE" || true)"
+fi
+if [[ -z "$KEYSTORE_PASSWORD" ]]; then
+  if [[ "$CI_MODE" == true ]]; then
+    echo "Missing keystore password. Set MYCELIUM_KEYSTORE_PASSWORD or BUBBLEWRAP_KEYSTORE_PASSWORD before running CI." >&2
+    exit "$EXIT_MISSING_KEYSTORE"
+  fi
+  if [[ -t 0 ]]; then
+    read -r -s -p "Keystore password for $KEYSTORE_PATH: " KEYSTORE_PASSWORD
+    echo
+  fi
+fi
+if [[ -z "$KEYSTORE_PASSWORD" ]]; then
+  echo "Missing keystore password. Set MYCELIUM_KEYSTORE_PASSWORD or BUBBLEWRAP_KEYSTORE_PASSWORD." >&2
   exit "$EXIT_MISSING_KEYSTORE"
 fi
 
@@ -128,7 +150,7 @@ echo "Output dir:  $OUT_DIR"
 
 echo
 echo "== Keystore SHA-256 fingerprint =="
-FINGERPRINT="$(keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEYSTORE_ALIAS" | awk '/SHA256:/{print $2; exit}' || true)"
+FINGERPRINT="$(keytool -list -v -storepass "$KEYSTORE_PASSWORD" -keystore "$KEYSTORE_PATH" -alias "$KEYSTORE_ALIAS" | awk '/SHA256:/{print $2; exit}' || true)"
 if [[ -z "$FINGERPRINT" ]]; then
   echo "Unable to extract SHA-256 fingerprint from keystore." >&2
   exit "$EXIT_FINGERPRINT_EXTRACT"

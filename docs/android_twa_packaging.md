@@ -89,6 +89,16 @@ Before it builds, it extracts the keystore SHA-256 fingerprint and stops if a lo
 It also prompts for an explicit yes/no confirmation so you do not burn time on a build when Railway has not been updated yet.
 Successful builds also write a small `version_bump.txt` tracker in the repo root so you can count release iterations.
 
+GitHub Actions secrets for the tag-driven workflow:
+
+- `MYCELIUM_RELEASE_KEYSTORE_B64`: Base64-encoded release keystore file.
+- `MYCELIUM_KEYSTORE_PASSWORD`: Keystore password used by `keytool` and Bubblewrap.
+- `MYCELIUM_KEY_PASSWORD`: Key password used by Bubblewrap signing.
+- `MYCELIUM_RAILWAY_DOMAIN`: Live Railway domain used to build the manifest URL.
+- Optional: `MYCELIUM_MANIFEST_URL` and `MYCELIUM_TWA_PACKAGE_ID`.
+
+The workflow uses the Bubblewrap default signing alias `android`, so the keystore you upload should contain that alias unless you intentionally override it.
+
 Launch-readiness checklist: [android_twa_launch_readiness_checklist.md](android_twa_launch_readiness_checklist.md)
 
 Before packaging, confirm the versioning in your scaffold is set for release:

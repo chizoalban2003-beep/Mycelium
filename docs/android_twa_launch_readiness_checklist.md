@@ -25,6 +25,12 @@ Use this checklist right before you build and upload the first Mycelium Android 
 - Confirm `NOTIFICATIONS_TELEGRAM_WEBHOOK_SECRET` matches the webhook secret configured in Telegram.
 - Confirm `COOKIE_SECURE=true` and production database settings are still active.
 
+## GitHub Actions
+
+- Confirm `MYCELIUM_RELEASE_KEYSTORE_B64` is stored as a GitHub Secret.
+- Confirm `MYCELIUM_KEYSTORE_PASSWORD` and `MYCELIUM_KEY_PASSWORD` are stored as GitHub Secrets.
+- Confirm the release keystore contains the Bubblewrap default alias `android`, or update the workflow and helper to match your alias.
+
 ## Verification
 
 - Curl `https://<your-domain>/.well-known/assetlinks.json` and compare the certificate fingerprint.

@@ -200,6 +200,7 @@ Android TWA release workflow:
 
 - Helper script: `scripts/release_twa_build.sh`
 - CI mode: `CONFIRMED_RAILWAY_SYNC=true bash scripts/release_twa_build.sh --ci`
+- GitHub Actions workflow: `.github/workflows/twa-release.yml`
 - Launch checklist: [docs/android_twa_launch_readiness_checklist.md](docs/android_twa_launch_readiness_checklist.md)
 
 ## Email recovery channel (optional)
