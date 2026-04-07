@@ -137,6 +137,9 @@ Good stimulus candidates:
 
 - chat messages and replies
 - button clicks and form submissions
+- task bootstrap, approval, ack, and verification
+- curiosity answers, dismissals, and exports
+- nudge acknowledgments and seen-state changes
 - file imports and dataset previews
 - navigation transitions and focus changes
 - notification opens, dismissals, and accept/reject feedback

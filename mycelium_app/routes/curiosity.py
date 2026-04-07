@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
@@ -24,6 +25,7 @@ from mycelium_app.schemas import (
     CuriosityDismissResponse,
     CuriosityExportSummaryResponse,
 )
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/nexus/curiosity", tags=["curiosity"])
@@ -100,6 +102,20 @@ def answer(
             tags=list(payload.tags or []),
             export_to_hive=bool(payload.export_to_hive),
         )
+        try:
+            record_stimulus_event(
+                session,
+                user_id=user_id,
+                project_id=payload.project_id,
+                device_id="local",
+                source="curiosity_api",
+                modality="feedback",
+                signal_type="curiosity_answer",
+                stimulus={"case_id": int(payload.case_id), "tags_count": len(list(payload.tags or [])), "export_to_hive": bool(payload.export_to_hive)},
+                occurred_at=datetime.utcnow(),
+            )
+        except Exception:
+            pass
         return CuriosityAnswerResponse(ok=True, answer_id=int(ans_id))
     except ValueError as e:
         code = str(e)
@@ -119,6 +135,20 @@ def dismiss(
     user_id = int(current_user.id or 0)
     try:
         dismiss_case(session, user_id=user_id, case_id=int(payload.case_id))
+        try:
+            record_stimulus_event(
+                session,
+                user_id=user_id,
+                project_id=payload.project_id,
+                device_id="local",
+                source="curiosity_api",
+                modality="feedback",
+                signal_type="curiosity_dismiss",
+                stimulus={"case_id": int(payload.case_id)},
+                occurred_at=datetime.utcnow(),
+            )
+        except Exception:
+            pass
         return CuriosityDismissResponse(ok=True)
     except ValueError as e:
         if str(e) == "not_found":

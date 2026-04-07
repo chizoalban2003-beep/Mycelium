@@ -20,6 +20,7 @@ from mycelium_app.models import (
     User,
 )
 from mycelium_app.parental_policy import get_policy, set_policy
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     TaskBootstrapWorkSessionRequest,
     TaskBootstrapWorkSessionResponse,
@@ -430,6 +431,21 @@ def bootstrap_work_session(
     session.refresh(trajectory)
     session.refresh(replica)
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+            source="task_api",
+            modality="task",
+            signal_type="task_bootstrap",
+            stimulus={"duration_minutes": duration, "focus_app": focus_app, "trajectory_key_len": len(trajectory_key)},
+            occurred_at=replica.created_at,
+        )
+    except Exception:
+        pass
+
     return TaskBootstrapWorkSessionResponse(
         ok=True,
         trajectory_id=int(trajectory.id or 0),
@@ -469,6 +485,21 @@ def record_trajectory(
     session.add(row)
     session.commit()
     session.refresh(row)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+            source="task_api",
+            modality="task",
+            signal_type="task_trajectory_record",
+            stimulus={"sequence_len": len(seq), "trajectory_key_len": len(trajectory_key), "confidence": conf},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
 
     return TaskTrajectoryRecordResponse(ok=True, trajectory_id=int(row.id or 0), trajectory_key=trajectory_key)
 
@@ -512,6 +543,21 @@ def propose_replica(
     session.add(replica)
     session.commit()
     session.refresh(replica)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+            source="task_api",
+            modality="task",
+            signal_type="task_replica_propose",
+            stimulus={"capability": capability, "trajectory_key_len": len(trajectory_key), "title_len": len(title)},
+            occurred_at=replica.created_at,
+        )
+    except Exception:
+        pass
 
     return TaskReplicaProposeResponse(ok=True, replica=_to_replica_public(replica))
 
@@ -567,6 +613,22 @@ def replica_decision(
         row.updated_at = datetime.utcnow()
         session.add(row)
         session.commit()
+
+        try:
+            record_stimulus_event(
+                session,
+                user_id=user_id,
+                project_id=row.project_id,
+                device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+                source="task_api",
+                modality="task",
+                signal_type="task_replica_reject",
+                stimulus={"replica_id": int(row.id or 0), "capability": str(row.capability or ""), "reason": "manual_reject"},
+                occurred_at=row.updated_at,
+            )
+        except Exception:
+            pass
+
         return TaskReplicaDecisionResponse(
             ok=True,
             replica_id=int(row.id or 0),
@@ -582,6 +644,21 @@ def replica_decision(
         device_id=payload.device_id,
         auto_execute=False,
     )
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=row.project_id,
+            device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+            source="task_api",
+            modality="task",
+            signal_type="task_replica_approve",
+            stimulus={"replica_id": int(row.id or 0), "capability": str(row.capability or ""), "queued_message_id": int(message_id or 0)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return TaskReplicaDecisionResponse(
         ok=True,
@@ -866,6 +943,21 @@ def replica_ack(
     session.add(row)
     session.commit()
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=row.project_id,
+            device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+            source="task_api",
+            modality="task",
+            signal_type="task_replica_ack",
+            stimulus={"replica_id": int(row.id or 0), "status": status, "notes_len": len(str(payload.notes or ""))},
+            occurred_at=row.executed_at,
+        )
+    except Exception:
+        pass
+
     return TaskReplicaAckResponse(ok=True, replica_id=int(row.id or 0), status=status)
 
 
@@ -1025,6 +1117,28 @@ def replica_verify(
 
     session.commit()
     session.refresh(growth)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=row.project_id,
+            device_id=device,
+            source="task_api",
+            modality="task",
+            signal_type="task_replica_verify",
+            stimulus={
+                "replica_id": int(row.id or 0),
+                "planned_minutes": planned,
+                "focused_minutes": focused,
+                "adherence": float(round(adherence, 6)),
+                "accepted": bool(accepted),
+                "feedback_labels_count": len(feedback_labels),
+            },
+            occurred_at=row.updated_at,
+        )
+    except Exception:
+        pass
 
     return TaskReplicaVerifyResponse(
         ok=True,

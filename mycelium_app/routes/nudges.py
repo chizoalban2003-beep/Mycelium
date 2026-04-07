@@ -10,6 +10,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import NexusNudge, User
 from mycelium_app.schemas import NexusNudgeAckRequest, NexusNudgeAckResponse, NexusNudgeListResponse, NexusNudgePublic
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/nexus/nudges", tags=["nudges"])
@@ -78,5 +79,20 @@ def ack(
         row.seen_at = datetime.utcnow()
         session.add(row)
         session.commit()
+
+        try:
+            record_stimulus_event(
+                session,
+                user_id=user_id,
+                project_id=row.project_id,
+                device_id="local",
+                source="nudge_api",
+                modality="feedback",
+                signal_type="nudge_ack",
+                stimulus={"nudge_id": int(nudge_id), "kind": str(row.kind or "")},
+                occurred_at=row.seen_at,
+            )
+        except Exception:
+            pass
 
     return NexusNudgeAckResponse(ok=True)

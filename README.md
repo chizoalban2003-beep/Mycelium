@@ -270,6 +270,9 @@ Visible signal sources now include:
 - chat messages, recovery requests, and assistant replies
 - project creation and workspace setup
 - member invites, role changes, and node creation
+- task bootstrap, approval, ack, and verification loops
+- curiosity answers, dismissals, and export feedback
+- nudge acknowledgments and seen-state updates
 - predictor uploads, corrections, and measured outcomes
 
 Suggested improvement loop:
