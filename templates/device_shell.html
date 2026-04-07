@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-5">
+  <div class="pb-28 md:pb-0">
+  <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-4 sm:p-5">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Transparent Growth OS</div>
@@ -62,31 +63,31 @@
         <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Quick actions</div>
         <div class="text-sm text-slate-300">Open the surfaces that matter most for a live device product.</div>
       </div>
-      <div class="flex flex-wrap gap-2">
-        <form action="/device/bootstrap-work-session" method="post" class="flex flex-wrap items-center gap-2">
+      <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+        <form action="/device/bootstrap-work-session" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <input type="hidden" name="focus_app" value="mycelium" />
           <input type="hidden" name="duration_minutes" value="45" />
-          <button type="submit" class="rounded-md border border-emerald-700 bg-emerald-950/30 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-900/40">Start work session</button>
+          <button type="submit" class="w-full rounded-md border border-emerald-700 bg-emerald-950/30 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-900/40 sm:w-auto">Start work session</button>
         </form>
-        <form action="/device/daily-summary" method="post" class="flex flex-wrap items-center gap-2">
+        <form action="/device/daily-summary" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <input type="hidden" name="window_hours" value="24" />
-          <button type="submit" class="rounded-md border border-indigo-700 bg-indigo-950/30 px-3 py-2 text-sm font-medium text-indigo-100 hover:bg-indigo-900/40">Daily summary</button>
+          <button type="submit" class="w-full rounded-md border border-indigo-700 bg-indigo-950/30 px-3 py-2 text-sm font-medium text-indigo-100 hover:bg-indigo-900/40 sm:w-auto">Daily summary</button>
         </form>
-        <form action="/device/auto-handoff-launch" method="post" class="flex flex-wrap items-center gap-2">
+        <form action="/device/auto-handoff-launch" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <input type="hidden" name="window_minutes" value="120" />
           <input type="hidden" name="base_duration_minutes" value="45" />
           <input type="hidden" name="current_device_id" value="local" />
           <input type="hidden" name="candidate_device_ids" value="local,laptop" />
           <input type="hidden" name="focus_app" value="mycelium" />
-          <button type="submit" class="rounded-md border border-fuchsia-700 bg-fuchsia-950/30 px-3 py-2 text-sm font-medium text-fuchsia-100 hover:bg-fuchsia-900/40">Auto-handoff launch</button>
+          <button type="submit" class="w-full rounded-md border border-fuchsia-700 bg-fuchsia-950/30 px-3 py-2 text-sm font-medium text-fuchsia-100 hover:bg-fuchsia-900/40 sm:w-auto">Auto-handoff launch</button>
         </form>
-        <form action="/device/auto-handoff-launch-and-confirm" method="post" class="flex flex-wrap items-center gap-2">
+        <form action="/device/auto-handoff-launch-and-confirm" method="post" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <input type="hidden" name="window_minutes" value="120" />
           <input type="hidden" name="base_duration_minutes" value="45" />
           <input type="hidden" name="current_device_id" value="local" />
           <input type="hidden" name="candidate_device_ids" value="local,laptop" />
           <input type="hidden" name="focus_app" value="mycelium" />
-          <button type="submit" class="rounded-md border border-fuchsia-500 bg-fuchsia-900/40 px-3 py-2 text-sm font-medium text-fuchsia-50 hover:bg-fuchsia-800/60">Launch + confirm</button>
+          <button type="submit" class="w-full rounded-md border border-fuchsia-500 bg-fuchsia-900/40 px-3 py-2 text-sm font-medium text-fuchsia-50 hover:bg-fuchsia-800/60 sm:w-auto">Launch + confirm</button>
         </form>
         <a href="/projects" class="rounded-md border border-cyan-700 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-900/40">Builder Copilot</a>
         <a href="/hive/health" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">HIVE Health</a>
@@ -263,4 +264,26 @@
       setInterval(refreshSnapshot, 30000);
     })();
   </script>
+
+  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 px-4 py-3 shadow-2xl backdrop-blur md:hidden">
+    <div class="mx-auto grid max-w-5xl grid-cols-3 gap-2">
+      <form action="/device/bootstrap-work-session" method="post">
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <input type="hidden" name="duration_minutes" value="45" />
+        <button type="submit" class="w-full rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100">Work</button>
+      </form>
+      <form action="/device/daily-summary" method="post">
+        <input type="hidden" name="window_hours" value="24" />
+        <button type="submit" class="w-full rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-2 text-xs font-medium text-indigo-100">Summary</button>
+      </form>
+      <form action="/device/auto-handoff-launch-and-confirm" method="post">
+        <input type="hidden" name="window_minutes" value="120" />
+        <input type="hidden" name="base_duration_minutes" value="45" />
+        <input type="hidden" name="current_device_id" value="local" />
+        <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <button type="submit" class="w-full rounded-lg border border-fuchsia-500 bg-fuchsia-900/50 px-3 py-2 text-xs font-medium text-fuchsia-50">Hand off</button>
+      </form>
+    </div>
+  </div>
 {% endblock %}
