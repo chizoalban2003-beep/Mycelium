@@ -36,9 +36,9 @@ def _weights_by_feature(weights: list[WeightInfo] | None) -> dict[str, WeightInf
 
 def _shift_direction(delta: float, signed: bool) -> str:
     if delta > 0:
-                return "more"
+        return "increased" if signed else "stronger"
     if delta < 0:
-                return "less" if signed else "weaker"
+        return "decreased" if signed else "weaker"
     return "steady"
 
 
@@ -51,7 +51,7 @@ def _format_shift(row: dict[str, Any]) -> str:
     signed = bool(row.get("signed", False))
     direction = _shift_direction(delta, signed)
 
-    parts = [feature, f"{direction} pull"]
+    parts = [feature, f"{direction} shift"]
     if change != "shifted":
         parts.append(change)
     if feature_kind:
@@ -60,6 +60,15 @@ def _format_shift(row: dict[str, Any]) -> str:
         parts.append(method)
     parts.append(f"Δ={delta:+.4f}")
     return " • ".join(parts)
+
+
+def _join_shift_summaries(shifts: list[dict[str, Any]]) -> str:
+    if not shifts:
+        return ""
+    rendered = [_format_shift(shift) for shift in shifts[:3]]
+    if len(shifts) <= 3:
+        return "; ".join(rendered)
+    return f"{'; '.join(rendered)}; and {len(shifts) - 3} more"
 
 
 def extract_causal_trace(
@@ -123,12 +132,7 @@ def extract_causal_trace(
     shifts_sorted = sorted(shifts, key=lambda r: abs(_safe_float(r.get("delta_weight"))), reverse=True)
     top = shifts_sorted[: max(1, min(int(top_k), 25))]
 
-    top_text = _format_shift(top[0])
-    if len(top) == 1:
-        narrative = f"Top shift: {top_text}."
-    else:
-        next_text = _format_shift(top[1])
-        narrative = f"Top shifts: {top_text}; {next_text}."
+    narrative = f"Top shifts: {_join_shift_summaries(top)}."
 
     return CausalTrace(ok=True, narrative=narrative, top_shifts=top)
 
