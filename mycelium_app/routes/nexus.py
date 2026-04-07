@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -7,12 +8,21 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
+from mycelium_app.causal_trace import dumps_top_shifts, extract_causal_trace
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.feedback_ionizer import ionize_user_feedback
 from mycelium_app.hive_empathy import compute_wisdom_latest
-from mycelium_app.models import ExperienceBufferEntry, ProjectMember, User
-from mycelium_app.models import MetricCausalTrace, MetricSnapshot
+from mycelium_app.models import ExperienceBufferEntry, MetricCausalTrace, MetricSnapshot, ProjectMember, User
+from mycelium_app.physics_predictor import (
+    BondInfo,
+    EquilibriumZone,
+    IterationInfo,
+    PhysicsPlane,
+    PredictionMetrics,
+    PredictionResult,
+    WeightInfo,
+)
 from mycelium_app.nexus_ionizer import grammar_suggest, ionize_finance, style_profile
 from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.stimulus import record_stimulus_event
@@ -33,6 +43,8 @@ from mycelium_app.schemas import (
     NexusPolicyUpdateRequest,
     NexusPrivacyExportStatus,
     NexusPrivacyExportUpdateRequest,
+    NexusSyntheticStressTestRequest,
+    NexusSyntheticStressTestResponse,
 )
 from mycelium_app.settings import settings
 
@@ -88,6 +100,89 @@ def _to_public(entry: ExperienceBufferEntry) -> NexusEntryPublic:
         confidence=entry.confidence,
         feedback=entry.feedback,
         tags=_loads_list(entry.tags_json),
+    )
+
+
+def _synthetic_prediction_result(
+    *,
+    label: str,
+    cpu_temp_c: float,
+    battery_level: float,
+    interruptions: int,
+    random_seed: int,
+) -> PredictionResult:
+    thermal_weight = max(0.05, float(cpu_temp_c - 50.0) / 100.0)
+    stability_weight = max(0.02, float(max(0.0, battery_level)) / 100.0)
+    interruption_weight = max(0.02, float(max(0, interruptions)) / 10.0)
+    weights = [
+        WeightInfo(
+            feature="cpu_temp_c",
+            weight=thermal_weight,
+            method="synthetic_telemetry",
+            feature_kind="numeric",
+            signed=True,
+        ),
+        WeightInfo(
+            feature="battery_level",
+            weight=stability_weight,
+            method="synthetic_telemetry",
+            feature_kind="numeric",
+            signed=True,
+        ),
+        WeightInfo(
+            feature="recent_interruptions",
+            weight=interruption_weight,
+            method="synthetic_telemetry",
+            feature_kind="numeric",
+            signed=True,
+        ),
+    ]
+    if cpu_temp_c >= 80.0:
+        weights.append(
+            WeightInfo(
+                feature="thermal_load",
+                weight=max(0.05, float(cpu_temp_c - 70.0) / 10.0),
+                method="synthetic_telemetry",
+                feature_kind="numeric",
+                signed=True,
+            )
+        )
+
+    metrics = PredictionMetrics(
+        target_kind="numeric",
+        n_rows=64,
+        n_train=48,
+        n_test=16,
+        train_fraction=0.75,
+        random_seed=int(random_seed),
+        n_features_used=len(weights),
+        mae=max(0.05, float(cpu_temp_c) / 100.0),
+        rmse=max(0.05, float(cpu_temp_c) / 90.0),
+    )
+    return PredictionResult(
+        target=str(label),
+        target_kind="numeric",
+        plane=PhysicsPlane.solid,
+        weights=weights,
+        migration_map=[],
+        bonding_map=[BondInfo(feature_a="cpu_temp_c", feature_b="battery_level", affinity=0.44, bonding_factor=0.36)],
+        iteration_gains=[IterationInfo(cycle=1, test_mae=metrics.mae, test_rmse=metrics.rmse)],
+        equilibrium_zones=[
+            EquilibriumZone(zone_id=1, features=["cpu_temp_c", "battery_level"], avg_pI=0.4, avg_momentum=0.6, strength=0.5)
+        ],
+        metrics=metrics,
+        preview_rows=[
+            {
+                "node_id": label,
+                "cpu_temp_c": float(cpu_temp_c),
+                "battery_level": float(battery_level),
+                "interruptions": int(interruptions),
+            }
+        ],
+        diagnostics={"synthetic": True, "random_seed": int(random_seed)},
+        test_row_indices=[0],
+        test_actual=[float(cpu_temp_c)],
+        test_predicted=[float(cpu_temp_c)],
     )
 
 
@@ -600,6 +695,161 @@ def knowledge_audit(
         local=local_obj,
         hive=hive_obj,
         validation=validation_obj,
+    )
+
+
+@router.post("/diagnostics/stress-test", response_model=NexusSyntheticStressTestResponse)
+def diagnostics_stress_test(
+    payload: NexusSyntheticStressTestRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Run a synthetic CPU-temperature spike through the causal-trace path."""
+
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, payload.project_id)
+
+    spike_label = str(payload.spike_label or "cpu_temp_spike").strip()[:64] or "cpu_temp_spike"
+    node_id = str(payload.node_id or "node-0").strip()[:64] or "node-0"
+    metric_name = str(payload.metric_name or "thermal_headroom").strip()[:64] or "thermal_headroom"
+    target_col = str(payload.target_col or "cpu_temp_c").strip()[:64] or "cpu_temp_c"
+
+    baseline = _synthetic_prediction_result(
+        label=f"{node_id}:baseline",
+        cpu_temp_c=float(payload.baseline_cpu_temp_c),
+        battery_level=float(payload.baseline_battery_level),
+        interruptions=int(payload.baseline_interruptions),
+        random_seed=17,
+    )
+    trial = _synthetic_prediction_result(
+        label=f"{node_id}:spike",
+        cpu_temp_c=float(payload.trial_cpu_temp_c),
+        battery_level=float(payload.trial_battery_level),
+        interruptions=int(payload.trial_interruptions),
+        random_seed=17,
+    )
+    trace = extract_causal_trace(baseline, trial, top_k=5)
+
+    now = datetime.utcnow()
+    config_digest = hashlib.sha256(
+        _dumps(
+            {
+                "node_id": node_id,
+                "spike_label": spike_label,
+                "metric_name": metric_name,
+                "target_col": target_col,
+                "baseline": {
+                    "cpu_temp_c": float(payload.baseline_cpu_temp_c),
+                    "battery_level": float(payload.baseline_battery_level),
+                    "interruptions": int(payload.baseline_interruptions),
+                },
+                "trial": {
+                    "cpu_temp_c": float(payload.trial_cpu_temp_c),
+                    "battery_level": float(payload.trial_battery_level),
+                    "interruptions": int(payload.trial_interruptions),
+                },
+            }
+        ).encode("utf-8")
+    ).hexdigest()
+
+    baseline_value = max(0.0, min(1.0, 1.0 - (float(payload.baseline_cpu_temp_c) / 120.0)))
+    trial_value = max(0.0, min(1.0, 1.0 - (float(payload.trial_cpu_temp_c) / 120.0)))
+
+    baseline_row = MetricSnapshot(
+        created_by_user_id=user_id,
+        project_id=payload.project_id,
+        dataset_digest=config_digest,
+        wisdom_digest=config_digest,
+        phase="baseline",
+        target_col=target_col,
+        target_kind="numeric",
+        metric_name=metric_name,
+        metric_value=float(baseline_value),
+        kwargs_json=_dumps({"synthetic": True, "node_id": node_id, "spike_label": spike_label, "state": "baseline"}),
+        notes=f"synthetic_stress_test;cpu_temp_c={float(payload.baseline_cpu_temp_c):.1f}",
+    )
+    trial_row = MetricSnapshot(
+        created_by_user_id=user_id,
+        project_id=payload.project_id,
+        dataset_digest=config_digest,
+        wisdom_digest=config_digest,
+        phase="trial",
+        target_col=target_col,
+        target_kind="numeric",
+        metric_name=metric_name,
+        metric_value=float(trial_value),
+        kwargs_json=_dumps({"synthetic": True, "node_id": node_id, "spike_label": spike_label, "state": "trial"}),
+        notes=f"synthetic_stress_test;cpu_temp_c={float(payload.trial_cpu_temp_c):.1f}",
+    )
+    session.add(baseline_row)
+    session.add(trial_row)
+    session.commit()
+    session.refresh(baseline_row)
+    session.refresh(trial_row)
+
+    causal_trace_id: int | None = None
+    narrative = None
+    top_shifts: list[dict[str, object]] = []
+    if trace.ok and baseline_row.id is not None and trial_row.id is not None:
+        narrative = str(trace.narrative or "").strip() or None
+        top_shifts = trace.top_shifts or []
+        trace_row = MetricCausalTrace(
+            created_by_user_id=user_id,
+            project_id=payload.project_id,
+            baseline_snapshot_id=int(baseline_row.id),
+            trial_snapshot_id=int(trial_row.id),
+            dataset_digest=config_digest,
+            wisdom_digest=config_digest,
+            metric_name=metric_name,
+            improvement_frac=float((baseline_value - trial_value) / abs(baseline_value)) if baseline_value else None,
+            method="synthetic_stress_test",
+            narrative=narrative or "Synthetic stress test generated a causal trace.",
+            top_shifts_json=dumps_top_shifts(trace),
+        )
+        session.add(trace_row)
+        session.commit()
+        session.refresh(trace_row)
+        causal_trace_id = int(trace_row.id or 0) or None
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="nexus_api",
+            modality="diagnostic",
+            signal_type="synthetic_causal_stress_test",
+            stimulus={
+                "node_id": node_id,
+                "spike_label": spike_label,
+                "baseline_cpu_temp_c": float(payload.baseline_cpu_temp_c),
+                "trial_cpu_temp_c": float(payload.trial_cpu_temp_c),
+                "metric_name": metric_name,
+                "causal_trace_id": causal_trace_id,
+            },
+            occurred_at=now,
+        )
+    except Exception:
+        pass
+
+    message = (
+        f"Synthetic stress test recorded for {node_id}: {spike_label} "
+        f"({float(payload.baseline_cpu_temp_c):.1f}°C → {float(payload.trial_cpu_temp_c):.1f}°C)."
+    )
+    if narrative:
+        message = f"{message} {narrative}"
+
+    return NexusSyntheticStressTestResponse(
+        ok=True,
+        message=message,
+        metric_name=metric_name,
+        narrative=narrative,
+        top_shifts=top_shifts,
+        baseline_snapshot_id=int(baseline_row.id or 0) or None,
+        trial_snapshot_id=int(trial_row.id or 0) or None,
+        causal_trace_id=causal_trace_id,
+        as_of=now,
     )
 
 

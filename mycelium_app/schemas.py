@@ -1093,6 +1093,33 @@ class NexusKnowledgeAuditResponse(BaseModel):
     validation: dict[str, object] = Field(default_factory=dict)
 
 
+class NexusSyntheticStressTestRequest(BaseModel):
+    project_id: int | None = None
+    node_id: str = "node-0"
+    spike_label: str = "cpu_temp_spike"
+    baseline_cpu_temp_c: float = 58.0
+    trial_cpu_temp_c: float = 92.0
+    baseline_battery_level: float = 78.0
+    trial_battery_level: float = 70.0
+    baseline_interruptions: int = 1
+    trial_interruptions: int = 6
+    metric_name: str = "thermal_headroom"
+    target_col: str = "cpu_temp_c"
+
+
+class NexusSyntheticStressTestResponse(BaseModel):
+    ok: bool = True
+    message: str
+    metric_name: str
+    narrative: str | None = None
+    top_shifts: list[dict[str, object]] = Field(default_factory=list)
+    baseline_snapshot_id: int | None = None
+    trial_snapshot_id: int | None = None
+    causal_trace_id: int | None = None
+    synthetic_signal_type: str = "synthetic_causal_stress_test"
+    as_of: datetime | None = None
+
+
 class DeployVersionResponse(BaseModel):
     ok: bool = True
     app_name: str
