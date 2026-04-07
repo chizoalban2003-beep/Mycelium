@@ -216,6 +216,26 @@ Suggestions that keep the relationship healthy:
 - Let the assistant speak in a consistent voice, but keep the user in charge.
 You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
+## Device communication surfaces
+
+Because Mycelium can live on the user’s own device, it should use any communication surface the device/browser exposes and the user has approved.
+
+Current supported surfaces:
+
+- In-app chat in the web UI
+- Telegram bridge for off-app conversations
+- Browser notifications for live nudges
+- Speech synthesis for spoken replies in the browser
+- Clipboard copy for quick handoff to other apps
+- Native share sheet when the browser supports it
+- Termux notifications on Android for background alerts
+
+Design rule:
+
+- Use every available channel, but only after explicit consent and policy enablement.
+- Prefer visible, reversible communication over silent background behavior.
+- Treat the local device as the main brain when the user chooses that mode; the Hive should amplify it, not replace it.
+
 ## Live neural map + chat
 
 - Live state API: `GET /api/nexus/live/state?window_minutes=30`
@@ -233,6 +253,7 @@ Chat UI:
 - `/chat`
 
 `channel=telegram` is supported when the Telegram bridge and user notification policy are enabled.
+The chat page also exposes device-side actions such as speech playback, share, and copy for the latest assistant reply.
 
 ## Hybrid predictor (physics governor + neural timing)
 

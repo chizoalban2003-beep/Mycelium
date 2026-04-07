@@ -292,6 +292,19 @@ Web UI:
 
 - `/chat`
 
+Device-side communication surfaces:
+
+- Browser notifications for live nudges
+- Speech synthesis for spoken replies when the browser supports it
+- Clipboard copy and native share sheet for handoff to other apps
+- Telegram for off-app conversation
+- Termux notifications on Android for background delivery
+
+Rule of thumb:
+
+- Use every surfaced channel the device/browser offers, but only when the user has opted in.
+- If the device is the main brain, Mycelium should communicate through the local surface that best matches the moment: voice, text, share, or notification.
+
 Memory consolidation trigger:
 
 - Send "daily summary" through app chat or Telegram.
