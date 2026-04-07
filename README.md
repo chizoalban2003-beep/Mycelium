@@ -27,6 +27,7 @@ This repo currently ships an MVP platform:
 - Railway gives you a public HTTPS app, but it is not the app-download channel.
 - If you want a downloadable Android build, package the hosted web app as a Trusted Web Activity (TWA) and publish the generated APK/AAB to Google Play.
 - The Android packaging path is documented in [docs/android_twa_packaging.md](docs/android_twa_packaging.md).
+- The release checklist is documented in [docs/release_launch_checklist.md](docs/release_launch_checklist.md).
 - For Railway production, use `requirements/prod.txt`, Postgres, `COOKIE_SECURE=true`, and `DB_MIGRATION_MODE=migrate`.
 
 ## Quickstart (Linux)
