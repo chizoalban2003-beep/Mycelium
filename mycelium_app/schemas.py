@@ -602,6 +602,17 @@ class SelfReflectionResponse(BaseModel):
     stats: dict[str, object]
 
 
+class DailyConsolidationResponse(BaseModel):
+    ok: bool = True
+    window_hours: int
+    n_total: int
+    n_accepted: int
+    acceptance_rate: float
+    adherence_mean: float | None = None
+    top_domains: list[dict[str, object]] = Field(default_factory=list)
+    summary_text: str = ""
+
+
 class HomeostasisTickResponse(BaseModel):
     ok: bool = True
     mood: str

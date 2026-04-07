@@ -166,6 +166,11 @@ Web UI:
 
 - `/chat`
 
+Memory consolidation trigger:
+
+- Send "daily summary" through app chat or Telegram.
+- Backed by: `GET /api/nexus/reflection/daily-summary?window_hours=24`
+
 ### Child trajectory capture: manual first, auto optional
 
 Recommended rollout:

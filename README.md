@@ -234,6 +234,11 @@ Adaptive directive API (session duration adjusts to viscosity):
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`
+- `GET /api/nexus/reflection/daily-summary?window_hours=24`
+
+Chat trigger for memory consolidation:
+
+- Send "daily summary" (app or Telegram) to receive end-of-day accepted outcomes and focus adherence recap.
 
 Homeostasis (stability + pruning + identity backup):
 

@@ -260,3 +260,67 @@ def compute_self_reflection(
         causal_hints=hints,
         stats=stats,
     )
+
+
+def compute_daily_consolidation(
+    session: Session,
+    *,
+    user_id: int,
+    project_id: int | None = None,
+    window_hours: int = 24,
+) -> dict[str, object]:
+    """Compute a compact end-of-day memory consolidation summary."""
+
+    wh = max(1, min(int(window_hours), 24 * 7))
+    since = datetime.utcnow() - timedelta(hours=wh)
+
+    q = select(GrowthLedgerEntry).where(
+        GrowthLedgerEntry.created_by_user_id == int(user_id),
+        GrowthLedgerEntry.created_at >= since,
+    )
+    if project_id is not None:
+        q = q.where(GrowthLedgerEntry.project_id == int(project_id))
+
+    q = q.order_by(GrowthLedgerEntry.created_at.desc()).limit(5000)
+    rows = list(session.exec(q).all())
+
+    n_total = int(len(rows))
+    n_accepted = int(sum(1 for r in rows if bool(r.accepted)))
+    acceptance_rate = float(n_accepted / max(1, n_total))
+
+    by_domain = Counter(str(r.domain or "").strip().lower() for r in rows if str(r.domain or "").strip())
+    top_domains = [{"domain": k, "count": int(v)} for k, v in by_domain.most_common(5)]
+
+    adherence_scores = [
+        float(r.score)
+        for r in rows
+        if str(r.domain or "").strip().lower() == "task_replica_focus"
+        and str(r.metric or "").strip().lower() == "adherence"
+    ]
+    adherence_mean = float(sum(adherence_scores) / len(adherence_scores)) if adherence_scores else None
+
+    if n_total == 0:
+        summary_text = "No growth events recorded in this window. Continue collecting signal before consolidation."
+    else:
+        ar_pct = round(acceptance_rate * 100.0, 1)
+        if adherence_mean is None:
+            adherence_clause = "No focus adherence samples yet."
+        else:
+            adherence_clause = f"Focus adherence averaged {round(adherence_mean * 100.0, 1)}%."
+        top_clause = ""
+        if top_domains:
+            top_clause = " Top domains: " + ", ".join(f"{d['domain']} ({d['count']})" for d in top_domains[:3]) + "."
+        summary_text = (
+            f"Consolidation complete: {n_accepted}/{n_total} accepted outcomes ({ar_pct}%). "
+            f"{adherence_clause}{top_clause}"
+        )
+
+    return {
+        "window_hours": wh,
+        "n_total": n_total,
+        "n_accepted": n_accepted,
+        "acceptance_rate": float(round(acceptance_rate, 6)),
+        "adherence_mean": (None if adherence_mean is None else float(round(adherence_mean, 6))),
+        "top_domains": top_domains,
+        "summary_text": summary_text,
+    }

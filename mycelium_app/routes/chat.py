@@ -14,6 +14,7 @@ from mycelium_app.models import ConversationMessage, NexusNudge, NexusPolicy, Pr
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import ChatHistoryResponse, ChatMessagePublic, ChatSendRequest, ChatSendResponse
 from mycelium_app.settings import settings
+from mycelium_app.self_reflection import compute_daily_consolidation
 from mycelium_app.viscosity import calculate_live_viscosity
 
 
@@ -115,6 +116,11 @@ def _build_status_message(session: Session, *, user_id: int, assistant_name: str
     )
 
 
+def _build_daily_summary_message(session: Session, *, user_id: int, assistant_name: str) -> str:
+    out = compute_daily_consolidation(session, user_id=int(user_id), project_id=None, window_hours=24)
+    return f"I’m {assistant_name}. {str(out.get('summary_text') or '').strip()}"
+
+
 @router.post("/send", response_model=ChatSendResponse)
 def send_chat(
     payload: ChatSendRequest,
@@ -152,11 +158,17 @@ def send_chat(
     assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
 
     # Deterministic lightweight assistant response (tool-free skeleton).
-    assistant_text = (
-        f"I’m {assistant_name}. I received your message. "
-        "I can help with focus workflows, telemetry insights, and task replicas. "
-        "If you want, ask me to bootstrap or verify your next work session."
-    )
+    lower = msg.lower()
+    if "daily summary" in lower or "consolidation" in lower or "end of day" in lower:
+        assistant_text = _build_daily_summary_message(session, user_id=user_id, assistant_name=assistant_name)
+    elif "how are you" in lower or "status" in lower or "viscosity" in lower:
+        assistant_text = _build_status_message(session, user_id=user_id, assistant_name=assistant_name)
+    else:
+        assistant_text = (
+            f"I’m {assistant_name}. I received your message. "
+            "I can help with focus workflows, telemetry insights, and task replicas. "
+            "If you want, ask me to bootstrap or verify your next work session."
+        )
 
     assistant_row = ConversationMessage(
         created_by_user_id=user_id,
@@ -288,6 +300,8 @@ async def telegram_webhook(
             f"I’m {assistant_name}. I can bootstrap a focus session. "
             "Use /api/nexus/tasks/bootstrap/work-session in the app to start it with your preferred duration."
         )
+    elif "daily summary" in lower or "consolidation" in lower or "end of day" in lower:
+        assistant_text = _build_daily_summary_message(session, user_id=int(user_id), assistant_name=assistant_name)
     elif "how are you" in lower or "status" in lower or "viscosity" in lower:
         assistant_text = _build_status_message(session, user_id=int(user_id), assistant_name=assistant_name)
     elif "verify" in lower:
