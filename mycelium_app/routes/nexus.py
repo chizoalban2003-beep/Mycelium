@@ -583,6 +583,7 @@ def knowledge_audit(
                 "improvement_frac": (None if t.improvement_frac is None else float(t.improvement_frac)),
                 "method": str(t.method or ""),
                 "narrative": str(t.narrative or ""),
+                "top_shifts": _loads_list(t.top_shifts_json),
                 "baseline_snapshot_id": int(t.baseline_snapshot_id),
                 "trial_snapshot_id": int(t.trial_snapshot_id),
                 "dataset_digest": str(t.dataset_digest or ""),

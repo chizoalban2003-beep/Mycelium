@@ -451,6 +451,25 @@
     return item.metric_name ? `metric ${item.metric_name}` : 'scope keyword match';
   }
 
+  function renderTopShifts(topShifts) {
+    const shifts = Array.isArray(topShifts) ? topShifts.slice(0, 3) : [];
+    if (!shifts.length) return '<div class="text-[11px] text-slate-500 mt-1">No feature shifts recorded.</div>';
+    return `<div class="mt-2 space-y-1">${shifts.map((shift) => {
+      const feature = shift && shift.feature ? shift.feature : 'feature';
+      const delta = shift && shift.delta_weight != null ? Number(shift.delta_weight).toFixed(4) : '0.0000';
+      const change = shift && shift.change ? shift.change : 'shifted';
+      const kind = shift && shift.feature_kind ? shift.feature_kind : 'unknown';
+      const method = shift && shift.method ? shift.method : 'n/a';
+      return `<div class="rounded border border-slate-800 bg-slate-950/80 px-2 py-1 text-[11px] text-slate-300">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-semibold text-slate-100">${esc(feature)}</span>
+          <span class="text-slate-400">${esc(change)} • ${esc(kind)} • ${esc(method)}</span>
+        </div>
+        <div class="mt-1 text-slate-400">Δ=${esc(delta)}</div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   function renderCompactRows(items, renderRow, emptyText) {
     if (!Array.isArray(items) || !items.length) {
       return `<div class="text-xs text-slate-400">${esc(emptyText || 'No items yet.')}</div>`;
@@ -544,6 +563,7 @@
                 <div class="text-xs font-semibold text-slate-100">${esc(t.metric_name || 'trace')}</div>
                 <div class="mt-1 text-[11px] text-slate-400">method=${esc(t.method || 'n/a')} • Δ=${esc(t.improvement_frac == null ? 'n/a' : Number(t.improvement_frac).toFixed(4))}</div>
                 <div class="mt-1 text-[11px] text-slate-500">${esc(t.narrative || '')}</div>
+                  ${renderTopShifts(t.top_shifts)}
                 <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(validationMatchReason(t, scope))}</div>
               </div>
             `, 'No matching traces yet.')}
