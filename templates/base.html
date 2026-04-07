@@ -5,11 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ app_name }}</title>
     <meta name="theme-color" content="#020617" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="{{ app_name }}" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/static/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/static/icon.svg" />
+    <script>
+      (function applyThemeEarly() {
+        try {
+          const saved = localStorage.getItem('mycelium-theme');
+          if (saved) document.documentElement.dataset.theme = saved;
+        } catch (e) {}
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body { transition: background-color 180ms ease, color 180ms ease; }
+      body[data-theme="midnight"] { --shell-bg: #020617; --shell-fg: #e2e8f0; --shell-glow-a: rgba(34, 211, 238, 0.10); --shell-glow-b: rgba(129, 140, 248, 0.08); color-scheme: dark; }
+      body[data-theme="aurora"] { --shell-bg: #07111f; --shell-fg: #e0f2fe; --shell-glow-a: rgba(16, 185, 129, 0.14); --shell-glow-b: rgba(34, 211, 238, 0.12); color-scheme: dark; }
+      body[data-theme="paper"] { --shell-bg: #f8fafc; --shell-fg: #0f172a; --shell-glow-a: rgba(14, 165, 233, 0.12); --shell-glow-b: rgba(99, 102, 241, 0.10); color-scheme: light; }
+      body { background-color: var(--shell-bg, #020617); color: var(--shell-fg, #e2e8f0); background-image: radial-gradient(circle at 10% 10%, var(--shell-glow-a, rgba(34, 211, 238, 0.10)), transparent 30%), radial-gradient(circle at 85% 15%, var(--shell-glow-b, rgba(129, 140, 248, 0.08)), transparent 35%); }
+      .skip-link { position: absolute; left: 1rem; top: 0.5rem; transform: translateY(-200%); transition: transform 120ms ease; z-index: 60; }
+      .skip-link:focus { transform: translateY(0); }
+      .content-auto { content-visibility: auto; contain-intrinsic-size: 1px 900px; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+    </style>
   </head>
-  <body class="bg-slate-950 text-slate-100 bg-[radial-gradient(circle_at_10%_10%,rgba(34,211,238,0.10),transparent_30%),radial-gradient(circle_at_85%_15%,rgba(129,140,248,0.08),transparent_35%)]">
+  <body data-theme="midnight" class="bg-slate-950 text-slate-100">
+    <a href="#content" class="skip-link rounded bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950">Skip to content</a>
     <div class="max-w-5xl mx-auto px-4 py-6">
       <div class="flex items-center justify-between mb-6">
         <div class="flex items-center gap-4">
@@ -31,14 +55,21 @@
           {% endif %}
         </div>
         {% if user %}
-          <form action="/logout" method="post">
-            <button class="text-sm text-slate-300 hover:text-white" type="submit">Logout</button>
-          </form>
+          <div class="flex items-center gap-2">
+            <button id="themeToggle" type="button" aria-label="Switch theme" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">Theme</button>
+            <button id="notificationsToggle" type="button" aria-label="Open notifications" aria-expanded="false" class="relative rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">
+              🔔
+              <span id="notificationsCount" class="absolute -right-1 -top-1 hidden rounded-full bg-cyan-400 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950"></span>
+            </button>
+            <form action="/logout" method="post">
+              <button class="text-sm text-slate-300 hover:text-white" type="submit">Logout</button>
+            </form>
+          </div>
         {% endif %}
       </div>
 
       {% if user %}
-      <div id="nudgeBanner" class="hidden mb-6 rounded border border-slate-800 bg-slate-900 p-4">
+      <div id="nudgeBanner" class="hidden mb-6 rounded border border-slate-800 bg-slate-900 p-4" role="status" aria-live="polite">
         <div class="flex items-start justify-between gap-4">
           <div>
             <div id="nudgeTitle" class="font-semibold text-slate-100"></div>
@@ -50,12 +81,45 @@
           <button id="nudgeDismiss" class="text-sm text-slate-300 hover:text-white">Dismiss</button>
         </div>
       </div>
+      <div id="notificationsPanel" class="hidden mb-6 rounded border border-slate-800 bg-slate-900 p-4" aria-hidden="true">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Notifications</div>
+            <div class="text-sm text-slate-300">Recent nudges and activity updates</div>
+          </div>
+          <button id="notificationsClose" type="button" class="text-sm text-slate-400 hover:text-white">Close</button>
+        </div>
+        <div id="notificationsList" class="mt-3 space-y-2"></div>
+      </div>
       {% endif %}
+      <main id="content" tabindex="-1">
       {% block content %}{% endblock %}
+      </main>
     </div>
 
     {% if user %}
     <script>
+      const themeOrder = ['midnight', 'aurora', 'paper'];
+      const themeTitles = { midnight: 'Midnight', aurora: 'Aurora', paper: 'Paper' };
+
+      function applyTheme(theme) {
+        const nextTheme = themeOrder.includes(theme) ? theme : 'midnight';
+        document.documentElement.dataset.theme = nextTheme;
+        document.body.dataset.theme = nextTheme;
+        try { localStorage.setItem('mycelium-theme', nextTheme); } catch (e) {}
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta) {
+          themeMeta.setAttribute('content', nextTheme === 'paper' ? '#f8fafc' : nextTheme === 'aurora' ? '#07111f' : '#020617');
+        }
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) themeToggle.textContent = `Theme: ${themeTitles[nextTheme] || nextTheme}`;
+      }
+
+      function nextTheme(currentTheme) {
+        const idx = themeOrder.indexOf(currentTheme);
+        return themeOrder[(idx + 1) % themeOrder.length];
+      }
+
       // Register a minimal service worker so Android can install this as an app.
       (function registerSW() {
         try {
@@ -64,6 +128,8 @@
           }
         } catch (e) {}
       })();
+
+      applyTheme(document.documentElement.dataset.theme || 'midnight');
 
       // Best-effort: request notification permission once.
       (function maybeAskNotif() {
@@ -333,10 +399,97 @@
         }
       }
 
-      loadIdentityBadge();
+      async function loadNotifications() {
+        const panel = document.getElementById('notificationsPanel');
+        const list = document.getElementById('notificationsList');
+        const countEl = document.getElementById('notificationsCount');
+        const toggle = document.getElementById('notificationsToggle');
+        if (!panel || !list || !countEl || !toggle) return;
+        try {
+          const r = await fetch('/api/nexus/nudges/recent?limit=5&unseen_only=false', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const items = Array.isArray(data && data.nudges) ? data.nudges : [];
+          const unread = items.filter((item) => !item.seen_at).length;
+          if (unread > 0) {
+            countEl.textContent = String(unread);
+            countEl.classList.remove('hidden');
+          } else {
+            countEl.classList.add('hidden');
+          }
+
+          list.innerHTML = '';
+          if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'rounded border border-slate-800 bg-slate-950 p-3 text-sm text-slate-500';
+            empty.textContent = 'No recent notifications.';
+            list.appendChild(empty);
+            return;
+          }
+
+          items.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'rounded border border-slate-800 bg-slate-950 p-3';
+            row.innerHTML = `
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="font-medium text-slate-100">${String(item.title || 'Notification')}</div>
+                  <div class="mt-1 text-sm text-slate-300">${String(item.message || '')}</div>
+                  <div class="mt-1 text-xs text-slate-500">${String(item.created_at || '')}</div>
+                </div>
+                <button type="button" class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800">Mark seen</button>
+              </div>`;
+            const btn = row.querySelector('button');
+            btn.addEventListener('click', async () => {
+              try {
+                await fetch('/api/nexus/nudges/ack', {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ nudge_id: item.id })
+                });
+              } catch (e) {}
+              await loadNotifications();
+              await loadNudgeBanner();
+            });
+            list.appendChild(row);
+          });
+        } catch (e) {}
+      }
+
+      const notificationsToggle = document.getElementById('notificationsToggle');
+      const notificationsPanel = document.getElementById('notificationsPanel');
+      const notificationsClose = document.getElementById('notificationsClose');
+      if (notificationsToggle && notificationsPanel) {
+        notificationsToggle.addEventListener('click', async () => {
+          const open = notificationsPanel.classList.toggle('hidden') === false;
+          notificationsPanel.setAttribute('aria-hidden', String(!open));
+          notificationsToggle.setAttribute('aria-expanded', String(open));
+          if (open) await loadNotifications();
+        });
+      }
+      if (notificationsClose && notificationsPanel && notificationsToggle) {
+        notificationsClose.addEventListener('click', () => {
+          notificationsPanel.classList.add('hidden');
+          notificationsPanel.setAttribute('aria-hidden', 'true');
+          notificationsToggle.setAttribute('aria-expanded', 'false');
+        });
+      }
+
+      const themeToggle = document.getElementById('themeToggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          applyTheme(nextTheme(document.documentElement.dataset.theme || 'midnight'));
+        });
+      }
+
+      const runWhenIdle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
+      runWhenIdle(loadIdentityBadge);
+      runWhenIdle(loadNotifications);
       loadNudgeBanner();
       // Poll nudges periodically so the assistant feels alive.
       setInterval(loadNudgeBanner, 20000);
+      setInterval(loadNotifications, 45000);
     </script>
     {% endif %}
   </body>

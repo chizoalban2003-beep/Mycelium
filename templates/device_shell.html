@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="space-y-5 pb-28 md:pb-0">
+  <div class="space-y-5 pb-28 md:pb-0 content-auto">
   <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-3">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80 md:text-xs md:tracking-[0.25em]">Transparent Growth OS</div>
         <h1 class="mt-2 text-xl font-semibold sm:text-2xl">Device shell for {{ app_name }}</h1>
-        <div class="mt-1 text-sm text-cyan-300" id="greeting"></div>
+        <div class="mt-1 text-sm text-cyan-300" id="greeting" aria-live="polite"></div>
         <div class="mt-2 hidden text-sm text-slate-300 md:block">
           Assistant: <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
           <span class="text-slate-500">•</span>
@@ -46,9 +46,9 @@
       </div>
       <div class="mt-4 flex justify-end">
         <div class="flex gap-2">
-          <input type="text" id="quick-search" placeholder="Search projects, signals..." class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none">
-          <button id="refresh-snapshot" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">🔄 Refresh</button>
-          <a href="/assistant/profile" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
+          <input type="text" id="quick-search" aria-label="Search projects, signals, or growth" placeholder="Search projects, signals..." class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none">
+          <button id="refresh-snapshot" type="button" aria-label="Refresh live snapshot" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">🔄 Refresh</button>
+          <a href="/assistant/profile" aria-label="Open assistant settings" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
         </div>
       </div>
     </div>
@@ -81,7 +81,7 @@
     </div>
   {% endif %}
 
-  <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900 p-4">
+  <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900 p-4 content-auto">
     <div class="flex items-center justify-between gap-3">
       <div>
         <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Quick launcher</div>
@@ -170,8 +170,8 @@
         </a>
       </div>
 
-      <div class="mt-4 grid gap-3 grid-cols-3">
-        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <a href="/knowledge" aria-label="Open recent signals" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest signal</div>
           {% if recent_signals %}
             {% set latest_signal = recent_signals[0] %}
@@ -180,8 +180,8 @@
           {% else %}
             <div class="mt-2 text-sm text-slate-500">No signal yet.</div>
           {% endif %}
-        </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+        </a>
+        <a href="/projects" aria-label="Open recent growth" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest growth</div>
           {% if recent_growth %}
             {% set latest_growth = recent_growth[0] %}
@@ -190,8 +190,8 @@
           {% else %}
             <div class="mt-2 text-sm text-slate-500">No growth yet.</div>
           {% endif %}
-        </div>
-        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+        </a>
+        <a href="/hive/health" aria-label="Open recent nudges" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest nudge</div>
           {% if recent_nudges %}
             {% set latest_nudge = recent_nudges[0] %}
@@ -200,14 +200,35 @@
           {% else %}
             <div class="mt-2 text-sm text-slate-500">No nudge yet.</div>
           {% endif %}
+        </a>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Signals trend</span><span>{{ recent_signals_24h_count }}</span>
+          </div>
+          <div class="mt-2 h-16" data-sparkline data-series='{{ signal_trend|tojson }}' data-color="#67e8f9"></div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Growth trend</span><span>{{ recent_growth_24h_count }}</span>
+          </div>
+          <div class="mt-2 h-16" data-sparkline data-series='{{ growth_trend|tojson }}' data-color="#c4b5fd"></div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Nudges trend</span><span>{{ recent_nudges_24h_count }}</span>
+          </div>
+          <div class="mt-2 h-16" data-sparkline data-series='{{ nudge_trend|tojson }}' data-color="#f9a8d4"></div>
         </div>
       </div>
     </div>
 
-    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 content-auto">
       <div class="flex items-center justify-between gap-3 mb-3">
         <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Status</div>
-        <button id="status-toggle" class="text-xs text-slate-400 hover:text-slate-200">▼</button>
+        <button id="status-toggle" type="button" aria-controls="status-content" aria-expanded="true" class="text-xs text-slate-400 hover:text-slate-200">▼</button>
       </div>
       <div id="status-content">
         <div class="text-lg font-semibold text-slate-100">Current mode</div>
@@ -238,7 +259,7 @@
   </div>
 
   <div class="mt-5 grid gap-5 lg:grid-cols-3">
-    <section class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2">
+    <section class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2 content-auto">
       <div class="flex items-center justify-between gap-3">
         <div>
           <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Learning trail</div>
@@ -322,20 +343,20 @@
       </div>
     </section>
 
-    <aside class="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-4">
+    <aside class="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-4 content-auto" aria-label="Device status and quick modes">
       <section>
         <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Modes</div>
         <div class="mt-2 space-y-2 text-sm">
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-            <div class="font-medium text-slate-100"><a href="/projects" class="hover:text-cyan-200">Builder Copilot</a></div>
+            <div class="font-medium text-slate-100"><a href="/projects" class="hover:text-cyan-200" aria-label="Open Builder Copilot">Builder Copilot</a></div>
             <div class="text-slate-400">Focus, momentum, and execution for builders.</div>
           </div>
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-            <div class="font-medium text-slate-100"><a href="/hive/health" class="hover:text-cyan-200">HIVE</a></div>
+            <div class="font-medium text-slate-100"><a href="/hive/health" class="hover:text-cyan-200" aria-label="Open HIVE health">HIVE</a></div>
             <div class="text-slate-400">Shared intelligence with clear contribution history.</div>
           </div>
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-            <div class="font-medium text-slate-100"><a href="/assistant/profile" class="hover:text-cyan-200">Child-Safe</a></div>
+            <div class="font-medium text-slate-100"><a href="/assistant/profile" class="hover:text-cyan-200" aria-label="Open assistant profile">Child-Safe</a></div>
             <div class="text-slate-400">Permissioned autonomy with parent-visible controls.</div>
           </div>
         </div>
@@ -378,7 +399,35 @@
         assistantNames: document.querySelectorAll('[data-role="assistant-name"]'),
         assistantModes: document.querySelectorAll('[data-role="assistant-mode"]'),
         assistantVoices: document.querySelectorAll('[data-role="assistant-voice"]'),
+        sparklineRoots: document.querySelectorAll('[data-sparkline]'),
       };
+
+      function renderSparkline(root) {
+        if (!root) return;
+        let points = [];
+        try {
+          points = JSON.parse(root.dataset.series || '[]');
+        } catch (e) {
+          points = [];
+        }
+        if (!Array.isArray(points) || !points.length) {
+          root.innerHTML = '<div class="flex h-full items-center justify-center text-xs text-slate-500">No data yet</div>';
+          return;
+        }
+        const width = 320;
+        const height = 64;
+        const max = Math.max(...points, 1);
+        const step = width / Math.max(points.length - 1, 1);
+        const pad = 4;
+        const scaleY = (value) => height - pad - ((height - pad * 2) * value / max);
+        const path = points.map((value, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(index * step)} ${Math.round(scaleY(value))}`).join(' ');
+        const dots = points.map((value, index) => `<circle cx="${Math.round(index * step)}" cy="${Math.round(scaleY(value))}" r="2.5" fill="${root.dataset.color || '#67e8f9'}" />`).join('');
+        root.innerHTML = `
+          <svg viewBox="0 0 ${width} ${height}" class="h-full w-full" role="img" aria-label="Trend chart">
+            <path d="${path}" fill="none" stroke="${root.dataset.color || '#67e8f9'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+            ${dots}
+          </svg>`;
+      }
 
       async function refreshSnapshot() {
         try {
@@ -402,6 +451,8 @@
       refreshSnapshot();
       setInterval(refreshSnapshot, 30000);
 
+      ids.sparklineRoots.forEach(renderSparkline);
+
       // Status sidebar toggle
       const statusToggle = document.getElementById('status-toggle');
       const statusContent = document.getElementById('status-content');
@@ -410,6 +461,7 @@
           const isHidden = statusContent.style.display === 'none';
           statusContent.style.display = isHidden ? 'block' : 'none';
           statusToggle.textContent = isHidden ? '▼' : '▶';
+          statusToggle.setAttribute('aria-expanded', String(!isHidden));
         });
       }
 
@@ -431,6 +483,7 @@
       if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
           refreshSnapshot();
+          ids.sparklineRoots.forEach(renderSparkline);
         });
       }
 
@@ -452,7 +505,8 @@
         let greet = 'Good evening';
         if (hour < 12) greet = 'Good morning';
         else if (hour < 18) greet = 'Good afternoon';
-        greeting.textContent = `${greet}, ${assistant_profile.given_name || 'User'}`;
+        const primaryName = (ids.assistantNames && ids.assistantNames[0] && ids.assistantNames[0].textContent.trim()) || 'User';
+        greeting.textContent = `${greet}, ${primaryName}`;
       }
     })();
   </script>
@@ -462,14 +516,14 @@
       <form action="/device/bootstrap-work-session" method="post">
         <input type="hidden" name="focus_app" value="mycelium" />
         <input type="hidden" name="duration_minutes" value="45" />
-        <button type="submit" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-emerald-700 bg-emerald-950/40 px-2 py-2 text-[11px] font-medium text-emerald-100 shadow-sm">
+        <button type="submit" aria-label="Start work session" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-emerald-700 bg-emerald-950/40 px-2 py-2 text-[11px] font-medium text-emerald-100 shadow-sm">
           <span class="text-base leading-none">⚡</span>
           <span>Work</span>
         </button>
       </form>
       <form action="/device/daily-summary" method="post">
         <input type="hidden" name="window_hours" value="24" />
-        <button type="submit" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-indigo-700 bg-indigo-950/40 px-2 py-2 text-[11px] font-medium text-indigo-100 shadow-sm">
+        <button type="submit" aria-label="Open daily summary" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-indigo-700 bg-indigo-950/40 px-2 py-2 text-[11px] font-medium text-indigo-100 shadow-sm">
           <span class="text-base leading-none">◌</span>
           <span>Summary</span>
         </button>
@@ -480,7 +534,7 @@
         <input type="hidden" name="current_device_id" value="local" />
         <input type="hidden" name="candidate_device_ids" value="local,laptop" />
         <input type="hidden" name="focus_app" value="mycelium" />
-        <button type="submit" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500 bg-fuchsia-900/50 px-2 py-2 text-[11px] font-medium text-fuchsia-50 shadow-sm">
+        <button type="submit" aria-label="Launch and confirm handoff" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500 bg-fuchsia-900/50 px-2 py-2 text-[11px] font-medium text-fuchsia-50 shadow-sm">
           <span class="text-base leading-none">⇄</span>
           <span>Handoff</span>
         </button>

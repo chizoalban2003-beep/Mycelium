@@ -1,11 +1,30 @@
 {
   "name": "Mycelium",
   "short_name": "Mycelium",
+  "description": "A transparent human and AI companion for device-native growth and learning.",
+  "id": "/device",
   "start_url": "/projects",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait-primary",
   "background_color": "#020617",
   "theme_color": "#020617",
+  "categories": ["productivity", "education", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Device shell",
+      "short_name": "Device",
+      "url": "/device",
+      "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Projects",
+      "short_name": "Projects",
+      "url": "/projects",
+      "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ],
   "icons": [
     {
       "src": "/static/icon.svg",

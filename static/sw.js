@@ -2,10 +2,14 @@
  * We keep this intentionally small and non-invasive.
  */
 
-const CACHE = 'mycelium-shell-v2';
+const CACHE = 'mycelium-shell-v3';
 const PRECACHE = [
   '/static/manifest.webmanifest',
-  '/static/icon.svg'
+  '/static/icon.svg',
+  '/device',
+  '/projects',
+  '/knowledge',
+  '/hive/health'
 ];
 
 self.addEventListener('install', (event) => {
@@ -31,6 +35,19 @@ self.addEventListener('fetch', (event) => {
         caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
         return resp;
       }))
+    );
+    return;
+  }
+
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
+        .then((resp) => {
+          const copy = resp.clone();
+          caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+          return resp;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || caches.match('/device')))
     );
     return;
   }

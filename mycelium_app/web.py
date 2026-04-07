@@ -350,6 +350,22 @@ def device_shell_page(
         select(GrowthLedgerEntry).where(GrowthLedgerEntry.created_by_user_id == current_user.id)
     ).all()
 
+    def _bucket_series(rows: list[object], bucket_count: int = 8) -> list[int]:
+        buckets = [0] * max(1, int(bucket_count))
+        total_seconds = 24 * 60 * 60
+        for row in rows:
+            created_at = getattr(row, "created_at", None)
+            if not created_at:
+                continue
+            try:
+                delta_seconds = max(0.0, float((created_at - since).total_seconds()))
+                idx = int((delta_seconds / total_seconds) * len(buckets))
+                idx = max(0, min(len(buckets) - 1, idx))
+                buckets[idx] += 1
+            except Exception:
+                continue
+        return buckets
+
     return templates.TemplateResponse(
         "device_shell.html",
         {
@@ -365,6 +381,9 @@ def device_shell_page(
             "recent_growth_24h_count": len(recent_growth_24h),
             "recent_nudges": recent_nudges,
             "recent_nudges_24h_count": len(recent_nudges_24h),
+            "signal_trend": _bucket_series(recent_signals_24h),
+            "growth_trend": _bucket_series(recent_growth_24h),
+            "nudge_trend": _bucket_series(recent_nudges_24h),
             "signal_count": len(signal_total),
             "growth_count": len(growth_total),
             "project_count": len(projects),
