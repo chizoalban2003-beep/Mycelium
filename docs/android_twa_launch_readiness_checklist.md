@@ -30,6 +30,7 @@ Use this checklist right before you build and upload the first Mycelium Android 
 - Confirm `MYCELIUM_RELEASE_KEYSTORE_B64` is stored as a GitHub Secret.
 - Confirm `MYCELIUM_KEYSTORE_PASSWORD` and `MYCELIUM_KEY_PASSWORD` are stored as GitHub Secrets.
 - Confirm the release keystore contains the Bubblewrap default alias `android`, or update the workflow and helper to match your alias.
+- Review [github_actions_twa_release_secrets.md](github_actions_twa_release_secrets.md) before tagging a release.
 
 ## Verification
 

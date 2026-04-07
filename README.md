@@ -147,6 +147,32 @@ Mycelium can queue local device operations only after explicit user permission.
 
 This keeps operations auditable and reversible while improving learning from accept/reject/execute outcomes.
 
+## Local child agent startup
+
+To start the local companion agent automatically on login, install the user service:
+
+```bash
+bash scripts/install_child_agent_service.sh
+```
+
+The installer writes:
+
+- `~/.config/systemd/user/mycelium-child-agent.service`
+- `~/.config/mycelium/child-agent.env`
+
+Edit the env file to provide one auth path for telemetry:
+
+- `CHILD_BEARER_TOKEN=...`
+- or `CHILD_EMAIL=...` plus `CHILD_PASSWORD=...`
+
+Useful toggles:
+
+- `CHILD_AUTO_START_TELEMETRY=true`
+- `CHILD_AUTO_CAPTURE_TRAJECTORIES=true`
+- `CHILD_AUTO_CAPTURE_TRAJECTORIES=false` if you only want passive app-open telemetry
+
+The service launches `scripts/run_child.sh`, which starts `scripts/passive_telemetry_daemon.py` when auth is present.
+
 ## Telegram nudge bridge (optional)
 
 For external messaging (without opening the app), enable:
@@ -201,6 +227,7 @@ Android TWA release workflow:
 - Helper script: `scripts/release_twa_build.sh`
 - CI mode: `CONFIRMED_RAILWAY_SYNC=true bash scripts/release_twa_build.sh --ci`
 - GitHub Actions workflow: `.github/workflows/twa-release.yml`
+- GitHub Secrets guide: [docs/github_actions_twa_release_secrets.md](docs/github_actions_twa_release_secrets.md)
 - Launch checklist: [docs/android_twa_launch_readiness_checklist.md](docs/android_twa_launch_readiness_checklist.md)
 
 ## Email recovery channel (optional)

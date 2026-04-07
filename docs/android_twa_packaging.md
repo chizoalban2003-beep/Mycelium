@@ -99,6 +99,8 @@ GitHub Actions secrets for the tag-driven workflow:
 
 The workflow uses the Bubblewrap default signing alias `android`, so the keystore you upload should contain that alias unless you intentionally override it.
 
+Secret setup guide: [github_actions_twa_release_secrets.md](github_actions_twa_release_secrets.md)
+
 Launch-readiness checklist: [android_twa_launch_readiness_checklist.md](android_twa_launch_readiness_checklist.md)
 
 Before packaging, confirm the versioning in your scaffold is set for release:

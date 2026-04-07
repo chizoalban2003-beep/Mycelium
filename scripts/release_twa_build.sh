@@ -71,24 +71,31 @@ OUT_DIR="${MYCELIUM_TWA_OUT_DIR:-$ROOT_DIR/twa}"
 FINGERPRINT_OUT="${MYCELIUM_FINGERPRINT_OUT:-$ROOT_DIR/twa-keystore-fingerprint.txt}"
 LOCAL_ENV_FILE="${MYCELIUM_TWA_LOCAL_ENV_FILE:-$ROOT_DIR/.env}"
 VERSION_BUMP_FILE="${MYCELIUM_TWA_VERSION_BUMP_FILE:-$ROOT_DIR/version_bump.txt}"
+MANIFEST_FILE="${MYCELIUM_TWA_MANIFEST_FILE:-$OUT_DIR/twa-manifest.json}"
 
-if [[ ! -f "$ROOT_DIR/twa-manifest.json" ]]; then
-  echo "Missing twa-manifest.json at $ROOT_DIR/twa-manifest.json" >&2
+if [[ ! -f "$MANIFEST_FILE" && -f "$ROOT_DIR/twa-manifest.json" ]]; then
+  MANIFEST_FILE="$ROOT_DIR/twa-manifest.json"
+fi
+
+if [[ ! -f "$MANIFEST_FILE" ]]; then
+  echo "Missing twa-manifest.json at $MANIFEST_FILE" >&2
   exit "$EXIT_MISSING_MANIFEST"
 fi
 
 MANIFEST_VERSION_NAME="$(python - <<'PY'
 import json
+import os
 from pathlib import Path
-data = json.loads(Path('twa-manifest.json').read_text(encoding='utf-8'))
+data = json.loads(Path(os.environ['MANIFEST_FILE']).read_text(encoding='utf-8'))
 print(str(data.get('versionName', '')).strip())
 PY
 )"
 
 MANIFEST_VERSION_CODE="$(python - <<'PY'
 import json
+import os
 from pathlib import Path
-data = json.loads(Path('twa-manifest.json').read_text(encoding='utf-8'))
+data = json.loads(Path(os.environ['MANIFEST_FILE']).read_text(encoding='utf-8'))
 print(str(data.get('versionCode', '')).strip())
 PY
 )"

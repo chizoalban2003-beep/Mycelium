@@ -21,6 +21,7 @@ from mycelium_app.models import (
     SignalLedgerEvent,
     User,
 )
+from mycelium_app.models import GrowthLedgerEntry as GrowthLedgerEntryModel
 from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.routes.hybrid import auto_handoff_confirm, auto_handoff_launch
 from mycelium_app.routes.live import prune_mission_log
@@ -87,11 +88,11 @@ def _to_public(row: ConversationMessage) -> ChatMessagePublic:
     )
 
 
-def _send_telegram(*, bot_token: str, chat_id: str, text: str) -> bool:
+def _send_telegram(*, bot_token: str, chat_id: str, text: str) -> tuple[bool, int | None]:
     token = str(bot_token or "").strip()
     cid = str(chat_id or "").strip()
     if not token or not cid:
-        return False
+        return False, None
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     body = parse.urlencode(
@@ -105,9 +106,141 @@ def _send_telegram(*, bot_token: str, chat_id: str, text: str) -> bool:
     req.add_header("Content-Type", "application/x-www-form-urlencoded")
     try:
         with request.urlopen(req, timeout=10) as resp:  # nosec B310
-            return 200 <= int(getattr(resp, "status", 200)) < 300
+            status = int(getattr(resp, "status", 200))
+            body = resp.read().decode("utf-8", errors="replace")
+            message_id: int | None = None
+            try:
+                data = json.loads(body)
+                if isinstance(data, dict) and bool(data.get("ok", status < 300)):
+                    result = data.get("result") if isinstance(data.get("result"), dict) else {}
+                    raw_message_id = result.get("message_id") if isinstance(result, dict) else None
+                    if isinstance(raw_message_id, int):
+                        message_id = raw_message_id
+                    elif isinstance(raw_message_id, str) and raw_message_id.isdigit():
+                        message_id = int(raw_message_id)
+            except Exception:
+                message_id = None
+            return 200 <= status < 300, message_id
     except Exception:
-        return False
+        return False, None
+
+
+def _telegram_message_id_from_metadata(row: ConversationMessage) -> int | None:
+    metadata = _loads_dict(row.metadata_json)
+    raw = metadata.get("telegram_message_id")
+    if isinstance(raw, int):
+        return int(raw)
+    if isinstance(raw, str) and raw.isdigit():
+        return int(raw)
+    return None
+
+
+def _find_telegram_reply_target(
+    session: Session,
+    *,
+    user_id: int,
+    conversation_key: str,
+    reply_to_message_id: int | None,
+    reply_to_message_text: str,
+) -> ConversationMessage | None:
+    q = (
+        select(ConversationMessage)
+        .where(ConversationMessage.created_by_user_id == int(user_id))
+        .where(ConversationMessage.channel == "telegram")
+        .where(ConversationMessage.role == "assistant")
+        .where(ConversationMessage.conversation_key == str(conversation_key))
+        .order_by(ConversationMessage.created_at.desc())
+        .limit(200)
+    )
+    rows = session.exec(q).all()
+    if reply_to_message_id is not None:
+        for row in rows:
+            if _telegram_message_id_from_metadata(row) == int(reply_to_message_id):
+                return row
+    reply_norm = str(reply_to_message_text or "").strip()
+    if reply_norm:
+        for row in rows:
+            if str(row.content or "").strip() == reply_norm:
+                return row
+    return rows[0] if rows else None
+
+
+def _record_telegram_correction(
+    session: Session,
+    *,
+    user_id: int,
+    project_id: int | None,
+    device_id: str,
+    conversation_key: str,
+    target_message: ConversationMessage | None,
+    correction_text: str,
+    reply_to_message_id: int | None,
+    reply_to_message_text: str,
+):
+
+    target_meta = _loads_dict(target_message.metadata_json) if target_message is not None else {}
+    row = GrowthLedgerEntryModel(
+        created_by_user_id=int(user_id),
+        project_id=project_id,
+        device_id=str(device_id or settings.nexus_device_id or "local")[:64],
+        domain="behavior_correction",
+        metric="negative_reward",
+        score=-1.0,
+        accepted=False,
+        proposal_json=_dumps(
+            {
+                "source": "telegram_webhook",
+                "conversation_key": conversation_key,
+                "reply_to_message_id": reply_to_message_id,
+                "reply_to_message_text": reply_to_message_text,
+                "target": {
+                    "message_id": int(target_message.id or 0) if target_message is not None else None,
+                    "telegram_message_id": _telegram_message_id_from_metadata(target_message) if target_message is not None else None,
+                    "content": str(target_message.content or "") if target_message is not None else "",
+                    "assistant_name": target_meta.get("assistant_name"),
+                    "persona_mode": target_meta.get("persona_mode"),
+                },
+                "correction_text": correction_text,
+            }
+        ),
+        outcome_json=_dumps(
+            {
+                "negative_reward": True,
+                "correction_text": correction_text,
+                "reply_to_message_id": reply_to_message_id,
+                "reply_to_message_text": reply_to_message_text,
+            }
+        ),
+        notes=(
+            f"Telegram correction logged against message {int(target_message.id or 0) if target_message is not None else 0}"
+            if target_message is not None
+            else "Telegram correction logged without a matching target"
+        )[:500],
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(user_id),
+            project_id=project_id,
+            device_id=device_id,
+            source="telegram_webhook",
+            modality="feedback",
+            signal_type="telegram_correction",
+            stimulus={
+                "negative_reward": True,
+                "reply_to_message_id": reply_to_message_id,
+                "target_message_id": int(target_message.id or 0) if target_message is not None else None,
+            },
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
+
+    return row
 
 
 def _resolve_user_id_from_telegram_chat_id(session: Session, chat_id: str) -> int | None:
@@ -438,11 +571,20 @@ def send_chat(
         policy = get_policy(session, user_id)
         notif = policy.get("notifications") if isinstance(policy.get("notifications"), dict) else {}
         if bool(getattr(settings, "notifications_bridge_enabled", False)) and bool(notif.get("telegram_enabled", False)):
-            delivered_external = _send_telegram(
+            delivered_external, telegram_message_id = _send_telegram(
                 bot_token=str(getattr(settings, "notifications_telegram_bot_token", "") or ""),
                 chat_id=str(notif.get("telegram_chat_id") or ""),
                 text=assistant_text,
             )
+            if telegram_message_id is not None:
+                assistant_row.metadata_json = _dumps(
+                    {
+                        "assistant_name": assistant_name,
+                        "persona_mode": persona_mode,
+                        "telegram_message_id": int(telegram_message_id),
+                    }
+                )
+                session.add(assistant_row)
 
     n = NexusNudge(
         created_by_user_id=user_id,
@@ -557,6 +699,15 @@ async def telegram_webhook(
     text = str(msg.get("text") or "").strip()
     chat = msg.get("chat") if isinstance(msg.get("chat"), dict) else {}
     chat_id = str(chat.get("id") or "").strip()
+    reply_to_message = msg.get("reply_to_message") if isinstance(msg.get("reply_to_message"), dict) else {}
+    reply_to_message_id_raw = reply_to_message.get("message_id") if isinstance(reply_to_message, dict) else None
+    reply_to_message_id = (
+        int(reply_to_message_id_raw)
+        if isinstance(reply_to_message_id_raw, int)
+        or (isinstance(reply_to_message_id_raw, str) and str(reply_to_message_id_raw).isdigit())
+        else None
+    )
+    reply_to_message_text = str(reply_to_message.get("text") or "").strip() if isinstance(reply_to_message, dict) else ""
     if not text or not chat_id:
         return {"ok": True, "ignored": "unsupported_message"}
 
@@ -618,11 +769,14 @@ async def telegram_webhook(
 
         delivered = False
         if bool(getattr(settings, "notifications_bridge_enabled", False)):
-            delivered = _send_telegram(
+            delivered, telegram_message_id = _send_telegram(
                 bot_token=str(getattr(settings, "notifications_telegram_bot_token", "") or ""),
                 chat_id=chat_id,
                 text=assistant_text_local,
             )
+            if telegram_message_id is not None:
+                assistant_row.metadata_json = _dumps({**metadata, "telegram_message_id": int(telegram_message_id)})
+                session.add(assistant_row)
 
         now = datetime.utcnow()
         user_row.delivered_at = now
@@ -644,49 +798,75 @@ async def telegram_webhook(
                     session=session,
                 )
             except HTTPException as exc:
-                if int(getattr(exc, 'status_code', 500)) == 403:
-                    assistant_text = f"I’m {assistant_name}. Access denied. Identity mismatch."
-                else:
-                    raise
-            else:
-                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
-                assistant_text = (
-                    f"I’m {assistant_name}. Memory reset. HUD baseline established{scope_text}. "
-                    f"Pruned {int(result.pruned_count)} traces."
-                )
-                return _send_telegram_reply(assistant_text=assistant_text, command_name=command[0], project_id=project_id, result=result)
-        else:
-            prune_hours = int(hours or 24)
-            try:
-                result = prune_mission_log(
-                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=prune_hours, clear_all=False),
-                    current_user=mapped_user,
-                    session=session,
-                )
-            except HTTPException as exc:
-                if int(getattr(exc, 'status_code', 500)) == 403:
-                    assistant_text = f"I’m {assistant_name}. Access denied. Identity mismatch."
-                else:
-                    raise
-            else:
-                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
-                assistant_text = (
-                    f"I’m {assistant_name}. Stale traces removed. Metabolic health: 100%{scope_text}. "
-                    f"Remaining traces: {int(result.remaining_count)}."
-                )
-                return _send_telegram_reply(assistant_text=assistant_text, command_name=command[0], project_id=project_id, result=result)
+                if command and mapped_user is not None:
+                    kind, project_id, hours = command
+                    if kind == "clear":
+                        try:
+                            result = prune_mission_log(
+                                payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=None, clear_all=True),
+                                current_user=mapped_user,
+                                session=session,
+                            )
+                        except HTTPException as exc:
+                            if int(getattr(exc, "status_code", 500)) == 403:
+                                assistant_text = f"I’m {assistant_name}. Access denied. Identity mismatch."
+                            else:
+                                raise
+                        else:
+                            scope_text = f" for project {int(project_id)}" if project_id is not None else ""
+                            assistant_text = (
+                                f"I’m {assistant_name}. Memory reset. HUD baseline established{scope_text}. "
+                                f"Pruned {int(result.pruned_count)} traces."
+                            )
+                            return _send_telegram_reply(assistant_text=assistant_text, command_name=command[0], project_id=project_id, result=result)
+                    else:
+                        prune_hours = int(hours or 24)
+                        try:
+                            result = prune_mission_log(
+                                payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=prune_hours, clear_all=False),
+                                current_user=mapped_user,
+                                session=session,
+                            )
+                        except HTTPException as exc:
+                            if int(getattr(exc, "status_code", 500)) == 403:
+                                assistant_text = f"I’m {assistant_name}. Access denied. Identity mismatch."
+                            else:
+                                raise
+                        else:
+                            scope_text = f" for project {int(project_id)}" if project_id is not None else ""
+                            assistant_text = (
+                                f"I’m {assistant_name}. Stale traces removed. Metabolic health: 100%{scope_text}. "
+                                f"Remaining traces: {int(result.remaining_count)}."
+                            )
+                            return _send_telegram_reply(assistant_text=assistant_text, command_name=command[0], project_id=project_id, result=result)
 
-    lower = text.lower()
-    if lower.startswith("/clear_logs") or lower.startswith("/prune"):
-        assistant_text = (
-            f"I’m {assistant_name}. I couldn’t parse that command. "
-            "Use /clear_logs or /prune [hours], optionally /prune project <id> [hours]."
-        )
-        return _send_telegram_reply(assistant_text=assistant_text, command_name="prune" if lower.startswith("/prune") else "clear")
-
-    if lower in {"/freeze", "/killswitch on", "/freeze now"}:
-        if mapped_user is None:
-            assistant_text = f"I’m {assistant_name}. I could not resolve your account for freeze command."
+                lower = text.lower()
+                if lower.startswith("/correct"):
+                    correction_text = str(text[len("/correct"):]).strip()
+                    target_message = _find_telegram_reply_target(
+                        session,
+                        user_id=int(user_id),
+                        conversation_key=conv_key,
+                        reply_to_message_id=reply_to_message_id,
+                        reply_to_message_text=reply_to_message_text,
+                    )
+                    correction_row = _record_telegram_correction(
+                        session,
+                        user_id=int(user_id),
+                        project_id=None,
+                        device_id=str(getattr(settings, "nexus_device_id", "local") or "local"),
+                        conversation_key=conv_key,
+                        target_message=target_message,
+                        correction_text=correction_text or "negative reward",
+                        reply_to_message_id=reply_to_message_id,
+                        reply_to_message_text=reply_to_message_text,
+                    )
+                    target_label = f"message #{int(target_message.id or 0)}" if target_message is not None else "the latest assistant message"
+                    assistant_text = (
+                        f"I’m {assistant_name}. Correction logged against {target_label}; negative reward recorded. "
+                        f"Ledger entry #{int(correction_row.id or 0)}."
+                    )
+                    return _send_telegram_reply(assistant_text=assistant_text, command_name="correct")
         else:
             enabled, cleared = _set_kill_switch(
                 session,
@@ -763,11 +943,16 @@ async def telegram_webhook(
 
     delivered = False
     if bool(getattr(settings, "notifications_bridge_enabled", False)):
-        delivered = _send_telegram(
+            delivered, telegram_message_id = _send_telegram(
             bot_token=str(getattr(settings, "notifications_telegram_bot_token", "") or ""),
             chat_id=chat_id,
             text=assistant_text,
         )
+            if telegram_message_id is not None:
+                assistant_row.metadata_json = _dumps(
+                    {"assistant_name": assistant_name, "source": "telegram_webhook", "persona_mode": persona_mode, "telegram_message_id": int(telegram_message_id)}
+                )
+                session.add(assistant_row)
 
     now = datetime.utcnow()
     user_row.delivered_at = now
