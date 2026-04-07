@@ -9,7 +9,16 @@ from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import GrowthLedgerEntry, HiveOutboxMessage, ProjectMember, ProjectRole, TaskReplica, TaskTrajectory, User
+from mycelium_app.models import (
+    AdaptiveMemoryEntry,
+    GrowthLedgerEntry,
+    HiveOutboxMessage,
+    ProjectMember,
+    ProjectRole,
+    TaskReplica,
+    TaskTrajectory,
+    User,
+)
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import (
     TaskBootstrapWorkSessionRequest,
@@ -99,6 +108,67 @@ def _trajectory_key_from_sequence(sequence: list[str]) -> str:
     if not raw:
         raw = "empty"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32]
+
+
+def _clamp01(x: float) -> float:
+    return max(0.0, min(float(x), 1.0))
+
+
+def _memory_upsert(
+    session: Session,
+    *,
+    user_id: int,
+    project_id: int | None,
+    lane: str,
+    memory_key: str,
+    source: str,
+    content: dict[str, object],
+    tags: list[str],
+    strength_delta: float,
+    decay_half_life_hours: float,
+    device_id: str,
+) -> None:
+    q = (
+        select(AdaptiveMemoryEntry)
+        .where(AdaptiveMemoryEntry.created_by_user_id == int(user_id))
+        .where(AdaptiveMemoryEntry.project_id == project_id)
+        .where(AdaptiveMemoryEntry.lane == str(lane))
+        .where(AdaptiveMemoryEntry.memory_key == str(memory_key))
+    )
+    row = session.exec(q.order_by(AdaptiveMemoryEntry.updated_at.desc())).first()
+
+    now = datetime.utcnow()
+    tags_norm = [str(t).strip().lower()[:64] for t in tags if str(t).strip()][:20]
+    half_life = max(1.0, min(float(decay_half_life_hours), 24.0 * 365.0))
+
+    if row is None:
+        row = AdaptiveMemoryEntry(
+            created_by_user_id=int(user_id),
+            project_id=project_id,
+            device_id=str(device_id or settings.nexus_device_id or "local")[:128],
+            lane=str(lane),
+            memory_key=str(memory_key)[:128],
+            source=str(source)[:64],
+            content_json=_dumps(content),
+            tags_json=_dumps(tags_norm),
+            strength=_clamp01(0.5 + float(strength_delta)),
+            decay_half_life_hours=float(half_life),
+            last_reinforced_at=now,
+            last_accessed_at=now,
+            updated_at=now,
+        )
+        session.add(row)
+        return
+
+    row.source = str(source)[:64]
+    row.content_json = _dumps(content)
+    row.tags_json = _dumps(tags_norm)
+    row.decay_half_life_hours = float(half_life)
+    row.strength = _clamp01(float(row.strength or 0.0) + float(strength_delta))
+    row.last_reinforced_at = now
+    row.last_accessed_at = now
+    row.updated_at = now
+    session.add(row)
 
 
 def _to_replica_public(row: TaskReplica) -> TaskReplicaPublic:
@@ -551,6 +621,77 @@ def replica_verify(
         notes="Task replica verification feedback",
     )
     session.add(growth)
+
+    # Adaptive Memory auto-sync (Grow with Data):
+    # - episodic: store this concrete verification event
+    # - semantic: reinforce durable preference pattern when accepted
+    # - procedural: reinforce successful execution recipe
+    pattern_bucket = int(round((float(planned) / 5.0))) * 5
+    device = str(row.device_id or settings.nexus_device_id or "local")[:64]
+
+    _memory_upsert(
+        session,
+        user_id=user_id,
+        project_id=row.project_id,
+        lane="episodic",
+        memory_key=f"replica:{int(row.id or 0)}",
+        source="task_verify",
+        content={
+            "replica_id": int(row.id or 0),
+            "trajectory_key": str(row.trajectory_key or ""),
+            "device_id": device,
+            "planned_minutes": planned,
+            "focused_minutes": focused,
+            "adherence": float(round(adherence, 6)),
+            "accepted": bool(accepted),
+            "feedback_labels": feedback_labels,
+        },
+        tags=["task_replica_focus", "episodic"] + feedback_labels,
+        strength_delta=(0.10 if accepted else -0.03),
+        decay_half_life_hours=72.0,
+        device_id=device,
+    )
+
+    _memory_upsert(
+        session,
+        user_id=user_id,
+        project_id=row.project_id,
+        lane="semantic",
+        memory_key=f"focus_pattern:{device}:planned_{pattern_bucket}",
+        source="task_verify",
+        content={
+            "preferred_device_id": device,
+            "preferred_minutes": int(pattern_bucket),
+            "latest_adherence": float(round(adherence, 6)),
+            "latest_feedback_labels": feedback_labels,
+            "accepted": bool(accepted),
+        },
+        tags=["focus", "semantic"] + feedback_labels,
+        strength_delta=(0.12 if accepted else -0.05),
+        decay_half_life_hours=24.0 * 14.0,
+        device_id=device,
+    )
+
+    _memory_upsert(
+        session,
+        user_id=user_id,
+        project_id=row.project_id,
+        lane="procedural",
+        memory_key=f"procedure:{str(row.capability or 'task')}:work_session",
+        source="task_verify",
+        content={
+            "capability": str(row.capability or ""),
+            "trajectory_key": str(row.trajectory_key or ""),
+            "accepted": bool(accepted),
+            "adherence": float(round(adherence, 6)),
+            "feedback_labels": feedback_labels,
+        },
+        tags=["procedure", "work_session"] + feedback_labels,
+        strength_delta=(0.10 if accepted else -0.04),
+        decay_half_life_hours=24.0 * 30.0,
+        device_id=device,
+    )
+
     session.commit()
     session.refresh(growth)
 

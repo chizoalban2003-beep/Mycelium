@@ -370,6 +370,13 @@ Phase 2 API (implemented):
 - `POST /api/nexus/memory/{memory_id}/reinforce`
 - `POST /api/nexus/memory/decay/run`
 
+Automatic sync (implemented):
+
+- Successful/failed `POST /api/nexus/tasks/replicas/{replica_id}/verify` now auto-upserts and reinforces memory lanes:
+  - `episodic` (`replica:{id}`)
+  - `semantic` (`focus_pattern:{device}:planned_{minutes}`)
+  - `procedural` (`procedure:{capability}:work_session`)
+
 Lane values:
 
 - `episodic`
