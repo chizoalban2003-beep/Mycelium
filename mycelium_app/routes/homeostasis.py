@@ -9,6 +9,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.homeostasis import tick_homeostasis
 from mycelium_app.models import HomeostasisState, ProjectMember, User
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import HomeostasisStatusResponse, HomeostasisTickResponse
 
 
@@ -54,6 +55,21 @@ def status(
     if not row:
         return HomeostasisStatusResponse(ok=True, state=None)
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id="local",
+            source="homeostasis_api",
+            modality="stability",
+            signal_type="homeostasis_status_view",
+            stimulus={"mood": str(row.mood or ""), "updated_at": row.updated_at.isoformat() if row.updated_at else None},
+            occurred_at=row.updated_at,
+        )
+    except Exception:
+        pass
+
     return HomeostasisStatusResponse(
         ok=True,
         state={
@@ -83,6 +99,21 @@ def tick(
     _ensure_project_access(session, user_id, project_id)
 
     res = tick_homeostasis(session, user_id=user_id, project_id=project_id)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id="local",
+            source="homeostasis_api",
+            modality="stability",
+            signal_type="homeostasis_tick",
+            stimulus={"mood": str(res.state.mood or ""), "identity_hash": str(res.state.identity_hash or "")},
+            occurred_at=res.state.updated_at,
+        )
+    except Exception:
+        pass
 
     return HomeostasisTickResponse(
         ok=True,

@@ -9,6 +9,8 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import GrowthLedgerEntry, NexusNudge, SignalLedgerEvent, User
+from mycelium_app.settings import settings
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import LiveHiveEdge, LiveHiveNode, LiveHiveStateResponse
 from mycelium_app.viscosity import calculate_live_viscosity
 
@@ -80,6 +82,21 @@ def live_state(
         nid = f"sig:{name}"
         nodes.append(LiveHiveNode(id=nid, kind="signal", label=name, weight=max(1.0, float(ct))))
         edges.append(LiveHiveEdge(source=nid, target="telemetry", flow=float(ct), kind="signal_type"))
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="live_api",
+            modality="state",
+            signal_type="live_state_view",
+            stimulus={"window_minutes": wm, "signals_count": len(signals), "growth_count": len(growth), "unseen_nudges": len(unseen_nudges)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return LiveHiveStateResponse(
         ok=True,

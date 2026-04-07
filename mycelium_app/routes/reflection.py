@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
@@ -7,6 +9,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import ProjectMember, User
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import DailyConsolidationResponse, SelfReflectionResponse
 from mycelium_app.self_reflection import compute_daily_consolidation, compute_self_reflection
 
@@ -58,6 +61,21 @@ def reflect(
         top_limit=top_limit,
     )
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id="local",
+            source="reflection_api",
+            modality="analysis",
+            signal_type="self_reflection_view",
+            stimulus={"window_days": window_days, "top_limit": top_limit, "mood": snapshot.mood},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return SelfReflectionResponse(
         ok=True,
         mood=snapshot.mood,
@@ -90,4 +108,20 @@ def daily_summary(
         project_id=project_id,
         window_hours=window_hours,
     )
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id="local",
+            source="reflection_api",
+            modality="analysis",
+            signal_type="daily_summary_view",
+            stimulus={"window_hours": window_hours},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return DailyConsolidationResponse(ok=True, **out)

@@ -25,6 +25,7 @@ from mycelium_app.models import (
     User,
 )
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     HiveCuriosityConceptImportRequest,
     HiveCuriosityConceptImportResponse,
@@ -403,6 +404,21 @@ def build_report(
         project_id=payload.project_id,
     )
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="export",
+            signal_type="hive_report_build",
+            stimulus={"limit": limit, "since_provided": bool(payload.since is not None), "rows_scanned": len(rows)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return HiveReportBuildResponse(
         ok=True,
         report=_to_report_public(report, project_id=payload.project_id),
@@ -429,6 +445,22 @@ def store_outbox(
     session.add(row)
     session.commit()
     session.refresh(row)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="export",
+            signal_type="hive_outbox_store",
+            stimulus={"outbox_id": int(row.id or 0), "project_id": payload.project_id},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
+
     return HiveOutboxStoreResponse(ok=True, outbox_id=int(row.id or 0))
 
 
@@ -464,6 +496,21 @@ def list_outbox(
             )
         )
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="read",
+            signal_type="hive_outbox_recent",
+            stimulus={"limit": limit, "reports_count": len(reports)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return HiveOutboxListResponse(reports=reports)
 
 
@@ -496,6 +543,21 @@ def queue_whisper(
 
     if message_id is None:
         raise HTTPException(status_code=403, detail=f"Whisper not queued: {reason or 'unknown'}")
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="whisper",
+            signal_type="hive_whisper_queue",
+            stimulus={"message_id": int(message_id or 0), "limit": int(payload.limit or 200)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return HiveOutboxMessageStoreResponse(ok=True, message_id=int(message_id))
 
@@ -570,6 +632,21 @@ def import_whisper_as_global_update(
             kind="wisdom_whisper",
         )
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(principal.id or 0) if principal is not None else 0,
+            project_id=None,
+            device_id=device_id or str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="import",
+            signal_type="hive_whisper_import",
+            stimulus={"update_uuid": row.update_uuid, "source": source, "device_id": device_id},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
+
     return HiveWhisperImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
 
@@ -643,6 +720,21 @@ def import_curiosity_feedback_as_global_update(
             kind="curiosity_feedback",
         )
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(principal.id or 0) if principal is not None else 0,
+            project_id=None,
+            device_id=device_id or str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="import",
+            signal_type="hive_curiosity_import",
+            stimulus={"update_uuid": row.update_uuid, "source": (payload.source or "active_curiosity")[:64], "device_id": device_id},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
+
     return HiveCuriosityFeedbackImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
 
@@ -715,6 +807,21 @@ def import_curiosity_concept_as_global_update(
             update_uuid=row.update_uuid,
             kind="curiosity_concept",
         )
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(principal.id or 0) if principal is not None else 0,
+            project_id=None,
+            device_id=device_id or str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="import",
+            signal_type="hive_curiosity_concept_import",
+            stimulus={"update_uuid": row.update_uuid, "source": (payload.source or "user_feedback_ionizer")[:64], "device_id": device_id},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
 
     return HiveCuriosityConceptImportResponse(ok=True, update_uuid=row.update_uuid, imported=True)
 
@@ -1070,6 +1177,21 @@ def import_global_update(
     session.add(row)
     session.commit()
     session.refresh(row)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(principal.id or 0) if principal is not None else 0,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hive_api",
+            modality="import",
+            signal_type="hive_global_update_import",
+            stimulus={"update_uuid": row.update_uuid, "source": (payload.source or "manual_import")[:64]},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
 
     return HiveGlobalUpdateImportResponse(ok=True, update_uuid=row.update_uuid)
 

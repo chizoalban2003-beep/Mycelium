@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -9,6 +10,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.growth import compute_growth_stage
 from mycelium_app.models import GrowthLedgerEntry, ProjectMember, User
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     GrowthRecentResponse,
     GrowthStatusResponse,
@@ -98,6 +100,21 @@ def record_sweep(
     session.commit()
     session.refresh(row)
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=device_id,
+            source="growth_api",
+            modality="growth",
+            signal_type="growth_sweep_record",
+            stimulus={"domain": domain, "metric": metric, "score": score, "accepted": bool(payload.accepted)},
+            occurred_at=row.created_at,
+        )
+    except Exception:
+        pass
+
     return GrowthSweepRecordResponse(ok=True, entry_id=int(row.id or 0))
 
 
@@ -118,6 +135,22 @@ def recent(
     q = q.order_by(GrowthLedgerEntry.created_at.desc()).limit(limit)
 
     rows = session.exec(q).all()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="growth_api",
+            modality="growth",
+            signal_type="growth_recent_view",
+            stimulus={"limit": limit, "entries_count": len(rows)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return GrowthRecentResponse(entries=[_to_public(r) for r in rows])
 
 
@@ -131,6 +164,21 @@ def status(
     _ensure_project_access(session, user_id, project_id)
 
     stage, unlocked, stats = compute_growth_stage(session, user_id=user_id, project_id=project_id)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="growth_api",
+            modality="growth",
+            signal_type="growth_status_view",
+            stimulus={"stage": stage, "unlocked_features_count": len(unlocked)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return GrowthStatusResponse(
         ok=True,
