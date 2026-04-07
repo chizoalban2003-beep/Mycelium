@@ -144,6 +144,7 @@ Telegram inbound webhook endpoint:
 
 - `POST /api/nexus/chat/telegram/webhook`
 - Add request header `X-Telegram-Bot-Api-Secret-Token: <secret-token>` when webhook secret is configured.
+- Telegram status prompts like "how are you" now return a viscosity-grounded state summary.
 
 ## ActionSchema (task reproduction foundation)
 
@@ -223,6 +224,12 @@ Runtime flags:
 - `HYBRID_PREDICTOR_WINDOW_MINUTES`
 - `HYBRID_PREDICTOR_MIN_SIGNAL_EVENTS`
 - `HYBRID_PREDICTOR_GOVERNOR_MIN_CONFIDENCE`
+
+Adaptive directive API (session duration adjusts to viscosity):
+
+- `POST /api/nexus/hybrid/directive/work-session/adaptive`
+- Request body: `{"project_id": null, "window_minutes": 120, "base_duration_minutes": 45}`
+- Response includes `suggested_duration_minutes`, `strategy`, and merged `hybrid` + `viscosity` snapshots.
 
 SelfReflection (analyze best sweeps):
 

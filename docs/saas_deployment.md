@@ -75,12 +75,17 @@ Inbound Telegram chat can be wired to:
 - header: `X-Telegram-Bot-Api-Secret-Token: <secret-token>`
 
 When `telegram_chat_id` matches a user policy, inbound messages are persisted to chat history and answered.
+Status prompts (e.g., "how are you") now include live viscosity-grounded response context.
 
 ### Hybrid predictor API (physics governor + timing model)
 
 Use this endpoint to ask whether a focus work session should be recommended now:
 
 - `POST /api/nexus/hybrid/work-session/next`
+
+Adaptive directive endpoint (duration adapts to viscosity):
+
+- `POST /api/nexus/hybrid/directive/work-session/adaptive`
 
 Config flags:
 
@@ -143,6 +148,7 @@ Main-brain observability endpoint:
 Web UI:
 
 - `/hive/health` now includes an animated flow map of signal → growth → assistant → nudge movement.
+- `/hive/health` also includes a live viscosity gauge (`flow|observe|gated`).
 
 ### Omnichannel chat (app + messaging)
 

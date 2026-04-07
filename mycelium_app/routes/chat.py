@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib import parse, request
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -10,10 +10,11 @@ from sqlmodel import Session, select
 from mycelium_app.assistant_profile import get_assistant_profile_effective
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import ConversationMessage, NexusNudge, NexusPolicy, ProjectMember, User
+from mycelium_app.models import ConversationMessage, NexusNudge, NexusPolicy, ProjectMember, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import ChatHistoryResponse, ChatMessagePublic, ChatSendRequest, ChatSendResponse
 from mycelium_app.settings import settings
+from mycelium_app.viscosity import calculate_live_viscosity
 
 
 router = APIRouter(prefix="/api/nexus/chat", tags=["chat"])
@@ -94,6 +95,24 @@ def _resolve_user_id_from_telegram_chat_id(session: Session, chat_id: str) -> in
         if mapped_chat_id and mapped_chat_id == cid:
             return int(row.user_id)
     return None
+
+
+def _build_status_message(session: Session, *, user_id: int, assistant_name: str) -> str:
+    wm = max(15, min(int(getattr(settings, "hybrid_predictor_window_minutes", 120) or 120), 24 * 60))
+    since = datetime.utcnow() - timedelta(minutes=wm)
+    rows = session.exec(
+        select(SignalLedgerEvent).where(
+            SignalLedgerEvent.created_by_user_id == int(user_id),
+            SignalLedgerEvent.created_at >= since,
+        )
+    ).all()
+    vis = calculate_live_viscosity(rows)
+    return (
+        f"I’m {assistant_name}. Viscosity is {float(vis.score):.2f} ({vis.prediction_state}). "
+        f"battery={('n/a' if vis.battery_level is None else str(round(float(vis.battery_level), 1)) + '%')}, "
+        f"cpu={('n/a' if vis.cpu_temp_c is None else str(round(float(vis.cpu_temp_c), 1)) + '°C')}, "
+        f"interruptions={int(vis.recent_interruptions)}."
+    )
 
 
 @router.post("/send", response_model=ChatSendResponse)
@@ -269,6 +288,8 @@ async def telegram_webhook(
             f"I’m {assistant_name}. I can bootstrap a focus session. "
             "Use /api/nexus/tasks/bootstrap/work-session in the app to start it with your preferred duration."
         )
+    elif "how are you" in lower or "status" in lower or "viscosity" in lower:
+        assistant_text = _build_status_message(session, user_id=int(user_id), assistant_name=assistant_name)
     elif "verify" in lower:
         assistant_text = (
             f"I’m {assistant_name}. I can verify outcomes after execution. "

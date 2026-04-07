@@ -726,6 +726,23 @@ class HybridWorkSessionPredictResponse(BaseModel):
     suggested_minutes: int = 45
 
 
+class AdaptiveDirectiveRequest(BaseModel):
+    project_id: int | None = None
+    window_minutes: int = 120
+    base_duration_minutes: int = 45
+
+
+class AdaptiveDirectiveResponse(BaseModel):
+    ok: bool = True
+    project_id: int | None = None
+    base_duration_minutes: int = 45
+    suggested_duration_minutes: int = 45
+    strategy: str = "hold"  # hold|shorten|normalize
+    reason: str = ""
+    hybrid: HybridWorkSessionPredictResponse
+    viscosity: LiveViscositySnapshot
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime
