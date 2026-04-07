@@ -107,6 +107,14 @@ Chat UX:
 
 - "launch now" in chat/Telegram triggers analyze → propose → confirm flow.
 
+Autonomy policy modes (`POST /api/nexus/policy`, field `actions.autonomy_mode`):
+
+- `strict`: always manual confirm
+- `balanced`: auto-confirm only for low-viscosity non-handoff launches
+- `auto`: auto-confirm when governor + viscosity gates pass
+
+`actions.require_confirm=true` always forces manual confirmation regardless of mode.
+
 Config flags:
 
 - `HYBRID_PREDICTOR_ENABLED`

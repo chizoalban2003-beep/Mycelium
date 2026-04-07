@@ -157,6 +157,13 @@ def _build_launch_now_message(
     if rid <= 0:
         return f"I’m {assistant_name}. I analyzed your nodes but could not create a launch replica."
 
+    if str(launch.launch_mode) == "approved" and int(launch.queued_device_action_id or 0) > 0:
+        return (
+            f"I’m {assistant_name}. Launch initialized on {launch.recommended_device_id or 'best node'} "
+            f"for {int(launch.suggested_duration_minutes or 0)} minutes. "
+            f"Queued action #{int(launch.queued_device_action_id or 0)}."
+        )
+
     try:
         confirmed = auto_handoff_confirm(
             AutoHandoffConfirmRequest(replica_id=rid, device_id=launch.recommended_device_id),

@@ -12,6 +12,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.hybrid_predictor import predict_next_work_session
 from mycelium_app.models import ProjectMember, SignalLedgerEvent, TaskReplica, TaskTrajectory, User
+from mycelium_app.parental_policy import get_policy
 from mycelium_app.routes.tasks import approve_replica_and_queue
 from mycelium_app.schemas import (
     AutoHandoffConfirmRequest,
@@ -187,6 +188,48 @@ def _analyze_multinode(
     return hybrid, recs, recommended_device_id, bool(handoff_recommended), reason
 
 
+def _should_auto_confirm(
+    *,
+    policy: dict[str, object],
+    handoff_recommended: bool,
+    best: AdaptiveNodeRecommendation | None,
+    hybrid: HybridWorkSessionPredictResponse,
+) -> tuple[bool, str, str]:
+    actions = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    autonomy_mode = str(actions.get("autonomy_mode", "strict")).strip().lower() or "strict"
+    if autonomy_mode not in {"strict", "balanced", "auto"}:
+        autonomy_mode = "strict"
+
+    if not bool(actions.get("enabled", False)) or not bool(actions.get("device_control_enabled", False)):
+        return False, autonomy_mode, "Actions/device-control policy is disabled."
+    if bool(actions.get("require_confirm", True)):
+        return False, autonomy_mode, "Policy requires explicit confirmation."
+    if best is None:
+        return False, autonomy_mode, "No candidate node available."
+
+    score = float(best.viscosity.score or 0.0)
+    state = str(best.viscosity.prediction_state or "observe")
+
+    if autonomy_mode == "strict":
+        return False, autonomy_mode, "Strict mode keeps proposals manual."
+
+    if autonomy_mode == "balanced":
+        if handoff_recommended:
+            return False, autonomy_mode, "Balanced mode requires manual confirm for handoff."
+        if state != "flow" or score > 0.35:
+            return False, autonomy_mode, "Balanced mode requires low viscosity flow state."
+        if not bool(hybrid.governor_ok):
+            return False, autonomy_mode, "Balanced mode requires governor approval."
+        return True, autonomy_mode, "Balanced mode auto-confirmed under low resistance."
+
+    # autonomy_mode == auto
+    if state == "gated" or score >= 0.75:
+        return False, autonomy_mode, "Auto mode blocked by gated/high-resistance node."
+    if not bool(hybrid.governor_ok):
+        return False, autonomy_mode, "Auto mode blocked by governor confidence gate."
+    return True, autonomy_mode, "Auto mode confirmed under policy and governor gates."
+
+
 @router.post("/work-session/next", response_model=HybridWorkSessionPredictResponse)
 def predict_work_session(
     payload: HybridWorkSessionPredictRequest,
@@ -343,11 +386,20 @@ def auto_handoff_launch(
             reason="All candidate nodes are gated. Recovery mode recommended.",
             trajectory_id=None,
             replica_id=None,
+            queued_device_action_id=None,
             hybrid=hybrid,
             recommendations=recs,
         )
 
     best = recs[0]
+    policy = get_policy(session, user_id)
+    auto_confirm, autonomy_mode, gate_reason = _should_auto_confirm(
+        policy=policy,
+        handoff_recommended=bool(handoff_recommended),
+        best=best,
+        hybrid=hybrid,
+    )
+
     selected_device_id = str(recommended_device_id or best.device_id or "local")[:64] or "local"
     duration = max(10, min(int(best.suggested_duration_minutes or base or 25), 180))
     focus_app = str(payload.focus_app or "mycelium").strip().lower()[:64] or "mycelium"
@@ -386,9 +438,10 @@ def auto_handoff_launch(
                 recommended_device_id=selected_device_id,
                 launch_mode="proposed",
                 suggested_duration_minutes=int(duration),
-                reason="Reused recent equivalent launch proposal (dedupe guard).",
+                reason=f"Reused recent equivalent launch proposal (dedupe guard). {gate_reason}",
                 trajectory_id=(int(tr.id or 0) if tr else None),
                 replica_id=int(r.id or 0),
+                queued_device_action_id=None,
                 hybrid=hybrid,
                 recommendations=recs,
             )
@@ -446,26 +499,50 @@ def auto_handoff_launch(
                     "recommended_device_id": selected_device_id,
                     "handoff_recommended": bool(handoff_recommended),
                 },
+                "autonomy": {
+                    "mode": autonomy_mode,
+                    "auto_confirmed": bool(auto_confirm),
+                    "gate_reason": gate_reason,
+                },
             }
         ),
         status="proposed",
-        notes=handoff_reason,
+        notes=f"{handoff_reason} | autonomy_mode={autonomy_mode} auto_confirmed={bool(auto_confirm)} gate_reason={gate_reason}",
     )
     session.add(replica)
     session.commit()
     session.refresh(trajectory)
     session.refresh(replica)
 
+    launch_mode = "proposed"
+    queued_device_action_id: int | None = None
+    reason = f"{handoff_reason} {gate_reason}".strip()
+    if auto_confirm:
+        try:
+            message_id, detail, _reused = approve_replica_and_queue(
+                session,
+                user_id=user_id,
+                row=replica,
+                device_id=selected_device_id,
+            )
+            launch_mode = "approved"
+            queued_device_action_id = int(message_id or 0)
+            reason = detail
+        except Exception as e:
+            launch_mode = "proposed"
+            reason = f"Auto-confirm attempted but failed ({type(e).__name__}). {gate_reason}"
+
     return AutoHandoffLaunchResponse(
         ok=True,
         project_id=payload.project_id,
         handoff_recommended=bool(handoff_recommended),
         recommended_device_id=selected_device_id,
-        launch_mode="proposed",
+        launch_mode=launch_mode,
         suggested_duration_minutes=int(duration),
-        reason=handoff_reason,
+        reason=reason,
         trajectory_id=int(trajectory.id or 0),
         replica_id=int(replica.id or 0),
+        queued_device_action_id=queued_device_action_id,
         hybrid=hybrid,
         recommendations=recs,
     )

@@ -252,6 +252,17 @@ Chat trigger:
 
 - Send "launch now" to run analyze → propose → confirm in one step.
 
+Autonomy modes (set via `POST /api/nexus/policy` under `actions`):
+
+- `autonomy_mode="strict"` → always manual proposal
+- `autonomy_mode="balanced"` → auto-confirm only when low resistance and no handoff
+- `autonomy_mode="auto"` → auto-confirm when governor + viscosity gates pass
+
+Notes:
+
+- `require_confirm=true` overrides autonomy modes and keeps manual confirm.
+- Auto-launch responses may return `launch_mode=approved` with `queued_device_action_id`.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

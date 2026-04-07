@@ -24,6 +24,7 @@ def default_policy() -> dict[str, object]:
             "enabled": False,
             "notify_only": True,
             "require_confirm": True,
+            "autonomy_mode": "strict",  # strict|balanced|auto
             "device_control_enabled": False,
             "min_confidence": 0.90,
             "allowed_capabilities": [],
@@ -107,6 +108,11 @@ def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
             (actions or {}).get("device_control_enabled", base_actions.get("device_control_enabled", False))
         ),
     }
+
+    autonomy_mode = str((actions or {}).get("autonomy_mode", base_actions.get("autonomy_mode", "strict"))).strip().lower()
+    if autonomy_mode not in {"strict", "balanced", "auto"}:
+        autonomy_mode = "strict"
+    merged["actions"]["autonomy_mode"] = autonomy_mode
 
     try:
         min_conf = float((actions or {}).get("min_confidence", base_actions.get("min_confidence", 0.90)))

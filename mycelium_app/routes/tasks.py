@@ -159,6 +159,9 @@ def approve_replica_and_queue(
                 "capability": str(row.capability or ""),
                 "title": str(row.title or ""),
                 "trajectory_key": str(row.trajectory_key or ""),
+                "autonomy_mode": _loads_dict(row.command_json).get("autonomy", {}).get("mode"),
+                "auto_confirmed": bool(_loads_dict(row.command_json).get("autonomy", {}).get("auto_confirmed", False)),
+                "gate_reason": _loads_dict(row.command_json).get("autonomy", {}).get("gate_reason"),
             }
         ),
         submitted_at=None,

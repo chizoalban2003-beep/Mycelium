@@ -796,11 +796,12 @@ class AutoHandoffLaunchResponse(BaseModel):
     project_id: int | None = None
     handoff_recommended: bool = False
     recommended_device_id: str | None = None
-    launch_mode: str = "recovery"  # recovery|proposed
+    launch_mode: str = "recovery"  # recovery|proposed|approved
     suggested_duration_minutes: int = 0
     reason: str = ""
     trajectory_id: int | None = None
     replica_id: int | None = None
+    queued_device_action_id: int | None = None
     hybrid: HybridWorkSessionPredictResponse
     recommendations: list[AdaptiveNodeRecommendation] = Field(default_factory=list)
 
