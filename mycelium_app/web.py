@@ -110,7 +110,8 @@ def login_action(
     email: str = Form(...),
     password: str = Form(...),
 ):
-    user = session.exec(select(User).where(User.email == email)).first()
+    email_value = str(email or "").strip().lower()
+    user = session.exec(select(User).where(User.email == email_value)).first()
     if not user:
         return RedirectResponse(url="/login?error=Invalid+credentials", status_code=302)
     # Reuse the same verifier as API via passlib context

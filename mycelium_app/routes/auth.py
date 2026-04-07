@@ -16,10 +16,13 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserPublic)
 def register(payload: UserCreate, session: Session = Depends(get_session)):
-    existing = session.exec(select(User).where(User.email == payload.email)).first()
+    email = str(payload.email or "").strip().lower()
+    full_name = str(payload.full_name or "").strip()
+    password = str(payload.password or "")
+    existing = session.exec(select(User).where(User.email == email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=payload.email, full_name=payload.full_name, hashed_password=hash_password(payload.password))
+    user = User(email=email, full_name=full_name, hashed_password=hash_password(password))
     session.add(user)
     session.commit()
     session.refresh(user)
@@ -32,7 +35,8 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session),
 ):
-    user = session.exec(select(User).where(User.email == form_data.username)).first()
+    username = str(form_data.username or "").strip().lower()
+    user = session.exec(select(User).where(User.email == username)).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     token = create_access_token(subject=str(user.id))
