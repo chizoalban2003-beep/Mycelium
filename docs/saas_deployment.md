@@ -564,6 +564,8 @@ Phase 3: trust and governance
 - Per-action permission tiers (`suggest`, `queue`, `execute`).
 - Explainability surface for every autonomous action (“why now, why this device”).
 - Operator kill-switch and audit replay as standard controls.
+- Keep the governance surfaces visible in Projects, Knowledge Audit, Hive Health, and chat status.
+- Make autonomy feel earned by showing the policy state alongside the action history.
 
 Phase 4: Hive consideration
 - Promote allowlisted, non-sensitive wisdom only after multiple users/devices produce stable patterns.
