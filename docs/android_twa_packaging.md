@@ -78,9 +78,18 @@ For repeatable releases, the repo also includes a helper script:
 bash scripts/release_twa_build.sh
 ```
 
+CI mode is also available:
+
+```bash
+CONFIRMED_RAILWAY_SYNC=true bash scripts/release_twa_build.sh --ci
+```
+
 The helper expects the Bubblewrap project directory to already exist.
 Before it builds, it extracts the keystore SHA-256 fingerprint and stops if a local `.env` file is present but does not contain a matching `HIVE_ANDROID_SHA256` entry.
 It also prompts for an explicit yes/no confirmation so you do not burn time on a build when Railway has not been updated yet.
+Successful builds also write a small `version_bump.txt` tracker in the repo root so you can count release iterations.
+
+Launch-readiness checklist: [android_twa_launch_readiness_checklist.md](android_twa_launch_readiness_checklist.md)
 
 Before packaging, confirm the versioning in your scaffold is set for release:
 

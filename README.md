@@ -196,6 +196,12 @@ Smoke test the full webhook route end-to-end:
 python3 scripts/telegram_webhook_http_smoketest.py
 ```
 
+Android TWA release workflow:
+
+- Helper script: `scripts/release_twa_build.sh`
+- CI mode: `CONFIRMED_RAILWAY_SYNC=true bash scripts/release_twa_build.sh --ci`
+- Launch checklist: [docs/android_twa_launch_readiness_checklist.md](docs/android_twa_launch_readiness_checklist.md)
+
 ## Email recovery channel (optional)
 
 Mycelium can also send password-reset links by email when SMTP is configured.
