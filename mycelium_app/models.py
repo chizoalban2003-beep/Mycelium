@@ -482,3 +482,32 @@ class CuriosityAnswer(SQLModel, table=True):
     tags_json: str = "[]"
 
     exported_to_hive_at: Optional[datetime] = Field(default=None, index=True)
+
+
+class HandoffSession(SQLModel, table=True):
+    """Deterministic handoff execution session with retries and timeout state."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    current_device_id: str = Field(default="", index=True)
+    target_device_id: str = Field(default="", index=True)
+
+    replica_id: Optional[int] = Field(default=None, foreign_key="taskreplica.id", index=True)
+
+    # launched|proposed|queued|waiting_retry|completed|failed|timed_out|recovery
+    status: str = Field(default="launched", index=True)
+    launch_mode: str = Field(default="proposed", index=True)
+
+    attempt_count: int = Field(default=0, index=True)
+    max_attempts: int = Field(default=3)
+
+    timeout_at: Optional[datetime] = Field(default=None, index=True)
+    next_retry_at: Optional[datetime] = Field(default=None, index=True)
+    last_error: str = ""
+
+    details_json: str = "{}"

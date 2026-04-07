@@ -38,6 +38,8 @@ from mycelium_app.schemas import (
     TaskActionKillSwitchResponse,
     TaskActionReplayRequest,
     TaskActionReplayResponse,
+    TaskActionAuditItem,
+    TaskActionAuditTimelineResponse,
     TaskReplicaVerifyResponse,
     TaskTrajectoryRecordRequest,
     TaskTrajectoryRecordResponse,
@@ -137,6 +139,39 @@ def _capability_from_action_payload(payload: dict[str, object]) -> str:
     if action_id == "device_start_focus_session":
         return "start_focus_session"
     return ""
+
+
+def _audit_gates_for_action(
+    *,
+    actions_cfg: dict[str, object],
+    capability: str,
+    confidence: float,
+) -> list[str]:
+    gates: list[str] = []
+    if bool(actions_cfg.get("kill_switch", False)):
+        gates.append("kill_switch_enabled")
+    if not bool(actions_cfg.get("enabled", False)):
+        gates.append("actions_disabled")
+    if not bool(actions_cfg.get("device_control_enabled", False)):
+        gates.append("device_control_disabled")
+
+    caps = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
+    allowed = {str(c).strip().lower() for c in caps if str(c).strip()}
+    if allowed and capability and capability not in allowed:
+        gates.append("capability_not_allowed")
+
+    tier = _permission_tier_for_capability(actions_cfg, capability)
+    if tier == "suggest":
+        gates.append("permission_tier_suggest")
+
+    try:
+        min_conf = float(actions_cfg.get("min_confidence", 0.90))
+    except Exception:
+        min_conf = 0.90
+    min_conf = max(0.0, min(min_conf, 1.0))
+    if float(confidence) < min_conf:
+        gates.append("confidence_below_minimum")
+    return gates
 
 
 def _memory_upsert(
@@ -734,6 +769,70 @@ def replay_device_action(
         replay_message_id=int(new_msg.id or 0),
         detail="Device action replay queued",
     )
+
+
+@router.get("/actions/audit/timeline", response_model=TaskActionAuditTimelineResponse)
+def action_audit_timeline(
+    limit: int = 100,
+    project_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, project_id)
+
+    lim = max(1, min(int(limit), 1000))
+    q = (
+        select(HiveOutboxMessage)
+        .where(HiveOutboxMessage.created_by_user_id == int(user_id))
+        .where(HiveOutboxMessage.kind == "device_action")
+    )
+    if project_id is None:
+        q = q.where(HiveOutboxMessage.project_id.is_(None))
+    else:
+        q = q.where(HiveOutboxMessage.project_id == int(project_id))
+    rows = session.exec(q.order_by(HiveOutboxMessage.created_at.desc()).limit(lim)).all()
+
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    try:
+        min_conf = float(actions_cfg.get("min_confidence", 0.90))
+    except Exception:
+        min_conf = 0.90
+    min_conf = max(0.0, min(min_conf, 1.0))
+
+    items: list[TaskActionAuditItem] = []
+    for r in rows:
+        payload = _loads_dict(r.payload_json)
+        capability = _capability_from_action_payload(payload)
+        confidence = _clamp01(float(payload.get("confidence", 0.0) or 0.0))
+        tier = _permission_tier_for_capability(actions_cfg, capability)
+        gates = _audit_gates_for_action(actions_cfg=actions_cfg, capability=capability, confidence=confidence)
+
+        ack = payload.get("ack") if isinstance(payload.get("ack"), dict) else {}
+        status = "pending"
+        if r.submitted_at is not None:
+            status = str(ack.get("status") or "submitted")[:32]
+
+        items.append(
+            TaskActionAuditItem(
+                message_id=int(r.id or 0),
+                created_at=r.created_at,
+                project_id=r.project_id,
+                device_id=str(r.device_id or ""),
+                action_id=str(payload.get("action_id") or "")[:64],
+                capability=capability,
+                confidence=float(round(confidence, 6)),
+                permission_tier=tier,
+                kill_switch=bool(actions_cfg.get("kill_switch", False)),
+                min_confidence=float(round(min_conf, 6)),
+                status=status,
+                gates=gates,
+                would_pass_now=(len(gates) == 0),
+            )
+        )
+
+    return TaskActionAuditTimelineResponse(ok=True, items=items)
 
 
 @router.post("/replicas/{replica_id}/ack", response_model=TaskReplicaAckResponse)

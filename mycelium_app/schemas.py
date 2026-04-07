@@ -1024,3 +1024,67 @@ class NexusKnowledgeAuditResponse(BaseModel):
     local: dict[str, object] = Field(default_factory=dict)
     hive: dict[str, object] = Field(default_factory=dict)
     validation: dict[str, object] = Field(default_factory=dict)
+
+
+class HandoffSessionPublic(BaseModel):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    project_id: int | None = None
+    current_device_id: str
+    target_device_id: str
+    replica_id: int | None = None
+    status: str
+    launch_mode: str
+    attempt_count: int
+    max_attempts: int
+    timeout_at: datetime | None = None
+    next_retry_at: datetime | None = None
+    last_error: str = ""
+    details: dict[str, object] = Field(default_factory=dict)
+
+
+class HandoffSessionStartRequest(BaseModel):
+    project_id: int | None = None
+    window_minutes: int = 120
+    base_duration_minutes: int = 45
+    current_device_id: str | None = None
+    candidate_device_ids: list[str] = Field(default_factory=list)
+    focus_app: str = "mycelium"
+    max_attempts: int = 3
+    timeout_seconds: int = 300
+
+
+class HandoffSessionStartResponse(BaseModel):
+    ok: bool = True
+    session: HandoffSessionPublic
+
+
+class HandoffSessionTickRequest(BaseModel):
+    retry_wait_seconds: int = 20
+
+
+class HandoffSessionTickResponse(BaseModel):
+    ok: bool = True
+    session: HandoffSessionPublic
+
+
+class TaskActionAuditItem(BaseModel):
+    message_id: int
+    created_at: datetime
+    project_id: int | None = None
+    device_id: str
+    action_id: str
+    capability: str
+    confidence: float
+    permission_tier: str
+    kill_switch: bool
+    min_confidence: float
+    status: str
+    gates: list[str] = Field(default_factory=list)
+    would_pass_now: bool
+
+
+class TaskActionAuditTimelineResponse(BaseModel):
+    ok: bool = True
+    items: list[TaskActionAuditItem] = Field(default_factory=list)

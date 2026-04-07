@@ -128,6 +128,12 @@ One-tap confirmation endpoint:
 - `POST /api/nexus/hybrid/directive/work-session/auto-handoff-confirm`
 - Queues execution with idempotent behavior (duplicate confirmation reuses pending device action).
 
+Deterministic handoff session endpoints:
+
+- `POST /api/nexus/hybrid/handoff/session/start`
+- `POST /api/nexus/hybrid/handoff/session/{session_id}/tick`
+- Enables retry/timeout orchestration with explicit state transitions.
+
 Chat UX:
 
 - "launch now" in chat/Telegram triggers analyze → propose → confirm flow.
@@ -409,6 +415,26 @@ Phase 3 policy keys (implemented under `actions`):
 Phase 4: reliability and evaluation
 - Deterministic handoff state machine with retries and timeout recovery.
 - Scenario-based autonomy eval suite (`strict|balanced|auto`) and regression gates.
+
+Phase 4 API (implemented):
+
+- `POST /api/nexus/hybrid/handoff/session/start`
+- `POST /api/nexus/hybrid/handoff/session/{session_id}/tick`
+- `GET /api/nexus/tasks/actions/audit/timeline`
+
+Phase 4 eval script (implemented):
+
+- `python3 scripts/eval_autonomy_modes.py --base-url <url> --token <token>`
+
+Deterministic handoff states:
+
+- `proposed`
+- `queued`
+- `waiting_retry`
+- `completed`
+- `failed`
+- `timed_out`
+- `recovery`
 
 Phase 5: identity depth
 - Persona mode profiles (coach, calm, briefing) with context-aware tone routing.

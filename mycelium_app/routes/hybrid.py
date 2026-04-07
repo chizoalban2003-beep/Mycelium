@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.hybrid_predictor import predict_next_work_session
-from mycelium_app.models import ProjectMember, SignalLedgerEvent, TaskReplica, TaskTrajectory, User
+from mycelium_app.models import HandoffSession, ProjectMember, SignalLedgerEvent, TaskReplica, TaskTrajectory, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.routes.tasks import approve_replica_and_queue
 from mycelium_app.schemas import (
@@ -26,6 +26,11 @@ from mycelium_app.schemas import (
     AdaptiveDirectiveResponse,
     HybridWorkSessionPredictRequest,
     HybridWorkSessionPredictResponse,
+    HandoffSessionPublic,
+    HandoffSessionStartRequest,
+    HandoffSessionStartResponse,
+    HandoffSessionTickRequest,
+    HandoffSessionTickResponse,
 )
 from mycelium_app.settings import settings
 from mycelium_app.viscosity import calculate_live_viscosity
@@ -186,6 +191,26 @@ def _analyze_multinode(
         reason = f"Best available device is '{best.device_id}' (η={float(best.viscosity.score):.2f})."
 
     return hybrid, recs, recommended_device_id, bool(handoff_recommended), reason
+
+
+def _handoff_to_public(row: HandoffSession) -> HandoffSessionPublic:
+    return HandoffSessionPublic(
+        id=int(row.id or 0),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        project_id=row.project_id,
+        current_device_id=str(row.current_device_id or ""),
+        target_device_id=str(row.target_device_id or ""),
+        replica_id=(int(row.replica_id) if row.replica_id is not None else None),
+        status=str(row.status or ""),
+        launch_mode=str(row.launch_mode or ""),
+        attempt_count=int(row.attempt_count or 0),
+        max_attempts=int(row.max_attempts or 0),
+        timeout_at=row.timeout_at,
+        next_retry_at=row.next_retry_at,
+        last_error=str(row.last_error or ""),
+        details=_loads_dict(row.details_json),
+    )
 
 
 def _should_auto_confirm(
@@ -579,3 +604,137 @@ def auto_handoff_confirm(
         queued_device_action_id=int(message_id or 0),
         detail=detail,
     )
+
+
+@router.post("/handoff/session/start", response_model=HandoffSessionStartResponse)
+def handoff_session_start(
+    payload: HandoffSessionStartRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, payload.project_id)
+
+    launch = auto_handoff_launch(
+        AutoHandoffLaunchRequest(
+            project_id=payload.project_id,
+            window_minutes=payload.window_minutes,
+            base_duration_minutes=payload.base_duration_minutes,
+            current_device_id=payload.current_device_id,
+            candidate_device_ids=payload.candidate_device_ids,
+            focus_app=payload.focus_app,
+        ),
+        current_user=current_user,
+        session=session,
+    )
+
+    max_attempts = max(1, min(int(payload.max_attempts), 10))
+    timeout_seconds = max(30, min(int(payload.timeout_seconds), 3600))
+    now = datetime.utcnow()
+
+    status = "proposed"
+    if str(launch.launch_mode) == "approved":
+        status = "queued"
+    elif str(launch.launch_mode) == "recovery":
+        status = "recovery"
+
+    hs = HandoffSession(
+        created_by_user_id=user_id,
+        project_id=payload.project_id,
+        current_device_id=str(payload.current_device_id or "")[:64],
+        target_device_id=str(launch.recommended_device_id or "")[:64],
+        replica_id=(int(launch.replica_id) if launch.replica_id is not None else None),
+        status=status,
+        launch_mode=str(launch.launch_mode or "proposed")[:32],
+        attempt_count=0,
+        max_attempts=max_attempts,
+        timeout_at=now + timedelta(seconds=timeout_seconds),
+        details_json=_dumps(
+            {
+                "reason": str(launch.reason or ""),
+                "handoff_recommended": bool(launch.handoff_recommended),
+                "suggested_duration_minutes": int(launch.suggested_duration_minutes or 0),
+            }
+        ),
+    )
+    session.add(hs)
+    session.commit()
+    session.refresh(hs)
+    return HandoffSessionStartResponse(ok=True, session=_handoff_to_public(hs))
+
+
+@router.post("/handoff/session/{session_id}/tick", response_model=HandoffSessionTickResponse)
+def handoff_session_tick(
+    session_id: int,
+    payload: HandoffSessionTickRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    hs = session.exec(
+        select(HandoffSession).where(
+            HandoffSession.id == int(session_id),
+            HandoffSession.created_by_user_id == user_id,
+        )
+    ).first()
+    if not hs:
+        raise HTTPException(status_code=404, detail="Handoff session not found")
+
+    _ensure_project_access(session, user_id, hs.project_id)
+
+    terminal = {"completed", "failed", "timed_out", "recovery"}
+    now = datetime.utcnow()
+    if str(hs.status or "") in terminal:
+        return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
+
+    if hs.timeout_at is not None and now >= hs.timeout_at:
+        hs.status = "timed_out"
+        hs.last_error = "handoff_session_timeout"
+        hs.updated_at = now
+        session.add(hs)
+        session.commit()
+        session.refresh(hs)
+        return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
+
+    replica: TaskReplica | None = None
+    if hs.replica_id is not None:
+        replica = session.exec(
+            select(TaskReplica).where(TaskReplica.id == int(hs.replica_id), TaskReplica.created_by_user_id == user_id)
+        ).first()
+
+    if replica is not None and str(replica.status or "") in {"executed"}:
+        hs.status = "completed"
+        hs.updated_at = now
+    elif replica is not None and str(replica.status or "") in {"failed", "rejected"}:
+        hs.status = "failed"
+        hs.updated_at = now
+        hs.last_error = f"replica_{str(replica.status or '').lower()}"
+    elif str(hs.status or "") in {"proposed", "waiting_retry", "launched"} and hs.replica_id is not None:
+        if hs.next_retry_at is not None and now < hs.next_retry_at:
+            return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
+
+        try:
+            auto_handoff_confirm(
+                AutoHandoffConfirmRequest(replica_id=int(hs.replica_id), device_id=(hs.target_device_id or None)),
+                current_user=current_user,
+                session=session,
+            )
+            hs.status = "queued"
+            hs.next_retry_at = None
+            hs.last_error = ""
+            hs.updated_at = now
+        except Exception as e:
+            hs.attempt_count = int(hs.attempt_count or 0) + 1
+            hs.last_error = type(e).__name__
+            hs.updated_at = now
+            if int(hs.attempt_count or 0) >= int(hs.max_attempts or 1):
+                hs.status = "failed"
+            else:
+                hs.status = "waiting_retry"
+                wait_s = max(5, min(int(payload.retry_wait_seconds), 300))
+                hs.next_retry_at = now + timedelta(seconds=wait_s)
+
+    session.add(hs)
+    session.commit()
+    session.refresh(hs)
+    return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
