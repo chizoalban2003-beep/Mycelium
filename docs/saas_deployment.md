@@ -1,5 +1,32 @@
 # SaaS Deployment (Railway Public Hub + Android Distribution)
 
+## Startup shape
+
+Mycelium is a consent-first AI product that begins in a child-like guided mode and grows with the data a user intentionally allows it to consume.
+
+Product arc:
+
+- Child stage: small, visible, heavily guided, and easy to revoke.
+- Growth stage: learns from approved signals, summaries, and corrections.
+- Personal assistant stage: proactive, but still explainable and reversible.
+- Hive stage: shares only allowlisted wisdom across consenting users or devices.
+
+The learning engine is physics-inspired: signals are normalized, weighted, and evaluated so the assistant improves from outcomes instead of hidden heuristics.
+
+Early users:
+
+- founders
+- developers
+- operators
+- power users managing multiple projects or devices
+
+The core promise is simple:
+
+- the user stays in control
+- the assistant grows with their data
+- the system explains what it learned and why
+- Hive only appears after trust and consent
+
 ## Public Alpha fast path (recommended)
 
 This is the current default strategy for market velocity:
@@ -7,6 +34,7 @@ This is the current default strategy for market velocity:
 - Backend: Railway (public HTTPS domain)
 - App distribution: Android TWA/PWA wrapper (Google Play)
 - Security membrane: strict CORS + secure cookies + ingest throttling
+- Product posture: child-first onboarding, visible learning, and gradual autonomy
 
 ### Required Railway variables
 
@@ -494,7 +522,12 @@ Promotion rule to public Alpha:
 
 ### Jarvis-grade roadmap (Grow with Data)
 
-To evolve from operational assistant to durable cognitive system, execute in phases:
+To evolve from guided child-stage assistant to durable personal assistant, execute in phases:
+
+Phase 0: guided child mode
+- Start with a small set of visible surfaces: Home, Learning Trail, Memory, Builder Copilot.
+- Keep every action explicit, reversible, and easy to explain.
+- Let the assistant learn only from approved signals.
 
 Phase 1 (now): learning signal quality
 - Capture structured post-action feedback labels via `/verify`.
@@ -529,6 +562,11 @@ Phase 3: trust and governance
 - Explainability surface for every autonomous action (“why now, why this device”).
 - Operator kill-switch and audit replay as standard controls.
 
+Phase 4: Hive consideration
+- Promote allowlisted, non-sensitive wisdom only after multiple users/devices produce stable patterns.
+- Keep raw personal data local by default; export only coarse, consented aggregates into Hive.
+- Use Hive as a trust-preserving amplifier, not a replacement for the user’s own device brain.
+
 Phase 3 API (implemented):
 
 - `GET /api/nexus/tasks/replicas/{replica_id}/explain`
@@ -544,6 +582,11 @@ Phase 3 policy keys (implemented under `actions`):
 Phase 4: reliability and evaluation
 - Deterministic handoff state machine with retries and timeout recovery.
 - Scenario-based autonomy eval suite (`strict|balanced|auto`) and regression gates.
+
+Phase 5: productization
+- Package onboarding for the first customer segment.
+- Turn the learning trail and today summary into the primary acquisition demo.
+- Keep pricing aligned to value: personal assistant first, Hive expansion later.
 
 Phase 4 API (implemented):
 
@@ -688,6 +731,7 @@ What you get out of the box:
 - Optional device notifications:
   - **In-app notifications** when the web app is open.
   - **Android notifications** via Termux poller (works even when the web UI is closed).
+- A polished device shell that shows the live learning trail plus a founder-friendly "today's story" summary.
 
 #### Install on Android (PWA)
 
