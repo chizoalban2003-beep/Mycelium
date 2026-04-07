@@ -14,6 +14,7 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.models import (
     ConversationMessage,
     HiveOutboxMessage,
+    HiveDevice,
     NexusNudge,
     NexusPolicy,
     ProjectMember,
@@ -141,15 +142,19 @@ def _parse_mission_log_command(text: str) -> tuple[str, int | None, int | None] 
 
     project_id: int | None = None
     hours: int | None = None
+    saw_explicit_argument = False
+    saw_recognized_value = False
 
     index = 1
     while index < len(parts):
         token = parts[index]
         if token in {'project', 'project_id'} and index + 1 < len(parts):
+            saw_explicit_argument = True
             candidate = ''.join(ch for ch in parts[index + 1] if ch.isdigit())
             if candidate:
                 try:
                     project_id = int(candidate)
+                    saw_recognized_value = True
                 except Exception:
                     project_id = None
             index += 2
@@ -157,19 +162,28 @@ def _parse_mission_log_command(text: str) -> tuple[str, int | None, int | None] 
 
         candidate = ''.join(ch for ch in token if ch.isdigit())
         if candidate:
+            saw_explicit_argument = True
             try:
                 value = int(candidate)
             except Exception:
                 value = None
             if value is not None:
+                saw_recognized_value = True
                 if command == '/prune' and hours is None:
                     hours = value
                 elif project_id is None:
                     project_id = value
+        elif token:
+            saw_explicit_argument = True
         index += 1
 
     if command == '/clear_logs':
+        if saw_explicit_argument and not saw_recognized_value:
+            return None
         return 'clear', project_id, None
+
+    if saw_explicit_argument and not saw_recognized_value and project_id is None and hours is None:
+        return None
 
     return 'prune', project_id, (hours if hours is not None else 24)
 
@@ -184,8 +198,12 @@ def _build_status_message(session: Session, *, user_id: int, assistant_name: str
         )
     ).all()
     vis = calculate_live_viscosity(rows)
+    node_count = session.exec(
+        select(HiveDevice).where(HiveDevice.last_seen_at >= since)
+    ).all()
     return (
         f"I’m {assistant_name}. Viscosity is {float(vis.score):.2f} ({vis.prediction_state}). "
+        f"nodes={len(node_count)}, "
         f"battery={('n/a' if vis.battery_level is None else str(round(float(vis.battery_level), 1)) + '%')}, "
         f"cpu={('n/a' if vis.cpu_temp_c is None else str(round(float(vis.cpu_temp_c), 1)) + '°C')}, "
         f"interruptions={int(vis.recent_interruptions)}."
@@ -559,59 +577,27 @@ async def telegram_webhook(
     assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
     mapped_user = session.exec(select(User).where(User.id == int(user_id))).first()
 
-    command = _parse_mission_log_command(text)
-    if command and mapped_user is not None:
-        kind, project_id, hours = command
-        result = None
-        if kind == 'clear':
-            try:
-                result = prune_mission_log(
-                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=None, clear_all=True),
-                    current_user=mapped_user,
-                    session=session,
-                )
-            except HTTPException as exc:
-                if int(getattr(exc, 'status_code', 500)) == 403:
-                    assistant_text = f"I’m {assistant_name}. Unauthorized. Access to the Mycelium core is restricted."
-                else:
-                    raise
-            else:
-                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
-                assistant_text = (
-                    f"I’m {assistant_name}. Mycelial memory wiped{scope_text}. HUD reset to baseline. "
-                    f"Pruned {int(result.pruned_count)} traces."
-                )
-        else:
-            prune_hours = int(hours or 24)
-            try:
-                result = prune_mission_log(
-                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=prune_hours, clear_all=False),
-                    current_user=mapped_user,
-                    session=session,
-                )
-            except HTTPException as exc:
-                if int(getattr(exc, 'status_code', 500)) == 403:
-                    assistant_text = f"I’m {assistant_name}. Unauthorized. Access to the Mycelium core is restricted."
-                else:
-                    raise
-            else:
-                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
-                assistant_text = (
-                    f"I’m {assistant_name}. Pruned traces older than {int(result.retention_hours or prune_hours)} hours{scope_text}. "
-                    f"Metabolic health: 100%. Remaining traces: {int(result.remaining_count)}."
-                )
+    def _send_telegram_reply(
+        *,
+        assistant_text: str,
+        command_name: str | None = None,
+        project_id: int | None = None,
+        result: object | None = None,
+    ) -> dict[str, object]:
         persona_mode = _persona_mode_from_policy(session, user_id=int(user_id))
-        assistant_text = _apply_persona_tone(assistant_text, mode=persona_mode)
-        metadata = {
+        assistant_text_local = _apply_persona_tone(assistant_text, mode=persona_mode)
+        metadata: dict[str, object] = {
             "assistant_name": assistant_name,
             "source": "telegram_webhook",
             "persona_mode": persona_mode,
-            "command": command[0],
-            "project_id": project_id,
         }
+        if command_name is not None:
+            metadata["command"] = command_name
+        if project_id is not None:
+            metadata["project_id"] = project_id
         if result is not None:
-            metadata["pruned_count"] = int(result.pruned_count)
-            metadata["remaining_count"] = int(result.remaining_count)
+            metadata["pruned_count"] = int(getattr(result, "pruned_count", 0) or 0)
+            metadata["remaining_count"] = int(getattr(result, "remaining_count", 0) or 0)
 
         assistant_row = ConversationMessage(
             created_by_user_id=int(user_id),
@@ -619,7 +605,7 @@ async def telegram_webhook(
             conversation_key=conv_key,
             channel="telegram",
             role="assistant",
-            content=assistant_text,
+            content=assistant_text_local,
             metadata_json=_dumps(metadata),
         )
         session.add(assistant_row)
@@ -630,7 +616,7 @@ async def telegram_webhook(
             delivered = _send_telegram(
                 bot_token=str(getattr(settings, "notifications_telegram_bot_token", "") or ""),
                 chat_id=chat_id,
-                text=assistant_text,
+                text=assistant_text_local,
             )
 
         now = datetime.utcnow()
@@ -640,9 +626,59 @@ async def telegram_webhook(
         session.add(assistant_row)
         session.commit()
 
-        return {"ok": True, "delivered": bool(delivered), "command": command[0]}
+        return {"ok": True, "delivered": bool(delivered), "command": command_name or "message"}
+
+    command = _parse_mission_log_command(text)
+    if command and mapped_user is not None:
+        kind, project_id, hours = command
+        if kind == 'clear':
+            try:
+                result = prune_mission_log(
+                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=None, clear_all=True),
+                    current_user=mapped_user,
+                    session=session,
+                )
+            except HTTPException as exc:
+                if int(getattr(exc, 'status_code', 500)) == 403:
+                    assistant_text = f"I’m {assistant_name}. Access denied. Identity mismatch."
+                else:
+                    raise
+            else:
+                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
+                assistant_text = (
+                    f"I’m {assistant_name}. Memory reset. HUD baseline established{scope_text}. "
+                    f"Pruned {int(result.pruned_count)} traces."
+                )
+                return _send_telegram_reply(assistant_text=assistant_text, command_name=command[0], project_id=project_id, result=result)
+        else:
+            prune_hours = int(hours or 24)
+            try:
+                result = prune_mission_log(
+                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=prune_hours, clear_all=False),
+                    current_user=mapped_user,
+                    session=session,
+                )
+            except HTTPException as exc:
+                if int(getattr(exc, 'status_code', 500)) == 403:
+                    assistant_text = f"I’m {assistant_name}. Access denied. Identity mismatch."
+                else:
+                    raise
+            else:
+                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
+                assistant_text = (
+                    f"I’m {assistant_name}. Stale traces removed. Metabolic health: 100%{scope_text}. "
+                    f"Remaining traces: {int(result.remaining_count)}."
+                )
+                return _send_telegram_reply(assistant_text=assistant_text, command_name=command[0], project_id=project_id, result=result)
 
     lower = text.lower()
+    if lower.startswith("/clear_logs") or lower.startswith("/prune"):
+        assistant_text = (
+            f"I’m {assistant_name}. I couldn’t parse that command. "
+            "Use /clear_logs or /prune [hours], optionally /prune project <id> [hours]."
+        )
+        return _send_telegram_reply(assistant_text=assistant_text, command_name="prune" if lower.startswith("/prune") else "clear")
+
     if lower in {"/freeze", "/killswitch on", "/freeze now"}:
         if mapped_user is None:
             assistant_text = f"I’m {assistant_name}. I could not resolve your account for freeze command."
@@ -676,6 +712,8 @@ async def telegram_webhook(
             f"autonomy_mode={str(actions_cfg.get('autonomy_mode', 'strict'))}, "
             f"require_confirm={str(bool(actions_cfg.get('require_confirm', True))).lower()}."
         )
+    elif lower.startswith("/status") or "how are you" in lower or "status" in lower or "viscosity" in lower:
+        assistant_text = _build_status_message(session, user_id=int(user_id), assistant_name=assistant_name)
     elif "bootstrap" in lower:
         assistant_text = (
             f"I’m {assistant_name}. I can bootstrap a focus session. "

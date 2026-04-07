@@ -167,7 +167,19 @@ Telegram inbound webhook endpoint:
 
 - `POST /api/nexus/chat/telegram/webhook`
 - Add request header `X-Telegram-Bot-Api-Secret-Token: <secret-token>` when webhook secret is configured.
-- Telegram status prompts like "how are you" now return a viscosity-grounded state summary.
+- Telegram status prompts like "how are you" or `/status` return a viscosity-grounded state summary, including active node count.
+
+Smoke test the Telegram command path before launch:
+
+```bash
+python3 scripts/telegram_command_smoketest.py
+```
+
+Smoke test the full webhook route end-to-end:
+
+```bash
+python3 scripts/telegram_webhook_http_smoketest.py
+```
 
 ## Email recovery channel (optional)
 
