@@ -315,6 +315,17 @@ Use this before opening public alpha:
   - `metric=adherence`
 - [ ] Keep device capabilities allowlisted (minimum viable set) in user policy.
 
+One-command production checklist (automated):
+
+- `python3 scripts/public_alpha_checklist.py --base-url https://<domain> --token <TOKEN> --expected-git-sha <sha> --expected-android-package <package> --expected-android-fingerprints-csv <fp1,fp2> --require-assetlinks`
+
+This checks, in one run:
+
+- `/health`
+- `/api/nexus/deploy/version` (and optional SHA match)
+- `/api/nexus/hybrid/handoff/slo` error budget status
+- `/.well-known/assetlinks.json` presence and optional package/fingerprint match
+
 ### Live demonstration runbook (phone → laptop handoff)
 
 Use this to demonstrate multi-node intelligence before opening Alpha:
