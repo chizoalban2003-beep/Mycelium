@@ -159,6 +159,16 @@ Run the E2E autonomy path in one command:
 
 - `python3 scripts/smoke_autonomy_handoff_flow.py --base-url <url> --token <token> --completed --planned-minutes 45 --focused-minutes 45`
 
+Prerequisite for fresh accounts (default policy keeps actions disabled):
+
+- `POST /api/nexus/policy` with:
+  - `actions.enabled=true`
+  - `actions.device_control_enabled=true`
+  - `actions.notify_only=false`
+  - `actions.require_confirm=false` (or keep true if you want manual confirm in smoke)
+  - `actions.autonomy_mode=auto` (or `balanced`)
+  - `actions.min_confidence=0.0` for deterministic smoke behavior
+
 This validates:
 
 1. `auto-handoff-launch`
