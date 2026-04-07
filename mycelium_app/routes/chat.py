@@ -22,6 +22,7 @@ from mycelium_app.models import (
 )
 from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.routes.hybrid import auto_handoff_confirm, auto_handoff_launch
+from mycelium_app.routes.live import prune_mission_log
 from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     AutoHandoffConfirmRequest,
@@ -31,6 +32,7 @@ from mycelium_app.schemas import (
     ChatSendRequest,
     ChatSendResponse,
     ChatToneCheckResponse,
+    MissionLogPruneRequest,
 )
 from mycelium_app.settings import settings
 from mycelium_app.self_reflection import compute_daily_consolidation
@@ -122,6 +124,54 @@ def _resolve_user_id_from_telegram_chat_id(session: Session, chat_id: str) -> in
         if mapped_chat_id and mapped_chat_id == cid:
             return int(row.user_id)
     return None
+
+
+def _parse_mission_log_command(text: str) -> tuple[str, int | None, int | None] | None:
+    raw = str(text or '').strip().lower()
+    if not raw.startswith('/'):
+        return None
+
+    parts = [part for part in raw.split() if part]
+    if not parts:
+        return None
+
+    command = parts[0].split('@', 1)[0]
+    if command not in {'/clear_logs', '/prune'}:
+        return None
+
+    project_id: int | None = None
+    hours: int | None = None
+
+    index = 1
+    while index < len(parts):
+        token = parts[index]
+        if token in {'project', 'project_id'} and index + 1 < len(parts):
+            candidate = ''.join(ch for ch in parts[index + 1] if ch.isdigit())
+            if candidate:
+                try:
+                    project_id = int(candidate)
+                except Exception:
+                    project_id = None
+            index += 2
+            continue
+
+        candidate = ''.join(ch for ch in token if ch.isdigit())
+        if candidate:
+            try:
+                value = int(candidate)
+            except Exception:
+                value = None
+            if value is not None:
+                if command == '/prune' and hours is None:
+                    hours = value
+                elif project_id is None:
+                    project_id = value
+        index += 1
+
+    if command == '/clear_logs':
+        return 'clear', project_id, None
+
+    return 'prune', project_id, (hours if hours is not None else 24)
 
 
 def _build_status_message(session: Session, *, user_id: int, assistant_name: str) -> str:
@@ -508,6 +558,89 @@ async def telegram_webhook(
     ap = get_assistant_profile_effective(session, user_id=int(user_id), project_id=None)
     assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
     mapped_user = session.exec(select(User).where(User.id == int(user_id))).first()
+
+    command = _parse_mission_log_command(text)
+    if command and mapped_user is not None:
+        kind, project_id, hours = command
+        result = None
+        if kind == 'clear':
+            try:
+                result = prune_mission_log(
+                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=None, clear_all=True),
+                    current_user=mapped_user,
+                    session=session,
+                )
+            except HTTPException as exc:
+                if int(getattr(exc, 'status_code', 500)) == 403:
+                    assistant_text = f"I’m {assistant_name}. Unauthorized. Access to the Mycelium core is restricted."
+                else:
+                    raise
+            else:
+                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
+                assistant_text = (
+                    f"I’m {assistant_name}. Mycelial memory wiped{scope_text}. HUD reset to baseline. "
+                    f"Pruned {int(result.pruned_count)} traces."
+                )
+        else:
+            prune_hours = int(hours or 24)
+            try:
+                result = prune_mission_log(
+                    payload=MissionLogPruneRequest(project_id=project_id, older_than_hours=prune_hours, clear_all=False),
+                    current_user=mapped_user,
+                    session=session,
+                )
+            except HTTPException as exc:
+                if int(getattr(exc, 'status_code', 500)) == 403:
+                    assistant_text = f"I’m {assistant_name}. Unauthorized. Access to the Mycelium core is restricted."
+                else:
+                    raise
+            else:
+                scope_text = f" for project {int(project_id)}" if project_id is not None else ""
+                assistant_text = (
+                    f"I’m {assistant_name}. Pruned traces older than {int(result.retention_hours or prune_hours)} hours{scope_text}. "
+                    f"Metabolic health: 100%. Remaining traces: {int(result.remaining_count)}."
+                )
+        persona_mode = _persona_mode_from_policy(session, user_id=int(user_id))
+        assistant_text = _apply_persona_tone(assistant_text, mode=persona_mode)
+        metadata = {
+            "assistant_name": assistant_name,
+            "source": "telegram_webhook",
+            "persona_mode": persona_mode,
+            "command": command[0],
+            "project_id": project_id,
+        }
+        if result is not None:
+            metadata["pruned_count"] = int(result.pruned_count)
+            metadata["remaining_count"] = int(result.remaining_count)
+
+        assistant_row = ConversationMessage(
+            created_by_user_id=int(user_id),
+            project_id=None,
+            conversation_key=conv_key,
+            channel="telegram",
+            role="assistant",
+            content=assistant_text,
+            metadata_json=_dumps(metadata),
+        )
+        session.add(assistant_row)
+        session.flush()
+
+        delivered = False
+        if bool(getattr(settings, "notifications_bridge_enabled", False)):
+            delivered = _send_telegram(
+                bot_token=str(getattr(settings, "notifications_telegram_bot_token", "") or ""),
+                chat_id=chat_id,
+                text=assistant_text,
+            )
+
+        now = datetime.utcnow()
+        user_row.delivered_at = now
+        assistant_row.delivered_at = now if delivered else None
+        session.add(user_row)
+        session.add(assistant_row)
+        session.commit()
+
+        return {"ok": True, "delivered": bool(delivered), "command": command[0]}
 
     lower = text.lower()
     if lower in {"/freeze", "/killswitch on", "/freeze now"}:

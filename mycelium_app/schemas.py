@@ -846,6 +846,21 @@ class LiveHiveStateResponse(BaseModel):
     viscosity: LiveViscositySnapshot = Field(default_factory=LiveViscositySnapshot)
 
 
+class MissionLogPruneRequest(BaseModel):
+    project_id: int | None = None
+    older_than_hours: int | None = 24
+    clear_all: bool = False
+
+
+class MissionLogPruneResponse(BaseModel):
+    ok: bool = True
+    project_id: int | None = None
+    cleared: bool = False
+    pruned_count: int = 0
+    remaining_count: int = 0
+    retention_hours: int | None = None
+
+
 class HybridWorkSessionPredictRequest(BaseModel):
     project_id: int | None = None
     window_minutes: int = 120

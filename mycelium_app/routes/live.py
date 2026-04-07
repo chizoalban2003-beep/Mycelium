@@ -5,15 +5,15 @@ from collections import Counter
 import json
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import GrowthLedgerEntry, MissionLogLedgerEntry, NexusNudge, SignalLedgerEvent, User
+from mycelium_app.models import GrowthLedgerEntry, MissionLogLedgerEntry, NexusNudge, ProjectMember, ProjectRole, SignalLedgerEvent, User
 from mycelium_app.settings import settings
 from mycelium_app.stimulus import record_stimulus_event
-from mycelium_app.schemas import LiveHiveEdge, LiveHiveNode, LiveHiveStateResponse, MissionLogEntry
+from mycelium_app.schemas import LiveHiveEdge, LiveHiveNode, LiveHiveStateResponse, MissionLogEntry, MissionLogPruneRequest, MissionLogPruneResponse
 from mycelium_app.viscosity import calculate_live_viscosity
 
 
@@ -48,6 +48,22 @@ def _mission_log_row_to_public(row: MissionLogLedgerEntry) -> MissionLogEntry:
         delta_text=row.delta_text,
         source_kind=row.source_kind,
     )
+
+
+def _ensure_project_owner(session: Session, user_id: int, project_id: int | None) -> None:
+    if project_id is None:
+        return
+    member = session.exec(
+        select(ProjectMember).where(ProjectMember.project_id == int(project_id), ProjectMember.user_id == int(user_id))
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Not a project member")
+    try:
+        role = member.role if isinstance(member.role, ProjectRole) else ProjectRole(str(member.role))
+    except Exception:
+        raise HTTPException(status_code=403, detail="Owner role required")
+    if role != ProjectRole.owner:
+        raise HTTPException(status_code=403, detail="Owner role required")
 
 
 def _persist_mission_log_drafts(
@@ -106,6 +122,16 @@ def _prune_mission_log(session: Session, *, user_id: int, project_id: int | None
         session.delete(row)
     if rows:
         session.commit()
+
+
+def _count_mission_log(session: Session, *, user_id: int, project_id: int | None) -> int:
+    return len(
+        session.exec(
+            select(MissionLogLedgerEntry)
+            .where(MissionLogLedgerEntry.created_by_user_id == int(user_id))
+            .where(MissionLogLedgerEntry.project_id == project_id)
+        ).all()
+    )
 
 
 def _load_mission_log(session: Session, *, user_id: int, project_id: int | None, limit: int = 8) -> list[MissionLogEntry]:
@@ -382,4 +408,80 @@ def live_state(
         edges=edges,
         mission_log=mission_log,
         viscosity=viscosity,
+    )
+
+
+@router.post("/prune", response_model=MissionLogPruneResponse)
+def prune_mission_log(
+    payload: MissionLogPruneRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    project_id = payload.project_id
+    _ensure_project_owner(session, user_id, project_id)
+
+    clear_all = bool(payload.clear_all)
+    older_than_hours = payload.older_than_hours
+
+    total_before = _count_mission_log(session, user_id=user_id, project_id=project_id)
+    pruned_count = 0
+    retention_hours: int | None = None
+
+    if clear_all:
+        rows = session.exec(
+            select(MissionLogLedgerEntry)
+            .where(MissionLogLedgerEntry.created_by_user_id == int(user_id))
+            .where(MissionLogLedgerEntry.project_id == project_id)
+        ).all()
+        for row in rows:
+            session.delete(row)
+        pruned_count = len(rows)
+        retention_hours = None
+    else:
+        hours = 24 if older_than_hours is None else int(older_than_hours)
+        hours = max(1, min(hours, 24 * 3650))
+        retention_hours = hours
+        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        rows = session.exec(
+            select(MissionLogLedgerEntry)
+            .where(MissionLogLedgerEntry.created_by_user_id == int(user_id))
+            .where(MissionLogLedgerEntry.project_id == project_id)
+            .where(MissionLogLedgerEntry.created_at < cutoff)
+        ).all()
+        for row in rows:
+            session.delete(row)
+        pruned_count = len(rows)
+
+    session.commit()
+
+    remaining_count = max(0, total_before - pruned_count)
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="live_api",
+            modality="state",
+            signal_type="mission_log_pruned",
+            stimulus={
+                "project_id": project_id,
+                "cleared": clear_all,
+                "pruned_count": pruned_count,
+                "remaining_count": remaining_count,
+                "retention_hours": retention_hours,
+            },
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
+    return MissionLogPruneResponse(
+        ok=True,
+        project_id=project_id,
+        cleared=clear_all,
+        pruned_count=pruned_count,
+        remaining_count=remaining_count,
+        retention_hours=retention_hours,
     )
