@@ -11,6 +11,7 @@ from sqlmodel import Session, delete, select
 from mycelium_app.db import get_session
 from mycelium_app.models import PasswordResetToken, User
 from mycelium_app.parental_policy import get_policy
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     Message,
     PasswordResetConfirm,
@@ -179,6 +180,22 @@ def register(payload: UserCreate, session: Session = Depends(get_session)):
     session.add(user)
     session.commit()
     session.refresh(user)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="auth_api",
+            modality="identity",
+            signal_type="auth_register",
+            stimulus={"email_domain": email.split("@")[-1] if "@" in email else "", "full_name_len": len(full_name)},
+            occurred_at=user.created_at,
+        )
+    except Exception:
+        pass
+
     return UserPublic(id=user.id, email=user.email, full_name=user.full_name, created_at=user.created_at)
 
 
@@ -201,6 +218,22 @@ def login(
         secure=settings.cookie_secure,
         max_age=settings.access_token_expire_minutes * 60,
     )
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="auth_api",
+            modality="identity",
+            signal_type="auth_login",
+            stimulus={"email_domain": username.split("@")[-1] if "@" in username else "", "cookie_set": True},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return Token(access_token=token)
 
 
@@ -218,6 +251,22 @@ def request_password_reset(
 ):
     base_url = str(getattr(settings, "app_public_base_url", "") or str(request.base_url)).rstrip("/")
     _, message = create_password_reset_request_link(session, email=payload.email, base_url=base_url)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=0,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="auth_api",
+            modality="identity",
+            signal_type="password_reset_request",
+            stimulus={"email_domain": str(payload.email or "").strip().lower().split("@")[-1] if "@" in str(payload.email or "") else ""},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return PasswordResetRequestResponse(ok=True, message=message)
 
 
@@ -226,4 +275,20 @@ def confirm_password_reset(payload: PasswordResetConfirm, token: str, session: S
     ok, message = consume_password_reset_token(session, token=token, new_password=payload.new_password)
     if not ok:
         raise HTTPException(status_code=400, detail=message)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=0,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="auth_api",
+            modality="identity",
+            signal_type="password_reset_confirm",
+            stimulus={"token_used": True, "new_password_len": len(str(payload.new_password or ""))},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return PasswordResetConfirmResponse(ok=True, message=message)

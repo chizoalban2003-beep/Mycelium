@@ -231,6 +231,9 @@ Suggestions that keep the relationship healthy:
 - Keep permissions explicit, granular, and easy to revoke.
 - Increase autonomy only after repeated successful interactions.
 - Let the assistant speak in a consistent voice, but keep the user in charge.
+- Show a short reason trail for each recommendation: what it learned, why it matters, and which permission allowed it.
+- Keep recent signal history and learning summaries easy to inspect from the app.
+- Put the revoke path next to each opt-in surface, especially recovery, telemetry, and device actions.
 You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
 ## Device communication surfaces

@@ -28,6 +28,7 @@ from mycelium_app.presets import (
     PRODUCTION_REGRESSION_PRESET_NAME,
 )
 from mycelium_app.settings import settings
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/predict", tags=["predict"])
@@ -339,6 +340,28 @@ async def electrophoresis_predict(
             ledger_info["stored_entry_id"] = int(stored_entry_id)
             ledger_info["stored_score_metric"] = stored_metric
             ledger_info["stored_score_value"] = stored_value
+
+        try:
+            record_stimulus_event(
+                session,
+                user_id=int(current_user.id or 0),
+                project_id=None,
+                device_id=str(settings.nexus_device_id or "local"),
+                source="predict_api",
+                modality="predict",
+                signal_type="predict_electrophoresis",
+                stimulus={
+                    "target_col": str(target_col)[:64],
+                    "target_kind": str(pred.target_kind or ""),
+                    "plane": pred.plane.value,
+                    "rows": int(len(df)),
+                    "columns": int(len(df.columns)),
+                    "ledger_enabled": bool(bool(use_ledger) and mm.enabled),
+                },
+                occurred_at=datetime.utcnow(),
+            )
+        except Exception:
+            pass
 
         return {
             "ok": True,

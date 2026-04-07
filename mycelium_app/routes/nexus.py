@@ -15,6 +15,7 @@ from mycelium_app.models import ExperienceBufferEntry, ProjectMember, User
 from mycelium_app.models import MetricCausalTrace, MetricSnapshot
 from mycelium_app.nexus_ionizer import grammar_suggest, ionize_finance, style_profile
 from mycelium_app.parental_policy import get_policy, set_policy
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.schemas import (
     NexusEntryPublic,
     NexusExportResponse,
@@ -179,6 +180,21 @@ def ingest_text(
     session.commit()
     session.refresh(entry)
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="nexus_api",
+            modality=modality,
+            signal_type="nexus_ingest_text",
+            stimulus={"source": source, "modality": modality, "text_len": len(raw_text), "tags_count": len(tags)},
+            occurred_at=entry.created_at,
+        )
+    except Exception:
+        pass
+
     return NexusIngestTextResponse(ok=True, entry=_to_public(entry))
 
 
@@ -234,6 +250,22 @@ def update_export_status(
     }
     updated = set_policy(session, user_id, updated_policy)
     privacy2 = updated.get("privacy") if isinstance(updated.get("privacy"), dict) else {}
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="nexus_api",
+            modality="policy",
+            signal_type="nexus_privacy_export_toggle",
+            stimulus={"export_enabled": bool(payload.export_enabled)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return NexusPrivacyExportStatus(
         hive_enabled=bool(getattr(settings, "hive_enabled", False)),
         export_enabled=bool(privacy2.get("export_enabled")),
@@ -348,6 +380,22 @@ def export_entries(
     q = q.order_by(ExperienceBufferEntry.created_at.asc()).limit(limit)
 
     rows = session.exec(q).all()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="nexus_api",
+            modality="sync",
+            signal_type="nexus_sync_export",
+            stimulus={"limit": limit, "since_provided": bool(since is not None)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return NexusExportResponse(
         device_id=str(settings.nexus_device_id or "local"),
         exported_at=datetime.utcnow(),
@@ -383,6 +431,21 @@ def ionize_feedback(
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="nexus_api",
+            modality="feedback",
+            signal_type="nexus_feedback_ionize",
+            stimulus={"nudge_id": payload.nudge_id, "hint_tag": payload.hint_tag, "export_to_hive": bool(payload.export_to_hive)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return NexusFeedbackIonizeResponse(**res)
 
@@ -582,4 +645,20 @@ def import_entries(
         imported += 1
 
     session.commit()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="nexus_api",
+            modality="sync",
+            signal_type="nexus_sync_import",
+            stimulus={"imported": imported, "skipped": skipped, "entries_count": len(payload.entries[:5000])},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return NexusImportResponse(ok=True, imported=imported, skipped=skipped)

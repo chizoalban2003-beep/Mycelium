@@ -34,6 +34,7 @@ from mycelium_app.schemas import (
     HandoffSLOResponse,
 )
 from mycelium_app.settings import settings
+from mycelium_app.stimulus import record_stimulus_event
 from mycelium_app.viscosity import calculate_live_viscosity
 
 
@@ -277,6 +278,21 @@ def predict_work_session(
         window_minutes=wm,
     )
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hybrid_api",
+            modality="planning",
+            signal_type="hybrid_work_session_next",
+            stimulus={"window_minutes": wm, "recommend": bool(out.get("recommend")), "timing_score": float(out.get("timing_score") or 0.0)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
+
     return HybridWorkSessionPredictResponse(ok=True, **out)
 
 
@@ -402,6 +418,21 @@ def auto_handoff_launch(
     )
 
     if not recs or all(str(r.viscosity.prediction_state or "") == "gated" for r in recs):
+        try:
+            record_stimulus_event(
+                session,
+                user_id=user_id,
+                project_id=payload.project_id,
+                device_id=str(settings.nexus_device_id or "local"),
+                source="hybrid_api",
+                modality="planning",
+                signal_type="hybrid_auto_handoff_launch",
+                stimulus={"handoff_recommended": bool(handoff_recommended), "recommended_device_id": recommended_device_id, "window_minutes": wm, "launch_mode": "recovery"},
+                occurred_at=datetime.utcnow(),
+            )
+        except Exception:
+            pass
+
         return AutoHandoffLaunchResponse(
             ok=True,
             project_id=payload.project_id,
@@ -540,6 +571,21 @@ def auto_handoff_launch(
     session.refresh(trajectory)
     session.refresh(replica)
 
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hybrid_api",
+            modality="planning",
+            signal_type="hybrid_auto_handoff_launch",
+            stimulus={"handoff_recommended": bool(handoff_recommended), "recommended_device_id": selected_device_id, "window_minutes": wm, "launch_mode": "proposed"},
+            occurred_at=replica.created_at,
+        )
+    except Exception:
+        pass
+
     launch_mode = "proposed"
     queued_device_action_id: int | None = None
     reason = f"{handoff_reason} {gate_reason}".strip()
@@ -558,6 +604,21 @@ def auto_handoff_launch(
         except Exception as e:
             launch_mode = "proposed"
             reason = f"Auto-confirm attempted but failed ({type(e).__name__}). {gate_reason}"
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hybrid_api",
+            modality="planning",
+            signal_type="hybrid_auto_handoff_launch_result",
+            stimulus={"handoff_recommended": bool(handoff_recommended), "recommended_device_id": selected_device_id, "window_minutes": wm, "launch_mode": launch_mode, "queued_device_action": queued_device_action_id is not None},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return AutoHandoffLaunchResponse(
         ok=True,
@@ -598,6 +659,21 @@ def auto_handoff_confirm(
         device_id=payload.device_id,
         auto_execute=False,
     )
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=row.project_id,
+            device_id=str(payload.device_id or settings.nexus_device_id or "local"),
+            source="hybrid_api",
+            modality="planning",
+            signal_type="hybrid_auto_handoff_confirm",
+            stimulus={"replica_id": int(row.id or 0), "queued_device_action_id": int(message_id or 0)},
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
 
     return AutoHandoffConfirmResponse(
         ok=True,
@@ -661,6 +737,22 @@ def handoff_session_start(
     session.add(hs)
     session.commit()
     session.refresh(hs)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hybrid_api",
+            modality="handoff",
+            signal_type="handoff_session_start",
+            stimulus={"session_status": status, "target_device_id": str(launch.recommended_device_id or "")},
+            occurred_at=hs.created_at,
+        )
+    except Exception:
+        pass
+
     return HandoffSessionStartResponse(ok=True, session=_handoff_to_public(hs))
 
 
@@ -695,6 +787,22 @@ def handoff_session_tick(
         session.add(hs)
         session.commit()
         session.refresh(hs)
+
+        try:
+            record_stimulus_event(
+                session,
+                user_id=user_id,
+                project_id=hs.project_id,
+                device_id=str(settings.nexus_device_id or "local"),
+                source="hybrid_api",
+                modality="handoff",
+                signal_type="handoff_session_tick",
+                stimulus={"session_id": int(hs.id or 0), "status": "timed_out"},
+                occurred_at=now,
+            )
+        except Exception:
+            pass
+
         return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
 
     replica: TaskReplica | None = None
@@ -738,6 +846,22 @@ def handoff_session_tick(
     session.add(hs)
     session.commit()
     session.refresh(hs)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=hs.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="hybrid_api",
+            modality="handoff",
+            signal_type="handoff_session_tick",
+            stimulus={"session_id": int(hs.id or 0), "status": str(hs.status or "")},
+            occurred_at=now,
+        )
+    except Exception:
+        pass
+
     return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
 
 
