@@ -43,7 +43,10 @@
         </div>
       </div>
       <div class="mt-4 flex justify-end">
-        <a href="/assistant/profile" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
+        <div class="flex gap-2">
+          <input type="text" id="quick-search" placeholder="Search projects, signals..." class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none">
+          <a href="/assistant/profile" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
+        </div>
       </div>
     </div>
   </div>
@@ -145,12 +148,10 @@
           <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Today</div>
           <h2 class="mt-1 text-lg font-semibold">Recent activity at a glance</h2>
         </div>
-        <div class="text-xs text-slate-400">Live snapshot</div>
-      </div>
-
-      <div class="mt-4 grid gap-3 sm:grid-cols-3">
-        <a href="/knowledge" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
-          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📊 Signals</div>
+          <div class="flex items-center gap-2">
+            <button id="refresh-snapshot" class="text-xs text-slate-400 hover:text-cyan-300">🔄 Refresh</button>
+            <div class="text-xs text-slate-400">Live snapshot</div>
+          </div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Last 24 hours of observed learning events.</div>
         </a>
@@ -406,6 +407,27 @@
           const isHidden = statusContent.style.display === 'none';
           statusContent.style.display = isHidden ? 'block' : 'none';
           statusToggle.textContent = isHidden ? '▼' : '▶';
+        });
+      }
+
+      // Quick search
+      const quickSearch = document.getElementById('quick-search');
+      if (quickSearch) {
+        quickSearch.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const query = quickSearch.value.trim();
+            if (query) {
+              window.location.href = `/projects?q=${encodeURIComponent(query)}`;
+            }
+          }
+        });
+      }
+
+      // Manual refresh
+      const refreshBtn = document.getElementById('refresh-snapshot');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+          refreshSnapshot();
         });
       }
     })();
