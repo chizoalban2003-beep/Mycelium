@@ -111,7 +111,11 @@ def approve_replica_and_queue(
     if allowed and str(row.capability or "").lower() not in allowed:
         raise HTTPException(status_code=403, detail="Capability not allowed by user policy")
 
-    min_conf = max(0.0, min(float(actions_cfg.get("min_confidence", 0.90) or 0.90), 1.0))
+    try:
+        min_conf_raw = float(actions_cfg.get("min_confidence", 0.90))
+    except Exception:
+        min_conf_raw = 0.90
+    min_conf = max(0.0, min(min_conf_raw, 1.0))
     if float(row.species_confidence or 0.0) < min_conf:
         raise HTTPException(
             status_code=409,

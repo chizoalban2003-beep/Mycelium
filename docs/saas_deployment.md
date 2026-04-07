@@ -11,24 +11,43 @@ This is the current default strategy for market velocity:
 ### Required Railway variables
 
 - `DATABASE_URL` (Railway Postgres)
-- `SECRET_KEY` (lo# 1) bootstrap directive
-curl -X POST "https://<domain>/api/nexus/tasks/bootstrap/work-session" -H "Authorization: Bearer <TOKEN>"
-
-# 2) approve replica
-curl -X POST "https://<domain>/api/nexus/tasks/replicas/<REPLICA_ID>/decision" \
-  -H "Authorization: Bearer <TOKEN>" -H "Content-Type: application/json" \
-  -d '{"decision":"approve"}'
-
-# 3) verify outcome
-python3 scripts/report_task_replica_focus.py \
-  --base-url "https://<domain>" --token "<TOKEN>" \
-  --replica-id <REPLICA_ID> --planned-minutes 45 --focused-minutes 45 --completedng random)
+- `SECRET_KEY` (long random)
 - `COOKIE_SECURE=true`
 - `HIVE_ENABLED=true`
 - `HIVE_INGEST_TOKEN=<strong-random>`
 - `CORS_ALLOW_ORIGINS_CSV=https://<your-domain>`
 - `HIVE_WISDOM_MIN_WHISPERS=2`
 - `HIVE_WISDOM_MIN_DEVICES=3`
+
+### Closed-loop directive quick check (manual)
+
+1) Bootstrap directive:
+
+```bash
+curl -X POST "https://<domain>/api/nexus/tasks/bootstrap/work-session" \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+2) Approve replica:
+
+```bash
+curl -X POST "https://<domain>/api/nexus/tasks/replicas/<REPLICA_ID>/decision" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"decision":"approve"}'
+```
+
+3) Verify outcome:
+
+```bash
+python3 scripts/report_task_replica_focus.py \
+  --base-url "https://<domain>" \
+  --token "<TOKEN>" \
+  --replica-id <REPLICA_ID> \
+  --planned-minutes 45 \
+  --focused-minutes 45 \
+  --completed
+```
 
 ### Android/TWA verification
 
@@ -250,6 +269,71 @@ Use this before opening public alpha:
   - `domain=task_replica_focus`
   - `metric=adherence`
 - [ ] Keep device capabilities allowlisted (minimum viable set) in user policy.
+
+### Live demonstration runbook (phone → laptop handoff)
+
+Use this to demonstrate multi-node intelligence before opening Alpha:
+
+1. Policy set for demo user:
+  - `actions.enabled=true`
+  - `actions.device_control_enabled=true`
+  - `actions.notify_only=false`
+  - `actions.require_confirm=false`
+  - `actions.autonomy_mode=auto` (or `balanced` for semi-auto demo)
+  - `actions.min_confidence=0.0` for smoke/demo accounts (use higher values in production)
+2. Ensure both devices are visible in `/hive/health` with distinct `device_id`s.
+3. On phone (or Telegram), send: **"launch now"**.
+4. Confirm launch response includes:
+  - `launch_mode=approved` (or `pending_confirm` in balanced flow)
+  - `recommended_device_id=laptop` (or desktop candidate)
+  - `replica_id > 0`
+5. If pending, call `POST /api/nexus/hybrid/directive/work-session/auto-handoff-confirm`.
+6. Execute on laptop child companion, then call:
+  - `POST /api/nexus/tasks/replicas/{id}/ack`
+  - `POST /api/nexus/tasks/replicas/{id}/verify`
+7. Validate ledger evidence:
+  - GrowthLedger `domain=task_replica_focus`
+  - `metric=adherence`
+
+One-command rehearsal:
+
+```bash
+python3 scripts/smoke_autonomy_handoff_flow.py \
+  --base-url "https://<domain>" \
+  --token "<TOKEN>" \
+  --current-device-id phone \
+  --candidate-device-ids phone,laptop,desktop \
+  --completed \
+  --planned-minutes 45 \
+  --focused-minutes 45
+```
+
+### 10-user Alpha rollout sequence (recommended)
+
+Stage 0 — Gate check (same day):
+- Run the smoke flow successfully.
+- Verify `/.well-known/assetlinks.json` and TWA package fingerprints.
+- Confirm strict CORS + secure cookies + ingest rate limiter.
+
+Stage 1 — Cohort A (users 1-3, 24 hours):
+- Policy default: `autonomy_mode=balanced`.
+- Require feedback on every proposed/auto-confirmed directive.
+- Monitor: launch success rate, recovery-mode frequency, verify adherence.
+
+Stage 2 — Cohort B (users 4-7, next 24-48 hours):
+- Keep `balanced` default.
+- Allow `auto` only for opt-in testers with low-risk profiles.
+- Track Telegram latency, nudge delivery, and false-positive handoffs.
+
+Stage 3 — Cohort C (users 8-10):
+- Expand to mixed device topologies (phone+laptop, phone+desktop).
+- Keep project-scoped permissions strict (`viewer` cannot execute actions).
+
+Promotion rule to public Alpha:
+- 0 critical auth/cross-project incidents.
+- Smoke test pass rate 100% for last 5 runs.
+- Median adherence non-decreasing across cohorts.
+- Auto-handoff recovery rate within acceptable threshold for your product target.
 
 ---
 
