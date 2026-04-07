@@ -105,7 +105,7 @@ def _build_exec_summary(report: dict[str, object]) -> str:
     fb = report.get("feedback") if isinstance(report.get("feedback"), dict) else {}
 
     lines = [
-        "SynapseHive Global Audit",
+        "Mycelium Global Audit",
         f"audited_actions={int(audit.get('total_actions', 0) or 0)}",
         f"would_pass_now={int(audit.get('would_pass_now', 0) or 0)}",
         f"would_fail_now={int(audit.get('would_fail_now', 0) or 0)}",

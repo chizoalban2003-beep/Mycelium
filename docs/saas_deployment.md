@@ -74,7 +74,7 @@ caps) for public internet exposure. Tune with:
 - `HIVE_WHISPER_IMPORT_RATE_LIMIT_MAX_PER_SOURCE`
 - `HIVE_WHISPER_IMPORT_RATE_LIMIT_MAX_PER_DEVICE`
 
-### Optional: Telegram "Synapse Bridge"
+### Optional: Telegram "Mycelium Bridge"
 
 If you want nudges to arrive outside the app, enable Telegram dispatch:
 

@@ -33,7 +33,7 @@ def _csv_values(v: str) -> list[str]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Run public alpha readiness checks against a deployed SynapseHive base URL.")
+    p = argparse.ArgumentParser(description="Run public alpha readiness checks against a deployed Mycelium base URL.")
     p.add_argument("--base-url", required=True)
     p.add_argument("--token", default="")
     p.add_argument("--expected-git-sha", default="")
