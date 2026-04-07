@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-5">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Transparent Growth OS</div>
+        <h1 class="mt-2 text-3xl font-semibold">Device shell for {{ app_name }}</h1>
+        <div class="mt-2 text-sm text-slate-300">
+          Assistant: <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
+          <span class="text-slate-500">•</span>
+          Mode: <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
+          <span class="text-slate-500">•</span>
+          Voice: <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
+        </div>
+        <p class="mt-2 max-w-3xl text-sm text-slate-300">
+          A ready-made device product that learns from user-owned signals, explains what it learned, and keeps the user in control.
+        </p>
+        <div class="mt-4 flex flex-wrap gap-2 text-xs">
+          <span class="rounded-full border border-cyan-800 bg-cyan-950/30 px-3 py-1 text-cyan-100">Grow with Data</span>
+          <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Builder Copilot</span>
+          <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">HIVE</span>
+          <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Child-Safe</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 text-center md:grid-cols-4">
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Projects</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="projects">{{ project_count }}</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Signals</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="signals">{{ signal_count }}</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Growth</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="growth">{{ growth_count }}</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">24h</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if notice %}
+    <div class="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
+      {{ notice }}
+    </div>
+  {% endif %}
+
+  {% if error %}
+    <div class="mt-4 rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-100">
+      {{ error }}
+    </div>
+  {% endif %}
+
+  <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900 p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Quick actions</div>
+        <div class="text-sm text-slate-300">Open the surfaces that matter most for a live device product.</div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <form action="/device/bootstrap-work-session" method="post" class="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="focus_app" value="mycelium" />
+          <input type="hidden" name="duration_minutes" value="45" />
+          <button type="submit" class="rounded-md border border-emerald-700 bg-emerald-950/30 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-900/40">Start work session</button>
+        </form>
+        <form action="/device/daily-summary" method="post" class="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="window_hours" value="24" />
+          <button type="submit" class="rounded-md border border-indigo-700 bg-indigo-950/30 px-3 py-2 text-sm font-medium text-indigo-100 hover:bg-indigo-900/40">Daily summary</button>
+        </form>
+        <form action="/device/auto-handoff-launch" method="post" class="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="window_minutes" value="120" />
+          <input type="hidden" name="base_duration_minutes" value="45" />
+          <input type="hidden" name="current_device_id" value="local" />
+          <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+          <input type="hidden" name="focus_app" value="mycelium" />
+          <button type="submit" class="rounded-md border border-fuchsia-700 bg-fuchsia-950/30 px-3 py-2 text-sm font-medium text-fuchsia-100 hover:bg-fuchsia-900/40">Auto-handoff launch</button>
+        </form>
+        <a href="/projects" class="rounded-md border border-cyan-700 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-900/40">Builder Copilot</a>
+        <a href="/hive/health" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">HIVE Health</a>
+        <a href="/chat" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">Chat</a>
+        <a href="/knowledge" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">Memory</a>
+        <a href="/assistant/profile" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-800">Child-Safe / Policy</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-5 grid gap-5 lg:grid-cols-3">
+    <section class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Learning trail</div>
+          <h2 class="mt-1 text-lg font-semibold">What the device learned</h2>
+        </div>
+        <a href="/projects" class="text-sm text-cyan-300 hover:text-cyan-200">Open projects</a>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Observed</div>
+          <div class="mt-1 text-sm text-slate-200">Signals, actions, feedback, and state changes from the user’s own device.</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Normalized</div>
+          <div class="mt-1 text-sm text-slate-200">Every input is flattened into structured rows for prediction and memory.</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Explained</div>
+          <div class="mt-1 text-sm text-slate-200">The app surfaces why it acted, what changed, and how to revoke it.</div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
+        <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Core flow</div>
+        <ol class="mt-2 space-y-2 text-sm text-slate-200 list-decimal list-inside">
+          <li>Connect the signals you approve.</li>
+          <li>Let the device companion record consented activity.</li>
+          <li>See daily summaries, predictions, and recommendations.</li>
+          <li>Inspect memory and delete or export it anytime.</li>
+        </ol>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Live 24h signals</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Live 24h growth</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="growth_24h">{{ recent_growth_24h_count }}</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Live nudges</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="nudges_24h">{{ recent_nudges_24h_count }}</div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 md:grid-cols-2">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-4">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Recent signals</div>
+          <ul class="mt-3 space-y-2 text-sm text-slate-300">
+            {% if recent_signals %}
+              {% for item in recent_signals %}
+                <li class="rounded border border-slate-800 bg-slate-900 px-3 py-2">
+                  <div class="font-medium text-slate-100">{{ item.signal_type }}</div>
+                  <div class="text-xs text-slate-400">{{ item.modality }} • {{ item.created_at }}</div>
+                </li>
+              {% endfor %}
+            {% else %}
+              <li class="text-slate-500">No signals yet. Connect a source to begin learning.</li>
+            {% endif %}
+          </ul>
+        </div>
+
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-4">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Recent growth</div>
+          <ul class="mt-3 space-y-2 text-sm text-slate-300">
+            {% if recent_growth %}
+              {% for item in recent_growth %}
+                <li class="rounded border border-slate-800 bg-slate-900 px-3 py-2">
+                  <div class="font-medium text-slate-100">{{ item.domain }} · {{ item.metric }}</div>
+                  <div class="text-xs text-slate-400">Score {{ '%.3f'|format(item.score) }} • accepted={{ item.accepted }}</div>
+                </li>
+              {% endfor %}
+            {% else %}
+              <li class="text-slate-500">No growth records yet. The system will learn from approval and outcomes.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <aside class="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-4">
+      <section>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Modes</div>
+        <div class="mt-2 space-y-2 text-sm">
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="font-medium text-slate-100"><a href="/projects" class="hover:text-cyan-200">Builder Copilot</a></div>
+            <div class="text-slate-400">Focus, momentum, and execution for builders.</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="font-medium text-slate-100"><a href="/hive/health" class="hover:text-cyan-200">HIVE</a></div>
+            <div class="text-slate-400">Shared intelligence with clear contribution history.</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="font-medium text-slate-100"><a href="/assistant/profile" class="hover:text-cyan-200">Child-Safe</a></div>
+            <div class="text-slate-400">Permissioned autonomy with parent-visible controls.</div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Memory controls</div>
+        <div class="mt-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
+          Purge, export, and revoke controls belong next to every learning surface.
+        </div>
+      </section>
+
+      <section>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Recent nudges</div>
+        <div class="mt-2 space-y-2 text-sm text-slate-300">
+          {% if recent_nudges %}
+            {% for n in recent_nudges %}
+              <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                <div class="font-medium text-slate-100">{{ n.title }}</div>
+                <div class="text-xs text-slate-400">{{ n.message }}</div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-slate-500">No nudges yet.</div>
+          {% endif %}
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    (function () {
+      const ids = {
+        projects: document.querySelector('[data-count="projects"]'),
+        signals: document.querySelector('[data-count="signals"]'),
+        growth: document.querySelector('[data-count="growth"]'),
+        signals24h: document.querySelector('[data-count="signals_24h"]'),
+        growth24h: document.querySelector('[data-count="growth_24h"]'),
+        nudges24h: document.querySelector('[data-count="nudges_24h"]'),
+        assistantName: document.querySelector('[data-role="assistant-name"]'),
+        assistantMode: document.querySelector('[data-role="assistant-mode"]'),
+        assistantVoice: document.querySelector('[data-role="assistant-voice"]'),
+      };
+
+      async function refreshSnapshot() {
+        try {
+          const r = await fetch('/device/snapshot', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const counts = (data && data.counts) || {};
+          if (ids.projects) ids.projects.textContent = String(counts.projects ?? ids.projects.textContent);
+          if (ids.signals) ids.signals.textContent = String(counts.signals ?? ids.signals.textContent);
+          if (ids.growth) ids.growth.textContent = String(counts.growth ?? ids.growth.textContent);
+          if (ids.signals24h) ids.signals24h.textContent = String(counts.signals_24h ?? ids.signals24h.textContent);
+          if (ids.growth24h) ids.growth24h.textContent = String(counts.growth_24h ?? ids.growth24h.textContent);
+          if (ids.nudges24h) ids.nudges24h.textContent = String(counts.nudges_24h ?? ids.nudges24h.textContent);
+          const assistant = (data && data.assistant) || {};
+          if (ids.assistantName && assistant.given_name) ids.assistantName.textContent = assistant.given_name;
+          if (ids.assistantMode && assistant.gender_identity) ids.assistantMode.textContent = assistant.gender_identity;
+          if (ids.assistantVoice && assistant.vocal_preset) ids.assistantVoice.textContent = assistant.vocal_preset;
+        } catch (e) {}
+      }
+
+      refreshSnapshot();
+      setInterval(refreshSnapshot, 30000);
+    })();
+  </script>
+{% endblock %}

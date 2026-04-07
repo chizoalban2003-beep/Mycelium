@@ -218,6 +218,8 @@ Telemetry assistant nudges also include the configured assistant name/voice trai
 ## Learning contract
 
 Mycelium learns from consented digital signals, including app launches, open/close activity, approved actions, chat messages, and explicit feedback.
+
+For the device-ready product shape, see [docs/device_product_spec.md](docs/device_product_spec.md).
 It is designed to grow from infancy to adulthood as a transparent assistant that stays user-controlled, visible, and reversible.
 
 ## Human↔AI relationship

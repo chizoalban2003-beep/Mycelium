@@ -4,12 +4,12 @@ import io
 import json
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi import File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 
@@ -21,6 +21,7 @@ from mycelium_app.curiosity import answer_case, dismiss_case, next_pending_case
 from mycelium_app.db import get_session
 from mycelium_app.knowledge_sync import MemoryManager
 from mycelium_app.models import PasswordResetToken, Project, ProjectMember, ProjectRole, TreeNode, User
+from mycelium_app.models import GrowthLedgerEntry, NexusNudge, SignalLedgerEvent
 from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
 from mycelium_app.presets import (
@@ -39,6 +40,10 @@ from mycelium_app.security import decode_token
 from mycelium_app.security import hash_password, hash_password_reset_token, verify_password, verify_password_reset_token
 from mycelium_app.settings import settings
 from mycelium_app.routes.auth import consume_password_reset_token, create_password_reset_request_link
+from mycelium_app.routes.hybrid import auto_handoff_launch as auto_handoff_launch_api
+from mycelium_app.routes.reflection import daily_summary as reflection_daily_summary_api
+from mycelium_app.routes.tasks import bootstrap_work_session as bootstrap_work_session_api
+from mycelium_app.schemas import AutoHandoffLaunchRequest, TaskBootstrapWorkSessionRequest
 from mycelium_app.stimulus import record_stimulus_event
 
 
@@ -95,7 +100,7 @@ def _get_web_user(request: Request, session: Session) -> User | None:
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return RedirectResponse(url="/projects", status_code=302)
+    return RedirectResponse(url="/device", status_code=302)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -283,6 +288,218 @@ def projects_page(
         "projects.html",
         {"request": request, "user": current_user, "projects": projects, "app_name": settings.app_name},
     )
+
+
+@router.get("/device", response_class=HTMLResponse)
+def device_shell_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    memberships = session.exec(select(ProjectMember).where(ProjectMember.user_id == current_user.id)).all()
+    project_ids = [m.project_id for m in memberships]
+    projects = session.exec(select(Project).where(Project.id.in_(project_ids))).all() if project_ids else []
+    assistant_profile = get_assistant_profile_effective(session, user_id=int(current_user.id or 0), project_id=None)
+    notice = str(request.query_params.get("notice") or "").strip()[:200]
+    error = str(request.query_params.get("error") or "").strip()[:200]
+
+    since = datetime.utcnow() - timedelta(days=1)
+
+    recent_signals = session.exec(
+        select(SignalLedgerEvent)
+        .where(SignalLedgerEvent.created_by_user_id == current_user.id)
+        .order_by(SignalLedgerEvent.created_at.desc())
+        .limit(5)
+    ).all()
+    recent_signals_24h = session.exec(
+        select(SignalLedgerEvent)
+        .where(SignalLedgerEvent.created_by_user_id == current_user.id)
+        .where(SignalLedgerEvent.created_at >= since)
+    ).all()
+    recent_growth = session.exec(
+        select(GrowthLedgerEntry)
+        .where(GrowthLedgerEntry.created_by_user_id == current_user.id)
+        .order_by(GrowthLedgerEntry.created_at.desc())
+        .limit(5)
+    ).all()
+    recent_growth_24h = session.exec(
+        select(GrowthLedgerEntry)
+        .where(GrowthLedgerEntry.created_by_user_id == current_user.id)
+        .where(GrowthLedgerEntry.created_at >= since)
+    ).all()
+    recent_nudges = session.exec(
+        select(NexusNudge)
+        .where(NexusNudge.created_by_user_id == current_user.id)
+        .order_by(NexusNudge.created_at.desc())
+        .limit(3)
+    ).all()
+    recent_nudges_24h = session.exec(
+        select(NexusNudge)
+        .where(NexusNudge.created_by_user_id == current_user.id)
+        .where(NexusNudge.created_at >= since)
+    ).all()
+
+    signal_total = session.exec(
+        select(SignalLedgerEvent).where(SignalLedgerEvent.created_by_user_id == current_user.id)
+    ).all()
+    growth_total = session.exec(
+        select(GrowthLedgerEntry).where(GrowthLedgerEntry.created_by_user_id == current_user.id)
+    ).all()
+
+    return templates.TemplateResponse(
+        "device_shell.html",
+        {
+            "request": request,
+            "user": current_user,
+            "assistant_profile": assistant_profile,
+            "notice": notice,
+            "error": error,
+            "projects": projects,
+            "recent_signals": recent_signals,
+            "recent_signals_24h_count": len(recent_signals_24h),
+            "recent_growth": recent_growth,
+            "recent_growth_24h_count": len(recent_growth_24h),
+            "recent_nudges": recent_nudges,
+            "recent_nudges_24h_count": len(recent_nudges_24h),
+            "signal_count": len(signal_total),
+            "growth_count": len(growth_total),
+            "project_count": len(projects),
+            "app_name": settings.app_name,
+        },
+    )
+
+
+@router.get("/device/snapshot")
+def device_snapshot(request: Request, session: Session = Depends(get_session)):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    memberships = session.exec(select(ProjectMember).where(ProjectMember.user_id == current_user.id)).all()
+    project_ids = [m.project_id for m in memberships]
+    projects = session.exec(select(Project).where(Project.id.in_(project_ids))).all() if project_ids else []
+
+    since = datetime.utcnow() - timedelta(days=1)
+    signal_count = session.exec(select(SignalLedgerEvent).where(SignalLedgerEvent.created_by_user_id == current_user.id)).all()
+    growth_count = session.exec(select(GrowthLedgerEntry).where(GrowthLedgerEntry.created_by_user_id == current_user.id)).all()
+    nudge_count = session.exec(select(NexusNudge).where(NexusNudge.created_by_user_id == current_user.id)).all()
+    recent_signal_items = session.exec(
+        select(SignalLedgerEvent)
+        .where(SignalLedgerEvent.created_by_user_id == current_user.id)
+        .where(SignalLedgerEvent.created_at >= since)
+    ).all()
+    recent_growth_items = session.exec(
+        select(GrowthLedgerEntry)
+        .where(GrowthLedgerEntry.created_by_user_id == current_user.id)
+        .where(GrowthLedgerEntry.created_at >= since)
+    ).all()
+    recent_nudge_items = session.exec(
+        select(NexusNudge)
+        .where(NexusNudge.created_by_user_id == current_user.id)
+        .where(NexusNudge.created_at >= since)
+    ).all()
+
+    return JSONResponse(
+        content={
+            "ok": True,
+            "counts": {
+                "projects": len(projects),
+                "signals": len(signal_count),
+                "growth": len(growth_count),
+                "nudges": len(nudge_count),
+                "signals_24h": len(recent_signal_items),
+                "growth_24h": len(recent_growth_items),
+                "nudges_24h": len(recent_nudge_items),
+            },
+            "assistant": get_assistant_profile_effective(session, user_id=int(current_user.id or 0), project_id=None),
+        }
+    )
+
+
+@router.post("/device/bootstrap-work-session")
+def device_bootstrap_work_session(
+    request: Request,
+    session: Session = Depends(get_session),
+    project_id: int | None = Form(None),
+    focus_app: str = Form("mycelium"),
+    duration_minutes: int = Form(45),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    payload = TaskBootstrapWorkSessionRequest(
+        project_id=project_id,
+        device_id=str(settings.nexus_device_id or "local"),
+        focus_app=focus_app,
+        duration_minutes=duration_minutes,
+    )
+    try:
+        bootstrap_work_session_api(payload, current_user=current_user, session=session)
+    except Exception as exc:
+        return RedirectResponse(url=f"/device?error={quote_plus(str(exc))}", status_code=302)
+
+    return RedirectResponse(url="/device?notice=Work+session+bootstrapped", status_code=302)
+
+
+@router.post("/device/daily-summary")
+def device_daily_summary(
+    request: Request,
+    session: Session = Depends(get_session),
+    window_hours: int = Form(24),
+    project_id: int | None = Form(None),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        reflection_daily_summary_api(
+            window_hours=window_hours,
+            project_id=project_id,
+            current_user=current_user,
+            session=session,
+        )
+    except Exception as exc:
+        return RedirectResponse(url=f"/device?error={quote_plus(str(exc))}", status_code=302)
+
+    return RedirectResponse(url="/device?notice=Daily+summary+generated", status_code=302)
+
+
+@router.post("/device/auto-handoff-launch")
+def device_auto_handoff_launch(
+    request: Request,
+    session: Session = Depends(get_session),
+    project_id: int | None = Form(None),
+    window_minutes: int = Form(120),
+    base_duration_minutes: int = Form(45),
+    current_device_id: str = Form("local"),
+    candidate_device_ids: str = Form("local"),
+    focus_app: str = Form("mycelium"),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    candidates = [p.strip() for p in str(candidate_device_ids or "").split(",") if p.strip()]
+    payload = AutoHandoffLaunchRequest(
+        project_id=project_id,
+        window_minutes=window_minutes,
+        base_duration_minutes=base_duration_minutes,
+        current_device_id=current_device_id,
+        candidate_device_ids=candidates,
+        focus_app=focus_app,
+    )
+    try:
+        result = auto_handoff_launch_api(payload, current_user=current_user, session=session)
+    except Exception as exc:
+        return RedirectResponse(url=f"/device?error={quote_plus(str(exc))}", status_code=302)
+
+    notice = f"Handoff launch: {result.launch_mode} on {result.recommended_device_id or 'local'}"
+    return RedirectResponse(url=f"/device?notice={quote_plus(notice)}", status_code=302)
 
 
 @router.post("/projects")
