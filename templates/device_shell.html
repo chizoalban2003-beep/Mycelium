@@ -280,16 +280,22 @@
     })();
   </script>
 
-  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 px-4 py-3 shadow-2xl backdrop-blur md:hidden">
+  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 px-3 py-3 shadow-2xl backdrop-blur md:hidden">
     <div class="mx-auto grid max-w-5xl grid-cols-3 gap-2">
       <form action="/device/bootstrap-work-session" method="post">
         <input type="hidden" name="focus_app" value="mycelium" />
         <input type="hidden" name="duration_minutes" value="45" />
-        <button type="submit" class="w-full rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100">⚡ Work</button>
+        <button type="submit" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-emerald-700 bg-emerald-950/40 px-2 py-2 text-[11px] font-medium text-emerald-100 shadow-sm">
+          <span class="text-base leading-none">⚡</span>
+          <span>Work</span>
+        </button>
       </form>
       <form action="/device/daily-summary" method="post">
         <input type="hidden" name="window_hours" value="24" />
-        <button type="submit" class="w-full rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-2 text-xs font-medium text-indigo-100">◌ Summary</button>
+        <button type="submit" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-indigo-700 bg-indigo-950/40 px-2 py-2 text-[11px] font-medium text-indigo-100 shadow-sm">
+          <span class="text-base leading-none">◌</span>
+          <span>Summary</span>
+        </button>
       </form>
       <form action="/device/auto-handoff-launch-and-confirm" method="post">
         <input type="hidden" name="window_minutes" value="120" />
@@ -297,7 +303,10 @@
         <input type="hidden" name="current_device_id" value="local" />
         <input type="hidden" name="candidate_device_ids" value="local,laptop" />
         <input type="hidden" name="focus_app" value="mycelium" />
-        <button type="submit" class="w-full rounded-lg border border-fuchsia-500 bg-fuchsia-900/50 px-3 py-2 text-xs font-medium text-fuchsia-50">⇄ Handoff</button>
+        <button type="submit" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500 bg-fuchsia-900/50 px-2 py-2 text-[11px] font-medium text-fuchsia-50 shadow-sm">
+          <span class="text-base leading-none">⇄</span>
+          <span>Handoff</span>
+        </button>
       </form>
     </div>
   </div>
