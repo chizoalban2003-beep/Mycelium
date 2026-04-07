@@ -2,11 +2,11 @@
 
 {% block content %}
   <div class="space-y-5 pb-28 md:pb-0">
-  <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-4">
+  <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-3">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
         <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80 md:text-xs md:tracking-[0.25em]">Transparent Growth OS</div>
-        <h1 class="mt-2 text-2xl font-semibold sm:text-3xl">Device shell for {{ app_name }}</h1>
+        <h1 class="mt-2 text-xl font-semibold sm:text-2xl">Device shell for {{ app_name }}</h1>
         <div class="mt-2 hidden text-sm text-slate-300 md:block">
           Assistant: <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
           <span class="text-slate-500">•</span>
@@ -147,23 +147,23 @@
 
       <div class="mt-4 grid gap-3 sm:grid-cols-3">
         <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
-          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Signals</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📊 Signals</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Last 24 hours of observed learning events.</div>
         </div>
         <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
-          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Growth</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📈 Growth</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_growth_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Accepted outcomes and progress signals.</div>
         </div>
         <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
-          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Nudges</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">💡 Nudges</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_nudges_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Visible prompts and assistant suggestions.</div>
         </div>
       </div>
 
-      <div class="mt-4 grid gap-3 md:grid-cols-3">
+      <div class="mt-4 grid gap-3 grid-cols-3">
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
           <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest signal</div>
           {% if recent_signals %}
