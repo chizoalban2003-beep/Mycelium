@@ -28,6 +28,7 @@ from mycelium_app.routes.game import router as game_router
 from mycelium_app.routes.growth import router as growth_router
 from mycelium_app.routes.hive import router as hive_router
 from mycelium_app.routes.homeostasis import router as homeostasis_router
+from mycelium_app.routes.hybrid import router as hybrid_router
 from mycelium_app.routes.identity import router as identity_router
 from mycelium_app.routes.live import router as live_router
 from mycelium_app.routes.nexus import router as nexus_router
@@ -369,6 +370,7 @@ app.include_router(curiosity_router)
 app.include_router(game_router)
 app.include_router(hive_router)
 app.include_router(homeostasis_router)
+app.include_router(hybrid_router)
 app.include_router(nexus_router)
 app.include_router(identity_router)
 app.include_router(live_router)

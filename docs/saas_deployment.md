@@ -59,6 +59,7 @@ If you want nudges to arrive outside the app, enable Telegram dispatch:
 
 - `NOTIFICATIONS_BRIDGE_ENABLED=true`
 - `NOTIFICATIONS_TELEGRAM_BOT_TOKEN=<bot-token>`
+- `NOTIFICATIONS_TELEGRAM_WEBHOOK_SECRET=<secret-token>`
 - `APP_PUBLIC_BASE_URL=https://<your-domain>`
 
 Per-user opt-in lives in `POST /api/nexus/policy` under `notifications`:
@@ -67,6 +68,26 @@ Per-user opt-in lives in `POST /api/nexus/policy` under `notifications`:
 - `notifications.telegram_enabled`
 - `notifications.telegram_chat_id`
 - `notifications.telegram_nudge_kinds`
+
+Inbound Telegram chat can be wired to:
+
+- `POST /api/nexus/chat/telegram/webhook`
+- header: `X-Telegram-Bot-Api-Secret-Token: <secret-token>`
+
+When `telegram_chat_id` matches a user policy, inbound messages are persisted to chat history and answered.
+
+### Hybrid predictor API (physics governor + timing model)
+
+Use this endpoint to ask whether a focus work session should be recommended now:
+
+- `POST /api/nexus/hybrid/work-session/next`
+
+Config flags:
+
+- `HYBRID_PREDICTOR_ENABLED`
+- `HYBRID_PREDICTOR_WINDOW_MINUTES`
+- `HYBRID_PREDICTOR_MIN_SIGNAL_EVENTS`
+- `HYBRID_PREDICTOR_GOVERNOR_MIN_CONFIDENCE`
 
 ### v7 ActionSchema (behavioral mirroring foundation)
 

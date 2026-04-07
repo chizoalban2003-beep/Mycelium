@@ -695,6 +695,24 @@ class LiveHiveStateResponse(BaseModel):
     edges: list[LiveHiveEdge] = Field(default_factory=list)
 
 
+class HybridWorkSessionPredictRequest(BaseModel):
+    project_id: int | None = None
+    window_minutes: int = 120
+
+
+class HybridWorkSessionPredictResponse(BaseModel):
+    ok: bool = True
+    project_id: int | None = None
+    recommend: bool = False
+    timing_score: float = 0.0
+    governor_ok: bool = False
+    governor_confidence: float = 0.0
+    confidence_floor: float = 0.90
+    n_signals: int = 0
+    reasons: list[str] = Field(default_factory=list)
+    suggested_minutes: int = 45
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime

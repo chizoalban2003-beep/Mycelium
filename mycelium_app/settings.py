@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     notifications_dispatch_lookback_hours: int = 24
     notifications_dispatch_max_per_tick: int = 50
     notifications_telegram_bot_token: str = ""
+    notifications_telegram_webhook_secret: str = ""
+
+    # Hybrid predictor (physics governor + pattern timing score).
+    hybrid_predictor_enabled: bool = True
+    hybrid_predictor_window_minutes: int = 120
+    hybrid_predictor_min_signal_events: int = 10
+    hybrid_predictor_governor_min_confidence: float = 0.90
 
     # Android TWA verification (served at /.well-known/assetlinks.json).
     android_app_package_name: str = ""

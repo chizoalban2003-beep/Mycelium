@@ -4,13 +4,13 @@ import json
 from datetime import datetime
 from urllib import parse, request
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlmodel import Session, select
 
 from mycelium_app.assistant_profile import get_assistant_profile_effective
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import ConversationMessage, NexusNudge, ProjectMember, User
+from mycelium_app.models import ConversationMessage, NexusNudge, NexusPolicy, ProjectMember, User
 from mycelium_app.parental_policy import get_policy
 from mycelium_app.schemas import ChatHistoryResponse, ChatMessagePublic, ChatSendRequest, ChatSendResponse
 from mycelium_app.settings import settings
@@ -77,6 +77,23 @@ def _send_telegram(*, bot_token: str, chat_id: str, text: str) -> bool:
             return 200 <= int(getattr(resp, "status", 200)) < 300
     except Exception:
         return False
+
+
+def _resolve_user_id_from_telegram_chat_id(session: Session, chat_id: str) -> int | None:
+    cid = str(chat_id or "").strip()
+    if not cid:
+        return None
+
+    rows = session.exec(select(NexusPolicy)).all()
+    for row in rows:
+        policy = get_policy(session, int(row.user_id))
+        notif = policy.get("notifications") if isinstance(policy.get("notifications"), dict) else {}
+        if not bool(notif.get("telegram_enabled", False)):
+            continue
+        mapped_chat_id = str(notif.get("telegram_chat_id") or "").strip()
+        if mapped_chat_id and mapped_chat_id == cid:
+            return int(row.user_id)
+    return None
 
 
 @router.post("/send", response_model=ChatSendResponse)
@@ -196,3 +213,98 @@ def history(
 
     rows = list(reversed(session.exec(q).all()))
     return ChatHistoryResponse(messages=[_to_public(r) for r in rows])
+
+
+@router.post("/telegram/webhook")
+async def telegram_webhook(
+    request: Request,
+    x_telegram_bot_api_secret_token: str | None = Header(default=None),
+    session: Session = Depends(get_session),
+):
+    expected = str(getattr(settings, "notifications_telegram_webhook_secret", "") or "").strip()
+    if expected:
+        got = str(x_telegram_bot_api_secret_token or "").strip()
+        if got != expected:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"ok": True, "ignored": "invalid_json"}
+
+    if not isinstance(payload, dict):
+        return {"ok": True, "ignored": "invalid_payload"}
+
+    msg = payload.get("message") if isinstance(payload.get("message"), dict) else {}
+    text = str(msg.get("text") or "").strip()
+    chat = msg.get("chat") if isinstance(msg.get("chat"), dict) else {}
+    chat_id = str(chat.get("id") or "").strip()
+    if not text or not chat_id:
+        return {"ok": True, "ignored": "unsupported_message"}
+
+    user_id = _resolve_user_id_from_telegram_chat_id(session, chat_id)
+    if not user_id:
+        return {"ok": True, "ignored": "unmapped_chat"}
+
+    conv_key = f"telegram:{chat_id}"[:64]
+
+    user_row = ConversationMessage(
+        created_by_user_id=int(user_id),
+        project_id=None,
+        conversation_key=conv_key,
+        channel="telegram",
+        role="user",
+        content=text[:5000],
+        metadata_json=_dumps({"source": "telegram_webhook"}),
+    )
+    session.add(user_row)
+    session.flush()
+
+    ap = get_assistant_profile_effective(session, user_id=int(user_id), project_id=None)
+    assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
+
+    lower = text.lower()
+    if "bootstrap" in lower:
+        assistant_text = (
+            f"I’m {assistant_name}. I can bootstrap a focus session. "
+            "Use /api/nexus/tasks/bootstrap/work-session in the app to start it with your preferred duration."
+        )
+    elif "verify" in lower:
+        assistant_text = (
+            f"I’m {assistant_name}. I can verify outcomes after execution. "
+            "Use /api/nexus/tasks/replicas/{id}/verify with adherence and outcome details."
+        )
+    else:
+        assistant_text = (
+            f"I’m {assistant_name}. Message received. "
+            "I can help with work-session planning, task replicas, and telemetry insight."
+        )
+
+    assistant_row = ConversationMessage(
+        created_by_user_id=int(user_id),
+        project_id=None,
+        conversation_key=conv_key,
+        channel="telegram",
+        role="assistant",
+        content=assistant_text,
+        metadata_json=_dumps({"assistant_name": assistant_name, "source": "telegram_webhook"}),
+    )
+    session.add(assistant_row)
+    session.flush()
+
+    delivered = False
+    if bool(getattr(settings, "notifications_bridge_enabled", False)):
+        delivered = _send_telegram(
+            bot_token=str(getattr(settings, "notifications_telegram_bot_token", "") or ""),
+            chat_id=chat_id,
+            text=assistant_text,
+        )
+
+    now = datetime.utcnow()
+    user_row.delivered_at = now
+    assistant_row.delivered_at = now if delivered else None
+    session.add(user_row)
+    session.add(assistant_row)
+    session.commit()
+
+    return {"ok": True, "delivered": bool(delivered)}

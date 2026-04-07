@@ -130,6 +130,7 @@ For external messaging (without opening the app), enable:
 
 - `NOTIFICATIONS_BRIDGE_ENABLED=true`
 - `NOTIFICATIONS_TELEGRAM_BOT_TOKEN=<bot-token>`
+- `NOTIFICATIONS_TELEGRAM_WEBHOOK_SECRET=<secret-token>`
 - `APP_PUBLIC_BASE_URL=https://<your-domain>`
 
 Then opt in per user via `POST /api/nexus/policy`:
@@ -138,6 +139,11 @@ Then opt in per user via `POST /api/nexus/policy`:
 - `notifications.telegram_enabled=true`
 - `notifications.telegram_chat_id=<telegram-chat-id>`
 - Optional `notifications.telegram_nudge_kinds=["telemetry_assistant","wisdom_update"]`
+
+Telegram inbound webhook endpoint:
+
+- `POST /api/nexus/chat/telegram/webhook`
+- Add request header `X-Telegram-Bot-Api-Secret-Token: <secret-token>` when webhook secret is configured.
 
 ## ActionSchema (task reproduction foundation)
 
@@ -202,6 +208,19 @@ Chat UI:
 - `/chat`
 
 `channel=telegram` is supported when the Telegram bridge and user notification policy are enabled.
+
+## Hybrid predictor (physics governor + neural timing)
+
+- API: `POST /api/nexus/hybrid/work-session/next`
+- Request body: `{"project_id": null, "window_minutes": 120}`
+- Output includes `timing_score`, `governor_confidence`, `governor_ok`, and recommendation.
+
+Runtime flags:
+
+- `HYBRID_PREDICTOR_ENABLED`
+- `HYBRID_PREDICTOR_WINDOW_MINUTES`
+- `HYBRID_PREDICTOR_MIN_SIGNAL_EVENTS`
+- `HYBRID_PREDICTOR_GOVERNOR_MIN_CONFIDENCE`
 
 SelfReflection (analyze best sweeps):
 
