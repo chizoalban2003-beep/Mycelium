@@ -1091,6 +1091,7 @@ class NexusKnowledgeAuditResponse(BaseModel):
     local: dict[str, object] = Field(default_factory=dict)
     hive: dict[str, object] = Field(default_factory=dict)
     validation: dict[str, object] = Field(default_factory=dict)
+    reasoning: dict[str, object] = Field(default_factory=dict)
 
 
 class NexusSyntheticStressTestRequest(BaseModel):
@@ -1111,6 +1112,7 @@ class NexusSyntheticStressTestResponse(BaseModel):
     ok: bool = True
     message: str
     metric_name: str
+    improvement_frac: float | None = None
     narrative: str | None = None
     top_shifts: list[dict[str, object]] = Field(default_factory=list)
     baseline_snapshot_id: int | None = None

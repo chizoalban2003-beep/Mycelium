@@ -36,6 +36,20 @@
 
   <div id="healthMeta" class="text-xs text-slate-400 mt-3"></div>
   <div id="stressMeta" class="text-xs text-slate-400 mt-1"></div>
+  <div class="mt-2 rounded border border-slate-800 bg-slate-950 p-3">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Reasoning</div>
+        <div id="reasoningTitle" class="mt-1 text-sm font-semibold text-slate-100">Loading causal summary…</div>
+      </div>
+      <div id="reasoningBadge" class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-300">empty</div>
+    </div>
+    <div id="reasoningBody" class="mt-2 text-xs text-slate-300">This card will surface the latest causal narrative and top shifts without another fetch.</div>
+    <div id="reasoningShifts" class="mt-2"></div>
+    <div id="reasoningEmptyCta" class="mt-2 hidden rounded border border-cyan-900/40 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
+      No recent trace yet. Run the synthetic CPU spike to generate your first causal explanation.
+    </div>
+  </div>
   <div class="mt-2 rounded border border-fuchsia-900/40 bg-fuchsia-950/20 px-3 py-2 text-xs text-fuchsia-100">
     Broadcast impact and validation are only meaningful when local learning stays auditable and reversible.
   </div>
@@ -483,6 +497,34 @@
     }).join('')}</div></div>`;
   }
 
+  function renderReasoningSummary(reasoning) {
+    const titleEl = document.getElementById('reasoningTitle');
+    const badgeEl = document.getElementById('reasoningBadge');
+    const bodyEl = document.getElementById('reasoningBody');
+    const shiftsEl = document.getElementById('reasoningShifts');
+    const emptyCtaEl = document.getElementById('reasoningEmptyCta');
+    if (!titleEl || !badgeEl || !bodyEl || !shiftsEl || !emptyCtaEl) return;
+
+    const summary = (reasoning && typeof reasoning === 'object') ? reasoning : {};
+    const empty = !!summary.empty;
+    const title = String(summary.title || 'Causal summary');
+    const narrative = String(summary.narrative || '').trim();
+    const metric = String(summary.metric_name || '').trim();
+    const improvement = summary.improvement_frac == null ? null : Number(summary.improvement_frac);
+    const method = String(summary.method || 'n/a');
+    const traceCount = Number(summary.trace_count || 0);
+
+    titleEl.textContent = title;
+    badgeEl.textContent = empty ? 'empty' : (improvement != null && improvement < 0 ? 'regression' : 'improved');
+    bodyEl.textContent = narrative || (empty ? 'No recent causal narrative available.' : `Latest trace for ${metric || 'the selected metric'} via ${method}.`);
+    shiftsEl.innerHTML = renderTopShifts(Array.isArray(summary.top_shifts) ? summary.top_shifts : []);
+    emptyCtaEl.classList.toggle('hidden', !empty);
+
+    if (!empty && improvement != null) {
+      bodyEl.textContent = `${bodyEl.textContent} (${improvement >= 0 ? '+' : ''}${improvement.toFixed(4)} Δ, ${traceCount} trace${traceCount === 1 ? '' : 's'} total).`;
+    }
+  }
+
   function renderCompactRows(items, renderRow, emptyText) {
     if (!Array.isArray(items) || !items.length) {
       return `<div class="text-xs text-slate-400">${esc(emptyText || 'No items yet.')}</div>`;
@@ -648,6 +690,7 @@
       if (auditResp.status === 'fulfilled') {
         const auditData = await auditResp.value.json().catch(() => ({}));
         detailState.audit = auditData && typeof auditData === 'object' ? auditData : detailState.audit;
+        renderReasoningSummary(auditData.reasoning || {});
       }
       detailState.loadedAt = new Date().toISOString();
       refreshSelectedNodeDetail();
@@ -687,6 +730,16 @@
       }
       const narrative = data && data.narrative ? String(data.narrative) : '';
       if (status) status.textContent = `${data.message || 'Synthetic stress test recorded.'}${narrative ? ` ${narrative}` : ''}`;
+      renderReasoningSummary({
+        empty: false,
+        title: data.metric_name || 'Causal trace',
+        narrative: data.narrative || data.message || '',
+        metric_name: data.metric_name || '',
+        improvement_frac: data.improvement_frac,
+        method: 'synthetic_stress_test',
+        top_shifts: Array.isArray(data.top_shifts) ? data.top_shifts : [],
+        trace_count: 1,
+      });
       await Promise.all([loadHealth(), loadLiveState(), loadDetailInsights()]);
     } catch (error) {
       if (status) status.textContent = 'Synthetic stress test failed.';

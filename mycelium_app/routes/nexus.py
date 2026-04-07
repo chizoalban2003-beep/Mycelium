@@ -655,6 +655,19 @@ def knowledge_audit(
     snaps = session.exec(snap_q).all()
     traces = session.exec(trace_q).all()
 
+    latest_trace = traces[0] if traces else None
+    reasoning_obj: dict[str, object] = {
+        "empty": not bool(latest_trace),
+        "title": "No recent causal trace" if latest_trace is None else str(latest_trace.metric_name or "Causal trace"),
+        "narrative": None if latest_trace is None else str(latest_trace.narrative or "").strip() or None,
+        "metric_name": None if latest_trace is None else str(latest_trace.metric_name or ""),
+        "improvement_frac": None if latest_trace is None or latest_trace.improvement_frac is None else float(latest_trace.improvement_frac),
+        "method": None if latest_trace is None else str(latest_trace.method or ""),
+        "top_shifts": [] if latest_trace is None else _loads_list(latest_trace.top_shifts_json)[:3],
+        "trace_count": int(len(traces)),
+        "snapshot_count": int(len(snaps)),
+    }
+
     validation_obj: dict[str, object] = {
         "recent_snapshots": [
             {
@@ -695,6 +708,7 @@ def knowledge_audit(
         local=local_obj,
         hive=hive_obj,
         validation=validation_obj,
+        reasoning=reasoning_obj,
     )
 
 
@@ -789,10 +803,12 @@ def diagnostics_stress_test(
 
     causal_trace_id: int | None = None
     narrative = None
+    improvement_frac: float | None = None
     top_shifts: list[dict[str, object]] = []
     if trace.ok and baseline_row.id is not None and trial_row.id is not None:
         narrative = str(trace.narrative or "").strip() or None
         top_shifts = trace.top_shifts or []
+        improvement_frac = float((baseline_value - trial_value) / abs(baseline_value)) if baseline_value else None
         trace_row = MetricCausalTrace(
             created_by_user_id=user_id,
             project_id=payload.project_id,
@@ -801,7 +817,7 @@ def diagnostics_stress_test(
             dataset_digest=config_digest,
             wisdom_digest=config_digest,
             metric_name=metric_name,
-            improvement_frac=float((baseline_value - trial_value) / abs(baseline_value)) if baseline_value else None,
+            improvement_frac=improvement_frac,
             method="synthetic_stress_test",
             narrative=narrative or "Synthetic stress test generated a causal trace.",
             top_shifts_json=dumps_top_shifts(trace),
@@ -844,6 +860,7 @@ def diagnostics_stress_test(
         ok=True,
         message=message,
         metric_name=metric_name,
+        improvement_frac=improvement_frac,
         narrative=narrative,
         top_shifts=top_shifts,
         baseline_snapshot_id=int(baseline_row.id or 0) or None,
