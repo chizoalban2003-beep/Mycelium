@@ -724,6 +724,15 @@ Notes:
 curl -sS https://<your-railway-domain>/health
 ```
 
+Verify live deployment commit/version:
+
+```bash
+curl -sS https://<your-railway-domain>/api/nexus/deploy/version \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
+This returns `git_sha`, `build_id`, and `railway_environment` so you can confirm the running release.
+
 If you are serving the UI using the built-in FastAPI templates on the same domain,
 you typically do **not** need CORS.
 

@@ -1026,6 +1026,15 @@ class NexusKnowledgeAuditResponse(BaseModel):
     validation: dict[str, object] = Field(default_factory=dict)
 
 
+class DeployVersionResponse(BaseModel):
+    ok: bool = True
+    app_name: str
+    app_version: str
+    git_sha: str
+    build_id: str
+    railway_environment: str
+
+
 class HandoffSessionPublic(BaseModel):
     id: int
     created_at: datetime

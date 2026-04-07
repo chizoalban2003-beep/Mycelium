@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,6 +27,7 @@ from mycelium_app.schemas import (
     NexusFeedbackIonizeRequest,
     NexusFeedbackIonizeResponse,
     NexusKnowledgeAuditResponse,
+    DeployVersionResponse,
     NexusPolicyPublic,
     NexusPolicyUpdateRequest,
     NexusPrivacyExportStatus,
@@ -261,6 +263,46 @@ def intro(
         )
 
     return NexusIntroResponse(mode=mode, observe_hours=observe_hours, message=msg)
+
+
+@router.get("/deploy/version", response_model=DeployVersionResponse)
+def deploy_version(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ = get_policy(session, user_id)
+
+    app_version = str(
+        os.getenv("APP_VERSION")
+        or os.getenv("RAILWAY_GIT_COMMIT_MESSAGE")
+        or "unknown"
+    )[:128]
+    git_sha = str(
+        os.getenv("GIT_SHA")
+        or os.getenv("RAILWAY_GIT_COMMIT_SHA")
+        or "unknown"
+    )[:128]
+    build_id = str(
+        os.getenv("BUILD_ID")
+        or os.getenv("RAILWAY_DEPLOYMENT_ID")
+        or os.getenv("RAILWAY_PROJECT_ID")
+        or "unknown"
+    )[:128]
+    railway_environment = str(
+        os.getenv("RAILWAY_ENVIRONMENT")
+        or os.getenv("RAILWAY_ENVIRONMENT_NAME")
+        or "unknown"
+    )[:128]
+
+    return DeployVersionResponse(
+        ok=True,
+        app_name=str(getattr(settings, "app_name", "Mycelium")),
+        app_version=app_version,
+        git_sha=git_sha,
+        build_id=build_id,
+        railway_environment=railway_environment,
+    )
 
 
 @router.get("/experience/recent", response_model=NexusListResponse)
