@@ -897,6 +897,66 @@ def knowledge_page(
     )
 
 
+@router.get("/platform", response_class=HTMLResponse)
+def platform_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    layers = [
+        {
+            "title": "Experience layer",
+            "description": "The surfaces the user sees every day: device shell, login, demo, projects, knowledge, and Hive.",
+            "items": ["mycelium_app/web.py", "templates/device_shell.html", "templates/demo.html", "templates/hive_health.html"],
+        },
+        {
+            "title": "Learning layer",
+            "description": "Signal capture, normalization, feedback, memory, and explainability.",
+            "items": ["mycelium_app/stimulus.py", "mycelium_app/routes/stimulus.py", "mycelium_app/telemetry_assistant.py", "mycelium_app/causal_trace.py"],
+        },
+        {
+            "title": "Governance layer",
+            "description": "Policy, consent, privacy, and reversible action controls.",
+            "items": ["mycelium_app/parental_policy.py", "mycelium_app/privacy_membrane.py", "mycelium_app/routes/tasks.py", "mycelium_app/routes/chat.py"],
+        },
+        {
+            "title": "Timing layer",
+            "description": "Physics-governed prediction, viscosity, and homeostasis.",
+            "items": ["mycelium_app/physics_predictor.py", "mycelium_app/viscosity.py", "mycelium_app/hybrid_predictor.py", "mycelium_app/homeostasis.py"],
+        },
+        {
+            "title": "Runtime layer",
+            "description": "The models, schemas, dependencies, and app bootstrap that make the platform run.",
+            "items": ["mycelium_app/models.py", "mycelium_app/schemas.py", "mycelium_app/db.py", "mycelium_app/main.py"],
+        },
+    ]
+
+    module_roles = [
+        {"path": "mycelium_app/causal_trace.py", "role": "Compares prediction weights to explain why the assistant leaned a certain way."},
+        {"path": "mycelium_app/physics_predictor.py", "role": "Turns structured inputs into timing and recommendation signals."},
+        {"path": "mycelium_app/viscosity.py", "role": "Measures friction/flow from device conditions like battery and interruption rate."},
+        {"path": "mycelium_app/stimulus.py", "role": "Records signals into the shared learning pipeline."},
+        {"path": "mycelium_app/telemetry_assistant.py", "role": "Converts consented telemetry into nudges and actionable guidance."},
+        {"path": "mycelium_app/homeostasis.py", "role": "Keeps the platform stable with reflection and pruning."},
+        {"path": "mycelium_app/privacy_membrane.py", "role": "Keeps raw personal data local and exports only filtered wisdom."},
+        {"path": "mycelium_app/routes/hive.py", "role": "Aggregates shared intelligence and powers the Hive observability surface."},
+    ]
+
+    return templates.TemplateResponse(
+        "platform.html",
+        {
+            "request": request,
+            "user": current_user,
+            "app_name": settings.app_name,
+            "layers": layers,
+            "module_roles": module_roles,
+        },
+    )
+
+
 @router.get("/hive/health", response_class=HTMLResponse)
 def hive_health_page(
     request: Request,
