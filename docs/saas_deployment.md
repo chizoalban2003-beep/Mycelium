@@ -426,6 +426,14 @@ Phase 4 eval script (implemented):
 
 - `python3 scripts/eval_autonomy_modes.py --base-url <url> --token <token>`
 
+Global audit report (implemented):
+
+- `python3 scripts/global_audit_report.py --base-url <url> --token <token>`
+- Runs governance timeline analysis + mode probes (`strict|balanced|auto`) and restores original policy after evaluation.
+- Optional Telegram executive summary:
+  - `--telegram-bot-token <token> --telegram-chat-id <chat_id>`
+  - or env: `NOTIFICATIONS_TELEGRAM_BOT_TOKEN` + `AUDIT_TELEGRAM_CHAT_ID`
+
 Deterministic handoff states:
 
 - `proposed`
