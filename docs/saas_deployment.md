@@ -96,6 +96,12 @@ Inbound Telegram chat can be wired to:
 When `telegram_chat_id` matches a user policy, inbound messages are persisted to chat history and answered.
 Status prompts (e.g., "how are you") now include live viscosity-grounded response context.
 
+Emergency brake commands (Telegram, implemented):
+
+- `/freeze` → enables `actions.kill_switch=true` and clears pending device actions
+- `/unfreeze` → disables `actions.kill_switch`
+- `/freeze status` (or `/killswitch`) → returns current governance safety state
+
 ### Hybrid predictor API (physics governor + timing model)
 
 Use this endpoint to ask whether a focus work session should be recommended now:

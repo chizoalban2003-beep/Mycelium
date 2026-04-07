@@ -10,8 +10,16 @@ from sqlmodel import Session, select
 from mycelium_app.assistant_profile import get_assistant_profile_effective
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import ConversationMessage, NexusNudge, NexusPolicy, ProjectMember, SignalLedgerEvent, User
-from mycelium_app.parental_policy import get_policy
+from mycelium_app.models import (
+    ConversationMessage,
+    HiveOutboxMessage,
+    NexusNudge,
+    NexusPolicy,
+    ProjectMember,
+    SignalLedgerEvent,
+    User,
+)
+from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.routes.hybrid import auto_handoff_confirm, auto_handoff_launch
 from mycelium_app.schemas import (
     AutoHandoffConfirmRequest,
@@ -127,6 +135,51 @@ def _build_status_message(session: Session, *, user_id: int, assistant_name: str
 def _build_daily_summary_message(session: Session, *, user_id: int, assistant_name: str) -> str:
     out = compute_daily_consolidation(session, user_id=int(user_id), project_id=None, window_hours=24)
     return f"I’m {assistant_name}. {str(out.get('summary_text') or '').strip()}"
+
+
+def _set_kill_switch(
+    session: Session,
+    *,
+    user_id: int,
+    enabled: bool,
+    clear_pending: bool,
+) -> tuple[bool, int]:
+    policy = get_policy(session, int(user_id))
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    updated_policy = {
+        **policy,
+        "actions": {
+            **actions_cfg,
+            "kill_switch": bool(enabled),
+        },
+    }
+    set_policy(session, int(user_id), updated_policy)
+
+    cleared = 0
+    if bool(clear_pending):
+        q = (
+            select(HiveOutboxMessage)
+            .where(HiveOutboxMessage.created_by_user_id == int(user_id))
+            .where(HiveOutboxMessage.kind == "device_action")
+            .where(HiveOutboxMessage.submitted_at.is_(None))
+            .order_by(HiveOutboxMessage.created_at.asc())
+            .limit(2000)
+        )
+        rows = session.exec(q).all()
+        now = datetime.utcnow()
+        for m in rows:
+            p = _loads_dict(m.payload_json)
+            p["ack"] = {
+                "status": "rejected",
+                "notes": "cleared_by_telegram_freeze",
+                "acked_at": now.isoformat() + "Z",
+            }
+            m.payload_json = _dumps(p)
+            m.submitted_at = now
+            session.add(m)
+            cleared += 1
+        session.commit()
+    return bool(enabled), int(cleared)
 
 
 def _build_launch_now_message(
@@ -359,7 +412,40 @@ async def telegram_webhook(
     mapped_user = session.exec(select(User).where(User.id == int(user_id))).first()
 
     lower = text.lower()
-    if "bootstrap" in lower:
+    if lower in {"/freeze", "/killswitch on", "/freeze now"}:
+        if mapped_user is None:
+            assistant_text = f"I’m {assistant_name}. I could not resolve your account for freeze command."
+        else:
+            enabled, cleared = _set_kill_switch(
+                session,
+                user_id=int(user_id),
+                enabled=True,
+                clear_pending=True,
+            )
+            assistant_text = (
+                f"I’m {assistant_name}. Emergency brake engaged (kill-switch={str(enabled).lower()}). "
+                f"Cleared {int(cleared)} pending device actions."
+            )
+    elif lower in {"/unfreeze", "/thaw", "/killswitch off"}:
+        if mapped_user is None:
+            assistant_text = f"I’m {assistant_name}. I could not resolve your account for unfreeze command."
+        else:
+            enabled, _ = _set_kill_switch(
+                session,
+                user_id=int(user_id),
+                enabled=False,
+                clear_pending=False,
+            )
+            assistant_text = f"I’m {assistant_name}. Emergency brake released (kill-switch={str(enabled).lower()})."
+    elif lower in {"/freeze status", "/killswitch", "/safety"}:
+        policy = get_policy(session, int(user_id))
+        actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+        assistant_text = (
+            f"I’m {assistant_name}. kill-switch={str(bool(actions_cfg.get('kill_switch', False))).lower()}, "
+            f"autonomy_mode={str(actions_cfg.get('autonomy_mode', 'strict'))}, "
+            f"require_confirm={str(bool(actions_cfg.get('require_confirm', True))).lower()}."
+        )
+    elif "bootstrap" in lower:
         assistant_text = (
             f"I’m {assistant_name}. I can bootstrap a focus session. "
             "Use /api/nexus/tasks/bootstrap/work-session in the app to start it with your preferred duration."
