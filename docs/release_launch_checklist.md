@@ -74,6 +74,20 @@ keytool -genkeypair -v -keystore mycelium-release.jks -alias mycelium -keyalg RS
 
 Keep the keystore private and back it up offline.
 
+### One-shot build helper
+
+Run the release helper after the one-time Bubblewrap project scaffold exists:
+
+```bash
+bash scripts/release_twa_build.sh
+```
+
+If the `twa/` project directory has not been created yet, first run:
+
+```bash
+bubblewrap init --manifest https://<your-railway-domain>/static/manifest.webmanifest
+```
+
 ## Launch checklist
 
 - [ ] Set production env vars
@@ -86,6 +100,7 @@ Keep the keystore private and back it up offline.
 - [ ] Generate PNG launcher icons and maskable variants
 - [ ] Set versionName/versionCode in the TWA scaffold
 - [ ] Generate or confirm the release keystore
+- [ ] Create the Bubblewrap project directory once
 - [ ] Build APK/AAB with Bubblewrap
 - [ ] Test install on one Android device
 - [ ] Submit to Play Store when branding, privacy policy, and screenshots are ready

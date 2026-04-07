@@ -72,6 +72,14 @@ bubblewrap init --manifest https://your-app.up.railway.app/static/manifest.webma
 
 This creates Android project files under a local folder (default `twa/`).
 
+For repeatable releases, the repo also includes a helper script:
+
+```bash
+bash scripts/release_twa_build.sh
+```
+
+The helper expects the Bubblewrap project directory to already exist.
+
 Before packaging, confirm the versioning in your scaffold is set for release:
 
 - `versionName`: `1.0.0-alpha` (or your next release tag)
@@ -84,6 +92,8 @@ Inside the generated TWA folder:
 ```bash
 bubblewrap build
 ```
+
+For the one-shot path, the helper script will run this for you after validating the keystore and manifest inputs.
 
 Outputs:
 - APK for direct install/testing
