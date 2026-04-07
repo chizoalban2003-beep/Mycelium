@@ -40,10 +40,11 @@ from mycelium_app.security import decode_token
 from mycelium_app.security import hash_password, hash_password_reset_token, verify_password, verify_password_reset_token
 from mycelium_app.settings import settings
 from mycelium_app.routes.auth import consume_password_reset_token, create_password_reset_request_link
+from mycelium_app.routes.hybrid import auto_handoff_confirm as auto_handoff_confirm_api
 from mycelium_app.routes.hybrid import auto_handoff_launch as auto_handoff_launch_api
 from mycelium_app.routes.reflection import daily_summary as reflection_daily_summary_api
 from mycelium_app.routes.tasks import bootstrap_work_session as bootstrap_work_session_api
-from mycelium_app.schemas import AutoHandoffLaunchRequest, TaskBootstrapWorkSessionRequest
+from mycelium_app.schemas import AutoHandoffConfirmRequest, AutoHandoffLaunchRequest, TaskBootstrapWorkSessionRequest
 from mycelium_app.stimulus import record_stimulus_event
 
 
@@ -499,6 +500,75 @@ def device_auto_handoff_launch(
         return RedirectResponse(url=f"/device?error={quote_plus(str(exc))}", status_code=302)
 
     notice = f"Handoff launch: {result.launch_mode} on {result.recommended_device_id or 'local'}"
+    return RedirectResponse(url=f"/device?notice={quote_plus(notice)}", status_code=302)
+
+
+@router.post("/device/auto-handoff-confirm")
+def device_auto_handoff_confirm(
+    request: Request,
+    session: Session = Depends(get_session),
+    replica_id: int = Form(...),
+    device_id: str = Form("local"),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    payload = AutoHandoffConfirmRequest(replica_id=replica_id, device_id=device_id)
+    try:
+        result = auto_handoff_confirm_api(payload, current_user=current_user, session=session)
+    except Exception as exc:
+        return RedirectResponse(url=f"/device?error={quote_plus(str(exc))}", status_code=302)
+
+    notice = f"Handoff confirmed: queued action #{int(result.queued_device_action_id)}"
+    return RedirectResponse(url=f"/device?notice={quote_plus(notice)}", status_code=302)
+
+
+@router.post("/device/auto-handoff-launch-and-confirm")
+def device_auto_handoff_launch_and_confirm(
+    request: Request,
+    session: Session = Depends(get_session),
+    project_id: int | None = Form(None),
+    window_minutes: int = Form(120),
+    base_duration_minutes: int = Form(45),
+    current_device_id: str = Form("local"),
+    candidate_device_ids: str = Form("local"),
+    focus_app: str = Form("mycelium"),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    candidates = [p.strip() for p in str(candidate_device_ids or "").split(",") if p.strip()]
+    payload = AutoHandoffLaunchRequest(
+        project_id=project_id,
+        window_minutes=window_minutes,
+        base_duration_minutes=base_duration_minutes,
+        current_device_id=current_device_id,
+        candidate_device_ids=candidates,
+        focus_app=focus_app,
+    )
+    try:
+        launch = auto_handoff_launch_api(payload, current_user=current_user, session=session)
+        if int(launch.replica_id or 0) > 0 and int(launch.queued_device_action_id or 0) <= 0:
+            confirmed = auto_handoff_confirm_api(
+                AutoHandoffConfirmRequest(replica_id=int(launch.replica_id or 0), device_id=launch.recommended_device_id),
+                current_user=current_user,
+                session=session,
+            )
+            notice = (
+                f"Handoff launched and confirmed: {launch.launch_mode} on "
+                f"{launch.recommended_device_id or 'local'} • queued action #{int(confirmed.queued_device_action_id)}"
+            )
+        else:
+            queued = int(launch.queued_device_action_id or 0)
+            notice = (
+                f"Handoff launched: {launch.launch_mode} on {launch.recommended_device_id or 'local'}"
+                + (f" • queued action #{queued}" if queued > 0 else "")
+            )
+    except Exception as exc:
+        return RedirectResponse(url=f"/device?error={quote_plus(str(exc))}", status_code=302)
+
     return RedirectResponse(url=f"/device?notice={quote_plus(notice)}", status_code=302)
 
 
