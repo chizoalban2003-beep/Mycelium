@@ -87,6 +87,88 @@ def _to_replica_public(row: TaskReplica) -> TaskReplicaPublic:
     )
 
 
+def approve_replica_and_queue(
+    session: Session,
+    *,
+    user_id: int,
+    row: TaskReplica,
+    device_id: str | None = None,
+) -> tuple[int, str, bool]:
+    """Approve a replica and queue execution with idempotent outbox behavior.
+
+    Returns: (message_id, detail, reused_existing_message)
+    """
+
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    if not bool(actions_cfg.get("enabled", False)):
+        raise HTTPException(status_code=403, detail="Actions disabled by user policy")
+    if not bool(actions_cfg.get("device_control_enabled", False)):
+        raise HTTPException(status_code=403, detail="Device control not granted by user policy")
+
+    caps = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
+    allowed = {str(c).strip().lower() for c in caps if str(c).strip()}
+    if allowed and str(row.capability or "").lower() not in allowed:
+        raise HTTPException(status_code=403, detail="Capability not allowed by user policy")
+
+    min_conf = max(0.0, min(float(actions_cfg.get("min_confidence", 0.90) or 0.90), 1.0))
+    if float(row.species_confidence or 0.0) < min_conf:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Species confidence below policy minimum ({float(row.species_confidence):.3f} < {min_conf:.3f})",
+        )
+
+    # Idempotency guard: if this replica already has a pending device_action in outbox,
+    # reuse it instead of enqueueing a duplicate.
+    existing_q = (
+        select(HiveOutboxMessage)
+        .where(HiveOutboxMessage.created_by_user_id == int(user_id))
+        .where(HiveOutboxMessage.kind == "device_action")
+        .where(HiveOutboxMessage.submitted_at.is_(None))
+        .order_by(HiveOutboxMessage.created_at.desc())
+        .limit(200)
+    )
+    existing_rows = session.exec(existing_q).all()
+    action_id = f"task_replica:{int(row.id or 0)}"
+    for m in existing_rows:
+        payload = _loads_dict(m.payload_json)
+        if str(payload.get("action_id") or "") == action_id:
+            row.status = "approved"
+            if row.approved_at is None:
+                row.approved_at = datetime.utcnow()
+            row.updated_at = datetime.utcnow()
+            session.add(row)
+            session.commit()
+            return int(m.id or 0), "Replica already queued; reused existing device action", True
+
+    row.status = "approved"
+    row.approved_at = datetime.utcnow()
+    row.updated_at = datetime.utcnow()
+    session.add(row)
+
+    message = HiveOutboxMessage(
+        created_by_user_id=user_id,
+        project_id=row.project_id,
+        device_id=str(device_id or row.device_id or settings.nexus_device_id or "local")[:128],
+        kind="device_action",
+        payload_json=_dumps(
+            {
+                "action_id": action_id,
+                "confidence": float(round(float(row.species_confidence or 0.0), 4)),
+                "command": _loads_dict(row.command_json),
+                "capability": str(row.capability or ""),
+                "title": str(row.title or ""),
+                "trajectory_key": str(row.trajectory_key or ""),
+            }
+        ),
+        submitted_at=None,
+    )
+    session.add(message)
+    session.commit()
+    session.refresh(message)
+    return int(message.id or 0), "Replica approved and queued for local execution", False
+
+
 @router.post("/bootstrap/work-session", response_model=TaskBootstrapWorkSessionResponse)
 def bootstrap_work_session(
     payload: TaskBootstrapWorkSessionRequest,
@@ -291,6 +373,7 @@ def replica_decision(
     row.updated_at = datetime.utcnow()
     if decision == "reject":
         row.status = "rejected"
+        row.updated_at = datetime.utcnow()
         session.add(row)
         session.commit()
         return TaskReplicaDecisionResponse(
@@ -301,56 +384,19 @@ def replica_decision(
             detail="Replica rejected",
         )
 
-    policy = get_policy(session, user_id)
-    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
-    if not bool(actions_cfg.get("enabled", False)):
-        raise HTTPException(status_code=403, detail="Actions disabled by user policy")
-    if not bool(actions_cfg.get("device_control_enabled", False)):
-        raise HTTPException(status_code=403, detail="Device control not granted by user policy")
-
-    caps = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
-    allowed = {str(c).strip().lower() for c in caps if str(c).strip()}
-    if allowed and str(row.capability or "").lower() not in allowed:
-        raise HTTPException(status_code=403, detail="Capability not allowed by user policy")
-
-    min_conf = max(0.0, min(float(actions_cfg.get("min_confidence", 0.90) or 0.90), 1.0))
-    if float(row.species_confidence or 0.0) < min_conf:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Species confidence below policy minimum ({float(row.species_confidence):.3f} < {min_conf:.3f})",
-        )
-
-    row.status = "approved"
-    row.approved_at = datetime.utcnow()
-    session.add(row)
-
-    message = HiveOutboxMessage(
-        created_by_user_id=user_id,
-        project_id=row.project_id,
-        device_id=str(payload.device_id or row.device_id or settings.nexus_device_id or "local")[:128],
-        kind="device_action",
-        payload_json=_dumps(
-            {
-                "action_id": f"task_replica:{int(row.id or 0)}",
-                "confidence": float(round(float(row.species_confidence or 0.0), 4)),
-                "command": _loads_dict(row.command_json),
-                "capability": str(row.capability or ""),
-                "title": str(row.title or ""),
-                "trajectory_key": str(row.trajectory_key or ""),
-            }
-        ),
-        submitted_at=None,
+    message_id, detail, _reused = approve_replica_and_queue(
+        session,
+        user_id=user_id,
+        row=row,
+        device_id=payload.device_id,
     )
-    session.add(message)
-    session.commit()
-    session.refresh(message)
 
     return TaskReplicaDecisionResponse(
         ok=True,
         replica_id=int(row.id or 0),
         decision=decision,
-        queued_device_action_id=int(message.id or 0),
-        detail="Replica approved and queued for local execution",
+        queued_device_action_id=int(message_id or 0),
+        detail=detail,
     )
 
 

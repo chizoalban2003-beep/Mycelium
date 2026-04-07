@@ -12,7 +12,10 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.hybrid_predictor import predict_next_work_session
 from mycelium_app.models import ProjectMember, SignalLedgerEvent, TaskReplica, TaskTrajectory, User
+from mycelium_app.routes.tasks import approve_replica_and_queue
 from mycelium_app.schemas import (
+    AutoHandoffConfirmRequest,
+    AutoHandoffConfirmResponse,
     AutoHandoffLaunchRequest,
     AutoHandoffLaunchResponse,
     AdaptiveMultiNodeDirectiveRequest,
@@ -32,6 +35,16 @@ router = APIRouter(prefix="/api/nexus/hybrid", tags=["hybrid"])
 
 def _dumps(obj: object) -> str:
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _loads_dict(s: str | None) -> dict:
+    if not s:
+        return {}
+    try:
+        v = json.loads(s)
+        return v if isinstance(v, dict) else {}
+    except Exception:
+        return {}
 
 
 def _ensure_project_access(session: Session, user_id: int, project_id: int | None) -> None:
@@ -339,6 +352,47 @@ def auto_handoff_launch(
     duration = max(10, min(int(best.suggested_duration_minutes or base or 25), 180))
     focus_app = str(payload.focus_app or "mycelium").strip().lower()[:64] or "mycelium"
 
+    # Dedup guard: reuse very recent equivalent proposed launch.
+    recent_since = datetime.utcnow() - timedelta(minutes=2)
+    rq = select(TaskReplica).where(TaskReplica.created_by_user_id == int(user_id))
+    if payload.project_id is None:
+        rq = rq.where(TaskReplica.project_id.is_(None))
+    else:
+        rq = rq.where(TaskReplica.project_id == int(payload.project_id))
+    rq = (
+        rq.where(TaskReplica.status == "proposed")
+        .where(TaskReplica.capability == "start_focus_session")
+        .where(TaskReplica.device_id == selected_device_id)
+        .where(TaskReplica.created_at >= recent_since)
+        .order_by(TaskReplica.created_at.desc())
+        .limit(5)
+    )
+    recent_rows = session.exec(rq).all()
+    for r in recent_rows:
+        cmd = _loads_dict(r.command_json)
+        if int(cmd.get("duration_minutes") or -1) == int(duration) and str(cmd.get("open_app") or "") == focus_app:
+            # Try to find trajectory with same key created around same time.
+            tr = session.exec(
+                select(TaskTrajectory)
+                .where(TaskTrajectory.created_by_user_id == int(user_id))
+                .where(TaskTrajectory.trajectory_key == str(r.trajectory_key or ""))
+                .order_by(TaskTrajectory.created_at.desc())
+                .limit(1)
+            ).first()
+            return AutoHandoffLaunchResponse(
+                ok=True,
+                project_id=payload.project_id,
+                handoff_recommended=bool(handoff_recommended),
+                recommended_device_id=selected_device_id,
+                launch_mode="proposed",
+                suggested_duration_minutes=int(duration),
+                reason="Reused recent equivalent launch proposal (dedupe guard).",
+                trajectory_id=(int(tr.id or 0) if tr else None),
+                replica_id=int(r.id or 0),
+                hybrid=hybrid,
+                recommendations=recs,
+            )
+
     sequence = [
         "session_start_detected",
         "multinode_handoff_analyzed",
@@ -414,4 +468,35 @@ def auto_handoff_launch(
         replica_id=int(replica.id or 0),
         hybrid=hybrid,
         recommendations=recs,
+    )
+
+
+@router.post("/directive/work-session/auto-handoff-confirm", response_model=AutoHandoffConfirmResponse)
+def auto_handoff_confirm(
+    payload: AutoHandoffConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+
+    row = session.exec(
+        select(TaskReplica).where(TaskReplica.id == int(payload.replica_id), TaskReplica.created_by_user_id == user_id)
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Replica not found")
+
+    _ensure_project_access(session, user_id, row.project_id)
+
+    message_id, detail, _reused = approve_replica_and_queue(
+        session,
+        user_id=user_id,
+        row=row,
+        device_id=payload.device_id,
+    )
+
+    return AutoHandoffConfirmResponse(
+        ok=True,
+        replica_id=int(row.id or 0),
+        queued_device_action_id=int(message_id or 0),
+        detail=detail,
     )

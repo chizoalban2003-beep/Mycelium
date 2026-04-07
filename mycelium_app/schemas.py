@@ -805,6 +805,18 @@ class AutoHandoffLaunchResponse(BaseModel):
     recommendations: list[AdaptiveNodeRecommendation] = Field(default_factory=list)
 
 
+class AutoHandoffConfirmRequest(BaseModel):
+    replica_id: int
+    device_id: str | None = None
+
+
+class AutoHandoffConfirmResponse(BaseModel):
+    ok: bool = True
+    replica_id: int
+    queued_device_action_id: int
+    detail: str = ""
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime

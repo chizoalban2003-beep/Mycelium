@@ -98,6 +98,15 @@ Auto-handoff launch endpoint (one-step):
 - Runs multi-node analysis and proposes a focus-session replica on the best node.
 - Safety: if all nodes are gated, returns recovery mode with `suggested_duration_minutes=0`.
 
+One-tap confirmation endpoint:
+
+- `POST /api/nexus/hybrid/directive/work-session/auto-handoff-confirm`
+- Queues execution with idempotent behavior (duplicate confirmation reuses pending device action).
+
+Chat UX:
+
+- "launch now" in chat/Telegram triggers analyze → propose → confirm flow.
+
 Config flags:
 
 - `HYBRID_PREDICTOR_ENABLED`

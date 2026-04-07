@@ -12,7 +12,15 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import ConversationMessage, NexusNudge, NexusPolicy, ProjectMember, SignalLedgerEvent, User
 from mycelium_app.parental_policy import get_policy
-from mycelium_app.schemas import ChatHistoryResponse, ChatMessagePublic, ChatSendRequest, ChatSendResponse
+from mycelium_app.routes.hybrid import auto_handoff_confirm, auto_handoff_launch
+from mycelium_app.schemas import (
+    AutoHandoffConfirmRequest,
+    AutoHandoffLaunchRequest,
+    ChatHistoryResponse,
+    ChatMessagePublic,
+    ChatSendRequest,
+    ChatSendResponse,
+)
 from mycelium_app.settings import settings
 from mycelium_app.self_reflection import compute_daily_consolidation
 from mycelium_app.viscosity import calculate_live_viscosity
@@ -121,6 +129,52 @@ def _build_daily_summary_message(session: Session, *, user_id: int, assistant_na
     return f"I’m {assistant_name}. {str(out.get('summary_text') or '').strip()}"
 
 
+def _build_launch_now_message(
+    session: Session,
+    *,
+    current_user: User,
+    assistant_name: str,
+) -> str:
+    try:
+        launch = auto_handoff_launch(
+            AutoHandoffLaunchRequest(
+                project_id=None,
+                window_minutes=int(getattr(settings, "hybrid_predictor_window_minutes", 120) or 120),
+                base_duration_minutes=45,
+                current_device_id="phone",
+                candidate_device_ids=["phone", "laptop", "desktop"],
+                focus_app="mycelium",
+            ),
+            current_user=current_user,
+            session=session,
+        )
+    except Exception as e:
+        return f"I’m {assistant_name}. I could not initialize launch right now ({type(e).__name__})."
+    if str(launch.launch_mode) == "recovery" or int(launch.suggested_duration_minutes or 0) <= 0:
+        return f"I’m {assistant_name}. Launch deferred: all nodes are gated. Recovery mode is recommended right now."
+
+    rid = int(launch.replica_id or 0)
+    if rid <= 0:
+        return f"I’m {assistant_name}. I analyzed your nodes but could not create a launch replica."
+
+    try:
+        confirmed = auto_handoff_confirm(
+            AutoHandoffConfirmRequest(replica_id=rid, device_id=launch.recommended_device_id),
+            current_user=current_user,
+            session=session,
+        )
+    except Exception as e:
+        return (
+            f"I’m {assistant_name}. I prepared launch proposal #{rid}, "
+            f"but confirmation failed ({type(e).__name__})."
+        )
+    return (
+        f"I’m {assistant_name}. Launch initialized on {launch.recommended_device_id or 'best node'} "
+        f"for {int(launch.suggested_duration_minutes or 0)} minutes. "
+        f"Queued action #{int(confirmed.queued_device_action_id)}."
+    )
+
+
 @router.post("/send", response_model=ChatSendResponse)
 def send_chat(
     payload: ChatSendRequest,
@@ -161,6 +215,8 @@ def send_chat(
     lower = msg.lower()
     if "daily summary" in lower or "consolidation" in lower or "end of day" in lower:
         assistant_text = _build_daily_summary_message(session, user_id=user_id, assistant_name=assistant_name)
+    elif "launch now" in lower or "start session now" in lower or "initialize desktop" in lower:
+        assistant_text = _build_launch_now_message(session, current_user=current_user, assistant_name=assistant_name)
     elif "how are you" in lower or "status" in lower or "viscosity" in lower:
         assistant_text = _build_status_message(session, user_id=user_id, assistant_name=assistant_name)
     else:
@@ -293,6 +349,7 @@ async def telegram_webhook(
 
     ap = get_assistant_profile_effective(session, user_id=int(user_id), project_id=None)
     assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
+    mapped_user = session.exec(select(User).where(User.id == int(user_id))).first()
 
     lower = text.lower()
     if "bootstrap" in lower:
@@ -300,6 +357,11 @@ async def telegram_webhook(
             f"I’m {assistant_name}. I can bootstrap a focus session. "
             "Use /api/nexus/tasks/bootstrap/work-session in the app to start it with your preferred duration."
         )
+    elif "launch now" in lower or "start session now" in lower or "initialize desktop" in lower:
+        if mapped_user is None:
+            assistant_text = f"I’m {assistant_name}. I could not resolve your account for launch."
+        else:
+            assistant_text = _build_launch_now_message(session, current_user=mapped_user, assistant_name=assistant_name)
     elif "daily summary" in lower or "consolidation" in lower or "end of day" in lower:
         assistant_text = _build_daily_summary_message(session, user_id=int(user_id), assistant_name=assistant_name)
     elif "how are you" in lower or "status" in lower or "viscosity" in lower:

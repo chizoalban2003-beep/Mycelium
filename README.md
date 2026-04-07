@@ -243,6 +243,15 @@ Auto-handoff launch API (analyze + propose in one call):
 - If all candidate devices are `gated`, returns `launch_mode=recovery` and `suggested_duration_minutes=0`.
 - Otherwise creates a trajectory + proposed task replica on the lowest-viscosity node.
 
+One-tap confirm API:
+
+- `POST /api/nexus/hybrid/directive/work-session/auto-handoff-confirm`
+- Approves a proposed replica and queues execution idempotently (reuses existing pending action if already queued).
+
+Chat trigger:
+
+- Send "launch now" to run analyze → propose → confirm in one step.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`
