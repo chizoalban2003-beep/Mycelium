@@ -151,19 +151,34 @@
           <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Today</div>
           <h2 class="mt-1 text-lg font-semibold">Recent activity at a glance</h2>
         </div>
-          <div class="flex items-center gap-2">
-            <button id="refresh-snapshot" class="text-xs text-slate-400 hover:text-cyan-300">🔄 Refresh</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="refresh-snapshot" type="button" class="text-xs text-slate-400 hover:text-cyan-300">🔄 Refresh</button>
             <div class="text-xs text-slate-400">Live snapshot</div>
           </div>
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Chart range</div>
+        <div class="flex flex-wrap gap-2" role="tablist" aria-label="Snapshot window">
+          <button type="button" data-window-hours="6" class="snapshot-window rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800">6h</button>
+          <button type="button" data-window-hours="24" class="snapshot-window rounded-full border border-cyan-700 bg-cyan-950/30 px-3 py-1 text-xs text-cyan-100">24h</button>
+          <button type="button" data-window-hours="72" class="snapshot-window rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800">72h</button>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <a href="/knowledge" aria-label="Open recent signals" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📊 Signals</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
-          <div class="mt-1 text-sm text-slate-300">Last 24 hours of observed learning events.</div>
+          <div class="mt-1 text-sm text-slate-300">Last {{ snapshot_window_hours }} hours of observed learning events.</div>
         </a>
-        <a href="/projects" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+        <a href="/projects" aria-label="Open recent growth" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📈 Growth</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_growth_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Accepted outcomes and progress signals.</div>
         </a>
-        <a href="/hive/health" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+        <a href="/hive/health" aria-label="Open recent nudges" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">💡 Nudges</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_nudges_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Visible prompts and assistant suggestions.</div>
@@ -206,19 +221,19 @@
       <div class="mt-4 grid gap-3 sm:grid-cols-3">
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
           <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
-            <span>Signals trend</span><span>{{ recent_signals_24h_count }}</span>
+            <span>Signals trend</span><span>{{ snapshot_window_hours }}h</span>
           </div>
           <div class="mt-2 h-16" data-sparkline data-series='{{ signal_trend|tojson }}' data-color="#67e8f9"></div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
           <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
-            <span>Growth trend</span><span>{{ recent_growth_24h_count }}</span>
+            <span>Growth trend</span><span>{{ snapshot_window_hours }}h</span>
           </div>
           <div class="mt-2 h-16" data-sparkline data-series='{{ growth_trend|tojson }}' data-color="#c4b5fd"></div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
           <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
-            <span>Nudges trend</span><span>{{ recent_nudges_24h_count }}</span>
+            <span>Nudges trend</span><span>{{ snapshot_window_hours }}h</span>
           </div>
           <div class="mt-2 h-16" data-sparkline data-series='{{ nudge_trend|tojson }}' data-color="#f9a8d4"></div>
         </div>

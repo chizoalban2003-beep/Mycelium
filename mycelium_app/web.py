@@ -306,8 +306,9 @@ def device_shell_page(
     assistant_profile = get_assistant_profile_effective(session, user_id=int(current_user.id or 0), project_id=None)
     notice = str(request.query_params.get("notice") or "").strip()[:200]
     error = str(request.query_params.get("error") or "").strip()[:200]
+    window_hours = max(6, min(int(request.query_params.get("window_hours") or 24), 168))
 
-    since = datetime.utcnow() - timedelta(days=1)
+    since = datetime.utcnow() - timedelta(hours=window_hours)
 
     recent_signals = session.exec(
         select(SignalLedgerEvent)
@@ -352,7 +353,7 @@ def device_shell_page(
 
     def _bucket_series(rows: list[object], bucket_count: int = 8) -> list[int]:
         buckets = [0] * max(1, int(bucket_count))
-        total_seconds = 24 * 60 * 60
+        total_seconds = max(1, window_hours * 60 * 60)
         for row in rows:
             created_at = getattr(row, "created_at", None)
             if not created_at:
@@ -381,6 +382,7 @@ def device_shell_page(
             "recent_growth_24h_count": len(recent_growth_24h),
             "recent_nudges": recent_nudges,
             "recent_nudges_24h_count": len(recent_nudges_24h),
+            "snapshot_window_hours": window_hours,
             "signal_trend": _bucket_series(recent_signals_24h),
             "growth_trend": _bucket_series(recent_growth_24h),
             "nudge_trend": _bucket_series(recent_nudges_24h),
