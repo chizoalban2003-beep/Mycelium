@@ -20,6 +20,7 @@ from mycelium_app.schemas import (
     AdaptiveMemoryUpsertResponse,
 )
 from mycelium_app.settings import settings
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/nexus/memory", tags=["memory"])
@@ -165,6 +166,22 @@ def memory_upsert(
 
     session.commit()
     session.refresh(row)
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="memory_api",
+            modality="memory",
+            signal_type="memory_upsert",
+            stimulus={"lane": lane, "memory_key_len": len(key), "strength_delta": float(delta)},
+            occurred_at=row.updated_at,
+        )
+    except Exception:
+        pass
+
     return AdaptiveMemoryUpsertResponse(ok=True, memory=_to_public(row))
 
 
@@ -233,6 +250,22 @@ def memory_reinforce(
     row.updated_at = now
     session.add(row)
     session.commit()
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="memory_api",
+            modality="memory",
+            signal_type="memory_reinforce",
+            stimulus={"memory_id": int(memory_id), "lane": str(row.lane or ""), "delta": float(delta)},
+            occurred_at=now,
+        )
+    except Exception:
+        pass
+
     session.refresh(row)
 
     return AdaptiveMemoryReinforceResponse(ok=True, memory=_to_public(row))
@@ -292,6 +325,21 @@ def memory_decay_run(
 
     mean_before = float(total_before / updated) if updated else 0.0
     mean_after = float(total_after / updated) if updated else 0.0
+
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="memory_api",
+            modality="memory",
+            signal_type="memory_decay_run",
+            stimulus={"updated": int(updated), "mean_before": float(mean_before), "mean_after": float(mean_after)},
+            occurred_at=now,
+        )
+    except Exception:
+        pass
 
     return AdaptiveMemoryDecayRunResponse(
         ok=True,

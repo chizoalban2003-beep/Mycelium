@@ -8,6 +8,7 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import ProjectMember, ProjectRole, User
 from mycelium_app.schemas import AssistantProfilePublic, AssistantProfileUpdateRequest
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/nexus/assistant", tags=["assistant"])
@@ -70,6 +71,25 @@ def configure_assistant(
         vocal_preset=payload.vocal_preset,
         assistant_avatar_url=payload.assistant_avatar_url,
     )
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id="local",
+            source="assistant_api",
+            modality="identity",
+            signal_type="assistant_profile_update",
+            stimulus={
+                "given_name_len": len(str(payload.given_name or "")),
+                "gender_identity": str(payload.gender_identity or ""),
+                "vocal_preset": str(payload.vocal_preset or ""),
+                "has_avatar": bool(str(payload.assistant_avatar_url or "").strip()),
+            },
+            occurred_at=row.updated_at,
+        )
+    except Exception:
+        pass
     p = get_assistant_profile_effective(session, user_id=user_id, project_id=payload.project_id)
     return AssistantProfilePublic(
         ok=True,

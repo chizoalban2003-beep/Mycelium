@@ -11,6 +11,7 @@ from mycelium_app.identity_presentation import present_identity
 from mycelium_app.models import ProjectMember, ProjectRole
 from mycelium_app.schemas import AssistantProfilePublic, AssistantProfileUpdateRequest, IdentityPresentationResponse
 from mycelium_app.self_reflection import compute_self_reflection
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/nexus/identity", tags=["identity"])
@@ -111,6 +112,25 @@ def update_assistant_profile(
         vocal_preset=payload.vocal_preset,
         assistant_avatar_url=payload.assistant_avatar_url,
     )
+    try:
+        record_stimulus_event(
+            session,
+            user_id=user_id,
+            project_id=payload.project_id,
+            device_id="local",
+            source="identity_api",
+            modality="identity",
+            signal_type="assistant_profile_update",
+            stimulus={
+                "given_name_len": len(str(payload.given_name or "")),
+                "gender_identity": str(payload.gender_identity or ""),
+                "vocal_preset": str(payload.vocal_preset or ""),
+                "has_avatar": bool(str(payload.assistant_avatar_url or "").strip()),
+            },
+            occurred_at=row.updated_at,
+        )
+    except Exception:
+        pass
     return AssistantProfilePublic(
         ok=True,
         project_id=row.project_id,

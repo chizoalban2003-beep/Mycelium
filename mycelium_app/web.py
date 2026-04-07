@@ -631,6 +631,26 @@ def assistant_profile_save_action(
         vocal_preset=str(vocal_preset or "alloy"),
         assistant_avatar_url=str(assistant_avatar_url or ""),
     )
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="web_form",
+            modality="identity",
+            signal_type="assistant_profile_update",
+            stimulus={
+                "form": "assistant_profile",
+                "given_name_len": len(str(given_name or "")),
+                "gender_identity": str(gender_identity or "neutral"),
+                "vocal_preset": str(vocal_preset or "alloy"),
+                "has_avatar": bool(str(assistant_avatar_url or "").strip()),
+            },
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
     return RedirectResponse(url="/assistant/profile?saved=1", status_code=302)
 
 
