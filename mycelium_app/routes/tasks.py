@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
@@ -23,6 +23,7 @@ from mycelium_app.schemas import (
     TaskReplicaProposeResponse,
     TaskReplicaPublic,
     TaskReplicaVerifyRequest,
+    TaskReplicaFeedbackSummaryResponse,
     TaskReplicaVerifyResponse,
     TaskTrajectoryRecordRequest,
     TaskTrajectoryRecordResponse,
@@ -31,6 +32,19 @@ from mycelium_app.settings import settings
 
 
 router = APIRouter(prefix="/api/nexus/tasks", tags=["tasks"])
+
+
+_ALLOWED_FEEDBACK_LABELS = {
+    "helpful",
+    "timely",
+    "annoying",
+    "wrong_device",
+    "too_early",
+    "too_late",
+    "too_long",
+    "too_short",
+    "interruptive",
+}
 
 
 def _dumps(obj: object) -> str:
@@ -59,6 +73,24 @@ def _ensure_project_access(session: Session, user_id: int, project_id: int | Non
         return member.role if isinstance(member.role, ProjectRole) else ProjectRole(str(member.role))
     except Exception:
         return None
+
+
+def _normalize_feedback_labels(labels: list[str] | None) -> list[str]:
+    if not labels:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in labels:
+        label = str(raw or "").strip().lower()[:64]
+        if not label:
+            continue
+        if label not in _ALLOWED_FEEDBACK_LABELS:
+            continue
+        if label in seen:
+            continue
+        seen.add(label)
+        out.append(label)
+    return out[:12]
 
 
 def _trajectory_key_from_sequence(sequence: list[str]) -> str:
@@ -455,6 +487,7 @@ def replica_verify(
     planned = max(1, min(int(payload.planned_minutes), 24 * 60))
     focused = max(0, min(int(payload.focused_minutes), 24 * 60))
     interruptions = max(0, min(int(payload.interruption_count), 10_000))
+    feedback_labels = _normalize_feedback_labels(payload.feedback_labels)
     adherence = max(0.0, min(float(focused) / float(planned), 1.0))
 
     accepted = bool(payload.completed) and (adherence >= 0.80) and (not bool(payload.closed_early))
@@ -478,6 +511,8 @@ def replica_verify(
         f"verify: planned={planned} focused={focused} adherence={adherence:.3f} "
         f"completed={bool(payload.completed)} closed_early={bool(payload.closed_early)} interruptions={interruptions}"
     )
+    if feedback_labels:
+        verify_note = f"{verify_note} labels={','.join(feedback_labels)}"
     note_extra = str(payload.notes or "").strip()[:500]
     if note_extra:
         verify_note = f"{verify_note}; note={note_extra}"
@@ -507,6 +542,7 @@ def replica_verify(
                 "completed": bool(payload.completed),
                 "closed_early": bool(payload.closed_early),
                 "interruption_count": interruptions,
+                "feedback_labels": feedback_labels,
                 "old_species_confidence": old_conf,
                 "new_species_confidence": new_conf,
                 "reward_delta": reward_delta,
@@ -525,5 +561,63 @@ def replica_verify(
         accepted=bool(accepted),
         reward_delta=float(round(reward_delta, 6)),
         updated_species_confidence=float(round(new_conf, 6)),
+        feedback_labels=feedback_labels,
         growth_entry_id=int(growth.id or 0),
+    )
+
+
+@router.get("/replicas/feedback/summary", response_model=TaskReplicaFeedbackSummaryResponse)
+def replica_feedback_summary(
+    window_hours: int = 168,
+    project_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, project_id)
+
+    hours = max(1, min(int(window_hours), 24 * 60))
+    since = datetime.utcnow() - timedelta(hours=hours)
+
+    q = (
+        select(GrowthLedgerEntry)
+        .where(GrowthLedgerEntry.created_by_user_id == user_id)
+        .where(GrowthLedgerEntry.domain == "task_replica_focus")
+        .where(GrowthLedgerEntry.metric == "adherence")
+        .where(GrowthLedgerEntry.created_at >= since)
+    )
+    if project_id is None:
+        q = q.where(GrowthLedgerEntry.project_id.is_(None))
+    else:
+        q = q.where(GrowthLedgerEntry.project_id == int(project_id))
+
+    rows = session.exec(q.order_by(GrowthLedgerEntry.created_at.desc()).limit(2000)).all()
+
+    label_counts: dict[str, int] = {}
+    label_accept_counts: dict[str, int] = {}
+    for r in rows:
+        outcome = _loads_dict(r.outcome_json)
+        labels = outcome.get("feedback_labels") if isinstance(outcome.get("feedback_labels"), list) else []
+        accepted = bool(r.accepted)
+        for raw in labels:
+            label = str(raw or "").strip().lower()[:64]
+            if not label:
+                continue
+            label_counts[label] = int(label_counts.get(label, 0) + 1)
+            if accepted:
+                label_accept_counts[label] = int(label_accept_counts.get(label, 0) + 1)
+
+    label_acceptance: dict[str, float] = {}
+    for label, count in label_counts.items():
+        if count <= 0:
+            continue
+        accepted_n = int(label_accept_counts.get(label, 0))
+        label_acceptance[label] = float(round(float(accepted_n) / float(count), 4))
+
+    return TaskReplicaFeedbackSummaryResponse(
+        ok=True,
+        window_hours=hours,
+        total_verified=len(rows),
+        label_counts=label_counts,
+        label_acceptance=label_acceptance,
     )

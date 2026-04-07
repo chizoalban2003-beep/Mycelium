@@ -502,6 +502,7 @@ class TaskReplicaVerifyRequest(BaseModel):
     completed: bool = False
     closed_early: bool = False
     interruption_count: int = 0
+    feedback_labels: list[str] = Field(default_factory=list)
     notes: str = ""
 
 
@@ -512,7 +513,16 @@ class TaskReplicaVerifyResponse(BaseModel):
     accepted: bool
     reward_delta: float
     updated_species_confidence: float
+    feedback_labels: list[str] = Field(default_factory=list)
     growth_entry_id: int | None = None
+
+
+class TaskReplicaFeedbackSummaryResponse(BaseModel):
+    ok: bool = True
+    window_hours: int = 168
+    total_verified: int = 0
+    label_counts: dict[str, int] = Field(default_factory=dict)
+    label_acceptance: dict[str, float] = Field(default_factory=dict)
 
 
 class TaskBootstrapWorkSessionRequest(BaseModel):

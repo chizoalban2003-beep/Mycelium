@@ -147,6 +147,22 @@ This validates:
 3. `replicas/{id}/ack`
 4. `replicas/{id}/verify`
 
+`/verify` now supports optional structured feedback labels to improve policy learning quality:
+
+- `helpful`
+- `timely`
+- `annoying`
+- `wrong_device`
+- `too_early`
+- `too_late`
+- `too_long`
+- `too_short`
+- `interruptive`
+
+Feedback analytics endpoint:
+
+- `GET /api/nexus/tasks/replicas/feedback/summary?window_hours=168`
+
 Config flags:
 
 - `HYBRID_PREDICTOR_ENABLED`
@@ -334,6 +350,31 @@ Promotion rule to public Alpha:
 - Smoke test pass rate 100% for last 5 runs.
 - Median adherence non-decreasing across cohorts.
 - Auto-handoff recovery rate within acceptable threshold for your product target.
+
+### Jarvis-grade roadmap (Grow with Data)
+
+To evolve from operational assistant to durable cognitive system, execute in phases:
+
+Phase 1 (now): learning signal quality
+- Capture structured post-action feedback labels via `/verify`.
+- Monitor `feedback/summary` trends (`annoying`, `wrong_device`, `too_early`, etc.).
+
+Phase 2: adaptive memory
+- Separate episodic, semantic, and procedural memory lanes.
+- Add reinforcement/decay so stable routines strengthen while stale behaviors fade.
+
+Phase 3: trust and governance
+- Per-action permission tiers (`suggest`, `queue`, `execute`).
+- Explainability surface for every autonomous action (“why now, why this device”).
+- Operator kill-switch and audit replay as standard controls.
+
+Phase 4: reliability and evaluation
+- Deterministic handoff state machine with retries and timeout recovery.
+- Scenario-based autonomy eval suite (`strict|balanced|auto`) and regression gates.
+
+Phase 5: identity depth
+- Persona mode profiles (coach, calm, briefing) with context-aware tone routing.
+- Keep identity presentation consistent across web + Telegram + device actions.
 
 ---
 
