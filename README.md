@@ -178,6 +178,10 @@ Helper script:
 
 - `python3 scripts/report_task_replica_focus.py --base-url <url> --token <token> --replica-id <id> --planned-minutes 45 --focused-minutes 45 --completed`
 
+End-to-end autonomy smoke script (launch → confirm → ack → verify):
+
+- `python3 scripts/smoke_autonomy_handoff_flow.py --base-url <url> --token <token> --completed --planned-minutes 45 --focused-minutes 45`
+
 This updates directive confidence and records a growth-ledger outcome for learning.
 
 ## Assistant profile (name/gender/voice)

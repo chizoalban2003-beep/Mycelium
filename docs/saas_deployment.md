@@ -115,6 +115,19 @@ Autonomy policy modes (`POST /api/nexus/policy`, field `actions.autonomy_mode`):
 
 `actions.require_confirm=true` always forces manual confirmation regardless of mode.
 
+### Release validation smoke flow (recommended before deploy)
+
+Run the E2E autonomy path in one command:
+
+- `python3 scripts/smoke_autonomy_handoff_flow.py --base-url <url> --token <token> --completed --planned-minutes 45 --focused-minutes 45`
+
+This validates:
+
+1. `auto-handoff-launch`
+2. `auto-handoff-confirm` (if not already auto-approved)
+3. `replicas/{id}/ack`
+4. `replicas/{id}/verify`
+
 Config flags:
 
 - `HYBRID_PREDICTOR_ENABLED`
