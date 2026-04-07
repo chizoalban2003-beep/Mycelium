@@ -1,0 +1,32 @@
+{
+  "name": "Mycelium",
+  "shortName": "Mycelium",
+  "packageId": "com.mycelium.nexus.alpha",
+  "manifestUrl": "https://<your-railway-domain>/static/manifest.webmanifest",
+  "assetLinksUrl": "https://<your-railway-domain>/.well-known/assetlinks.json",
+  "startUrl": "https://<your-railway-domain>/projects",
+  "scope": "https://<your-railway-domain>/",
+  "display": "standalone",
+  "themeColor": "#020617",
+  "backgroundColor": "#020617",
+  "bubblewrapCommands": {
+    "init": "bubblewrap init --manifest https://<your-railway-domain>/static/manifest.webmanifest",
+    "build": "bubblewrap build",
+    "assetLinks": "bubblewrap fingerprint"
+  },
+  "androidRequirements": {
+    "minSdk": 21,
+    "targetPattern": "Android 8.0+",
+    "playStoreDistribution": true
+  },
+  "iconRequirements": {
+    "primaryIcon": "/static/icon.svg",
+    "maskablePngRequired": true,
+    "recommendedSizes": [192, 512]
+  },
+  "notes": [
+    "Replace <your-railway-domain> before running Bubblewrap.",
+    "Generate PNG icons for Play Store and maskable launcher support.",
+    "Use the Play App Signing certificate fingerprint in assetlinks.json."
+  ]
+}

@@ -2,6 +2,11 @@
 
 Use this when you want a **real downloadable APK** (Play Store style) that wraps your hosted Mycelium web app.
 
+Suggested package naming:
+
+- `com.mycelium.nexus.alpha` for the alpha channel
+- keep the reverse-DNS form stable once published to Play Store
+
 This uses a Trusted Web Activity (TWA):
 - Web app stays hosted (Railway or your domain)
 - Android app launches the web app full-screen
@@ -19,6 +24,13 @@ This uses a Trusted Web Activity (TWA):
 Your app should already expose:
 - `/static/manifest.webmanifest`
 - `/static/sw.js`
+
+Play Store / TWA quality notes:
+
+- Add PNG launcher icons at 192x192 and 512x512.
+- Include a maskable icon variant for safe launcher cropping.
+- Keep `display: standalone` and a dark `theme_color` for the Control Room look.
+- The current repo uses `/static/icon.svg` in the manifest, which is fine for development, but PNGs are the safer production path.
 
 Quick check:
 
@@ -74,6 +86,16 @@ For full trusted behavior, host `assetlinks.json` on your web origin:
 - URL: `https://your-app.up.railway.app/.well-known/assetlinks.json`
 
 Bubblewrap prints the exact JSON you need after initialization/signing.
+
+## 7) Web push support (future-ready)
+
+Bubblewrap/TWA can eventually surface push notifications from the web app into the Android tray. This repo is not wired for full web-push delivery yet, but the recommended future path is:
+
+- keep the web app as the source of truth
+- add a push-capable service worker flow
+- send high-priority status alerts through the same notification bridge used by the app today
+
+For now, Telegram and in-app notifications remain the active real-time channels.
 
 ## Notes for this repo
 
