@@ -587,6 +587,7 @@ Phase 3 policy keys (implemented under `actions`):
 Phase 4: reliability and evaluation
 - Deterministic handoff state machine with retries and timeout recovery.
 - Scenario-based autonomy eval suite (`strict|balanced|auto`) and regression gates.
+- Surface audit timeline, deploy version, and SLO status in the product before expanding cohorts.
 
 Phase 5: productization
 - Package onboarding for the first customer segment.

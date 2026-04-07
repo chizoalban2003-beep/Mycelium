@@ -64,6 +64,24 @@
     </div>
   </div>
 
+  <div class="mb-5 rounded-xl border border-indigo-900/60 bg-indigo-950/20 p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-indigo-300/80">Release readiness</div>
+        <div class="mt-1 text-sm text-slate-300">Phase 4 is about shipping safely: run the handoff smoke flow, check the audit timeline, verify the deployed SHA, and watch the SLO gate before rollout.</div>
+        <ul class="mt-2 space-y-1 text-xs text-slate-400">
+          <li>• Use the audit timeline to inspect what the assistant would execute now.</li>
+          <li>• Compare the live deploy version with the expected git SHA.</li>
+          <li>• Keep the handoff SLO and regression gates green before expanding cohorts.</li>
+        </ul>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/hive/health" class="inline-flex items-center rounded-md border border-indigo-700 bg-indigo-950/30 hover:bg-indigo-900/40 px-3 py-2 text-sm font-medium text-indigo-100">Health</a>
+        <a href="/knowledge" class="inline-flex items-center rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100">Audit</a>
+      </div>
+    </div>
+  </div>
+
   <div class="flex items-start justify-between gap-6">
     <div class="flex-1">
       <h1 class="text-lg font-semibold mb-3">Projects</h1>
