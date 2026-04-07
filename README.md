@@ -1,6 +1,9 @@
 # Mycelium
 
-Mycelium is evolving into a consent-first AI product: a visible, child-first assistant that grows with approved signals into a personal copilot and eventually a trust-gated Hive.
+Mycelium is evolving into a consent-first AI platform: a visible, child-first assistant stack that grows with approved signals into a personal copilot and eventually a trust-gated Hive.
+
+For the full startup framing and file-by-file architecture map, see [docs/startup_blueprint.md](docs/startup_blueprint.md).
+For the platform architecture structure and Hive UI model, see [docs/platform_architecture.md](docs/platform_architecture.md).
 
 The repo still includes the project-tree workspace foundation, but the product surface is now centered on growth, learning, and explainable autonomy.
 

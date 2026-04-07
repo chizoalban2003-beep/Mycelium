@@ -2,7 +2,13 @@
 
 ## Startup shape
 
-Mycelium is a consent-first AI product that begins in a child-like guided mode and grows with the data a user intentionally allows it to consume.
+Mycelium is a consent-first AI platform that begins in a child-like guided mode and grows with the data a user intentionally allows it to consume.
+
+If you want the startup framing and the file-by-file learning map in one place, see [docs/startup_blueprint.md](docs/startup_blueprint.md).
+
+For the architectural structure and Hive visualization model, see [docs/platform_architecture.md](docs/platform_architecture.md).
+
+The core platform loop is: device signals → structured tabular learning → physics-governed prediction → visible summary → earned autonomy → Hive network view.
 
 Product arc:
 

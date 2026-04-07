@@ -2,18 +2,20 @@
 
 ## Product
 
-Transparent Growth OS is a ready-made device product for people who want an AI that learns from their real digital life, explains what it learned, and stays under user control.
+Transparent Growth OS is a ready-made device platform for people who want an AI that learns from their real digital life, explains what it learned, and stays under user control.
 
 It starts in a child-like guided mode and grows with the data the user intentionally allows it to consume.
 
 The learning model is physics-inspired: signals are normalized, weighted, and evaluated so the assistant improves from real outcomes rather than hidden heuristics.
 
-It is not a pitch deck. It is the concrete product shape for a user’s device:
+It is not a pitch deck. It is the concrete platform shape for a user’s device:
 
 - a desktop/web app for daily use
 - a consented telemetry companion on the device
 - a visible learning trail
 - memory, prediction, and revocation controls
+
+The architecture should make the device feel like a child learner that gradually becomes a personal assistant.
 
 Primary motto:
 
@@ -111,7 +113,7 @@ Includes:
 
 ### 5. HIVE
 
-Purpose: shared intelligence for teams or families.
+Purpose: shared intelligence for teams or families, displayed as a live network the brain/operator can inspect in real time.
 
 Includes:
 
@@ -121,6 +123,11 @@ Includes:
 - privacy boundaries
 - sync status
 - allowlisted wisdom sharing only after trust is earned
+- live node map with current signal state
+- real-time handoff and viscosity indicators
+- trust-gated connection visibility
+
+The visual goal is a clean, modern graph-like dashboard where connected devices, user groups, and flow state are easy to understand at a glance.
 
 ### 6. Child-Safe
 
@@ -184,6 +191,8 @@ Pipeline:
 7. store
 8. surface to user
 
+The physics predictor should operate on the tabularized records so the system can learn from real patterns rather than raw, noisy device chatter.
+
 Every learned event should preserve:
 
 - source
@@ -223,6 +232,7 @@ Ship these features first:
 - child-first guided onboarding
 - a founder-friendly today summary
 - visible trust and revoke controls
+- Hive network observability for approved users/devices
 
 Defer these until trust is strong:
 
@@ -244,4 +254,6 @@ Defer these until trust is strong:
 
 ## Product Summary
 
-Transparent Growth OS is the device-native AI layer that starts small, learns visibly from user-owned signals, and grows into a personal assistant with trust-gated Hive intelligence.
+Transparent Growth OS is the device-native AI platform that starts small, learns visibly from user-owned signals, and grows into a personal assistant with trust-gated Hive intelligence.
+
+Its visual signature should be a calm, elegant control room: the user’s devices on one side, the assistant learning state in the middle, and the Hive network view on the other.
