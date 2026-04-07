@@ -95,7 +95,12 @@ def home(request: Request):
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request, "app_name": settings.app_name})
+    error = str(request.query_params.get("error") or "").strip()[:160]
+    notice = str(request.query_params.get("notice") or "").strip()[:160]
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "app_name": settings.app_name, "error": error, "notice": notice},
+    )
 
 
 @router.post("/login")
@@ -107,12 +112,53 @@ def login_action(
 ):
     user = session.exec(select(User).where(User.email == email)).first()
     if not user:
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+        return RedirectResponse(url="/login?error=Invalid+credentials", status_code=302)
     # Reuse the same verifier as API via passlib context
     from mycelium_app.security import verify_password
 
     if not verify_password(password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+        return RedirectResponse(url="/login?error=Invalid+credentials", status_code=302)
+    token = create_access_token(subject=str(user.id))
+    response = RedirectResponse(url="/projects", status_code=302)
+    response.set_cookie(
+        key=settings.cookie_name,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=settings.access_token_expire_minutes * 60,
+    )
+    return response
+
+
+@router.post("/register")
+def register_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    email: str = Form(...),
+    password: str = Form(...),
+    full_name: str = Form(""),
+):
+    email_value = str(email or "").strip().lower()
+    password_value = str(password or "")
+    name_value = str(full_name or "").strip()
+
+    if not email_value:
+        return RedirectResponse(url="/login?error=Email+is+required", status_code=302)
+    if len(password_value) < 6:
+        return RedirectResponse(url="/login?error=Password+must+be+at+least+6+characters", status_code=302)
+
+    existing = session.exec(select(User).where(User.email == email_value)).first()
+    if existing:
+        return RedirectResponse(url="/login?error=Email+already+registered", status_code=302)
+
+    from mycelium_app.security import hash_password
+
+    user = User(email=email_value, full_name=name_value, hashed_password=hash_password(password_value))
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
     token = create_access_token(subject=str(user.id))
     response = RedirectResponse(url="/projects", status_code=302)
     response.set_cookie(

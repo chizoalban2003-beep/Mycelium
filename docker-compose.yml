@@ -22,7 +22,7 @@ services:
       - "8000:8000"
     environment:
       # App
-      APP_NAME: ${APP_NAME:-Proofgrid}
+      APP_NAME: ${APP_NAME:-Mycelium}
       SECRET_KEY: ${SECRET_KEY:-change-me-please}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}  # set true behind HTTPS
 
