@@ -79,6 +79,8 @@ bash scripts/release_twa_build.sh
 ```
 
 The helper expects the Bubblewrap project directory to already exist.
+Before it builds, it extracts the keystore SHA-256 fingerprint and stops if a local `.env` file is present but does not contain a matching `HIVE_ANDROID_SHA256` entry.
+It also prompts for an explicit yes/no confirmation so you do not burn time on a build when Railway has not been updated yet.
 
 Before packaging, confirm the versioning in your scaffold is set for release:
 
@@ -120,6 +122,9 @@ If you do not already have a release keystore, create one before signing the APK
 ```bash
 keytool -genkeypair -v -keystore mycelium-release.jks -alias mycelium -keyalg RSA -keysize 2048 -validity 10000
 ```
+
+After generating the fingerprint, set `HIVE_ANDROID_SHA256` in Railway to the latest SHA-256 value from the release keystore.
+The helper script also prints the legacy `ANDROID_APP_SHA256_CERT_FINGERPRINTS_CSV` name for compatibility.
 
 ## 7) Web push support (future-ready)
 

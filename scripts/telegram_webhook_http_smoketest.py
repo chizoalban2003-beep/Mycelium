@@ -158,9 +158,10 @@ def main() -> int:
 
                 with Session(engine) as session:
                     status_text = _latest_assistant_message(session)
-                    _assert("nodes=" in status_text, f"status reply missing node count: {status_text!r}")
-                    _assert("tier=" in status_text.lower(), f"status reply missing permission tier: {status_text!r}")
-                    _assert("Viscosity" in status_text, f"status reply missing viscosity summary: {status_text!r}")
+                    _assert("Nodes:" in status_text, f"status reply missing node count: {status_text!r}")
+                    _assert("Tier:" in status_text, f"status reply missing permission tier: {status_text!r}")
+                    _assert("Mode:" in status_text, f"status reply missing mode summary: {status_text!r}")
+                    _assert("η:" in status_text, f"status reply missing viscosity summary: {status_text!r}")
 
                 prune_invalid = _post(
                     client,

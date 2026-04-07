@@ -205,9 +205,10 @@ def _build_status_message(session: Session, *, user_id: int, assistant_name: str
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
     permission_tier = str(actions_cfg.get("default_permission_tier", "execute")).strip().lower() or "execute"
     return (
-        f"I’m {assistant_name}. Viscosity is {float(vis.score):.2f} ({vis.prediction_state}). "
-        f"nodes={len(node_count)}, "
-        f"tier={permission_tier.title()}, "
+        f"I’m {assistant_name}. η: {float(vis.score):.2f} ({str(vis.band).title()}). "
+        f"Nodes: {len(node_count)}, "
+        f"Tier: {permission_tier.title()}, "
+        f"Mode: {str(vis.prediction_state).title()}, "
         f"battery={('n/a' if vis.battery_level is None else str(round(float(vis.battery_level), 1)) + '%')}, "
         f"cpu={('n/a' if vis.cpu_temp_c is None else str(round(float(vis.cpu_temp_c), 1)) + '°C')}, "
         f"interruptions={int(vis.recent_interruptions)}."

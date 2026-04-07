@@ -107,7 +107,8 @@ def main() -> int:
             _assert(_parse_mission_log_command("/prune abc") is None, "invalid prune syntax should be rejected")
 
             status_text = _build_status_message(session, user_id=int(user.id), assistant_name="Synapse")
-            _assert("Viscosity" in status_text, "status text did not include viscosity summary")
+            _assert("η:" in status_text, "status text did not include viscosity summary")
+            _assert("Nodes:" in status_text, "status text did not include node count")
 
             prune_result = prune_mission_log(
                 payload=MissionLogPruneRequest(project_id=int(project.id), older_than_hours=None, clear_all=True),

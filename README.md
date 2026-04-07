@@ -182,6 +182,8 @@ Example Telegram update payload:
 }
 ```
 
+The webhook handler only needs `message.chat.id` and `message.text` to route a command.
+
 Smoke test the Telegram command path before launch:
 
 ```bash

@@ -11,6 +11,7 @@ KEYSTORE_PATH="${MYCELIUM_KEYSTORE_PATH:-$ROOT_DIR/mycelium-release.jks}"
 KEYSTORE_ALIAS="${MYCELIUM_KEYSTORE_ALIAS:-mycelium}"
 OUT_DIR="${MYCELIUM_TWA_OUT_DIR:-$ROOT_DIR/twa}"
 FINGERPRINT_OUT="${MYCELIUM_FINGERPRINT_OUT:-$ROOT_DIR/twa-keystore-fingerprint.txt}"
+LOCAL_ENV_FILE="${MYCELIUM_TWA_LOCAL_ENV_FILE:-$ROOT_DIR/.env}"
 
 if [[ ! -f "$ROOT_DIR/twa-manifest.json" ]]; then
   echo "Missing twa-manifest.json at $ROOT_DIR/twa-manifest.json" >&2
@@ -77,6 +78,49 @@ fi
 printf '%s\n' "$FINGERPRINT" | tee "$FINGERPRINT_OUT"
 echo "Fingerprint written to: $FINGERPRINT_OUT"
 
+if [[ -f "$LOCAL_ENV_FILE" ]]; then
+  LOCAL_SYNC_VALUE="$(awk -F= '
+    BEGIN { value = "" }
+    /^[[:space:]]*(export[[:space:]]+)?HIVE_ANDROID_SHA256=/ {
+      line = $0
+      sub(/^[[:space:]]*(export[[:space:]]+)?HIVE_ANDROID_SHA256=[[:space:]]*/, "", line)
+      gsub(/^[\"\047]|[\"\047]$/, "", line)
+      value = line
+      print value
+      exit
+    }
+  ' "$LOCAL_ENV_FILE" || true)"
+  if [[ -z "$LOCAL_SYNC_VALUE" ]]; then
+    echo "Local env file found at $LOCAL_ENV_FILE but HIVE_ANDROID_SHA256 is missing." >&2
+    echo "Add the latest keystore fingerprint to that file or export the variable before building." >&2
+    exit 2
+  fi
+  if [[ "$LOCAL_SYNC_VALUE" != "$FINGERPRINT" ]]; then
+    echo "Local env file fingerprint does not match the keystore fingerprint." >&2
+    echo "  keystore:   $FINGERPRINT" >&2
+    echo "  local env:  $LOCAL_SYNC_VALUE" >&2
+    echo "Sync Railway's HIVE_ANDROID_SHA256 before continuing." >&2
+    exit 2
+  fi
+  echo "Local env fingerprint matches the keystore fingerprint."
+fi
+
+echo
+if [[ -t 0 ]]; then
+  read -r -p "Is this value synced to Railway's HIVE_ANDROID_SHA256? [y/N] " PRECHECK_CONFIRM
+else
+  PRECHECK_CONFIRM="${MYCELIUM_TWA_PRECHECK_CONFIRM:-}"
+fi
+
+case "${PRECHECK_CONFIRM:-}" in
+  y|Y|yes|YES|true|TRUE|1)
+    ;;
+  *)
+    echo "Preflight aborted: confirm the SHA-256 is synced to Railway and rerun the build." >&2
+    exit 2
+    ;;
+esac
+
 echo
 echo "== Bubblewrap init =="
 if [[ ! -d "$OUT_DIR" ]]; then
@@ -99,4 +143,5 @@ echo "Update Railway env vars with the SHA-256 fingerprint in $FINGERPRINT_OUT b
 echo ""
 echo "Railway env vars to set:"
 echo "  ANDROID_APP_PACKAGE_NAME=$PACKAGE_ID"
+echo "  HIVE_ANDROID_SHA256=$(cat \"$FINGERPRINT_OUT\")"
 echo "  ANDROID_APP_SHA256_CERT_FINGERPRINTS_CSV=$(cat \"$FINGERPRINT_OUT\")"
