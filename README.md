@@ -237,6 +237,12 @@ Multi-node coordination API (device handoff suggestion):
 - Request body: `{"project_id": null, "window_minutes": 120, "base_duration_minutes": 45, "current_device_id": "phone", "candidate_device_ids": ["phone","laptop"]}`
 - Response ranks devices by viscosity and returns `recommended_device_id` + `handoff_recommended`.
 
+Auto-handoff launch API (analyze + propose in one call):
+
+- `POST /api/nexus/hybrid/directive/work-session/auto-handoff-launch`
+- If all candidate devices are `gated`, returns `launch_mode=recovery` and `suggested_duration_minutes=0`.
+- Otherwise creates a trajectory + proposed task replica on the lowest-viscosity node.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`

@@ -782,6 +782,29 @@ class AdaptiveMultiNodeDirectiveResponse(BaseModel):
     recommendations: list[AdaptiveNodeRecommendation] = Field(default_factory=list)
 
 
+class AutoHandoffLaunchRequest(BaseModel):
+    project_id: int | None = None
+    window_minutes: int = 120
+    base_duration_minutes: int = 45
+    current_device_id: str | None = None
+    candidate_device_ids: list[str] = Field(default_factory=list)
+    focus_app: str = "mycelium"
+
+
+class AutoHandoffLaunchResponse(BaseModel):
+    ok: bool = True
+    project_id: int | None = None
+    handoff_recommended: bool = False
+    recommended_device_id: str | None = None
+    launch_mode: str = "recovery"  # recovery|proposed
+    suggested_duration_minutes: int = 0
+    reason: str = ""
+    trajectory_id: int | None = None
+    replica_id: int | None = None
+    hybrid: HybridWorkSessionPredictResponse
+    recommendations: list[AdaptiveNodeRecommendation] = Field(default_factory=list)
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime

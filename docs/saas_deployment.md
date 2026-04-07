@@ -92,6 +92,12 @@ Multi-node coordination endpoint (device handoff):
 - `POST /api/nexus/hybrid/directive/work-session/multinode`
 - Ranks candidate devices by live viscosity and recommends when to move from phone to laptop/desktop.
 
+Auto-handoff launch endpoint (one-step):
+
+- `POST /api/nexus/hybrid/directive/work-session/auto-handoff-launch`
+- Runs multi-node analysis and proposes a focus-session replica on the best node.
+- Safety: if all nodes are gated, returns recovery mode with `suggested_duration_minutes=0`.
+
 Config flags:
 
 - `HYBRID_PREDICTOR_ENABLED`
