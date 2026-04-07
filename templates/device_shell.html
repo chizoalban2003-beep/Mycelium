@@ -7,6 +7,7 @@
       <div>
         <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80 md:text-xs md:tracking-[0.25em]">Transparent Growth OS</div>
         <h1 class="mt-2 text-xl font-semibold sm:text-2xl">Device shell for {{ app_name }}</h1>
+        <div class="mt-1 text-sm text-cyan-300" id="greeting"></div>
         <div class="mt-2 hidden text-sm text-slate-300 md:block">
           Assistant: <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
           <span class="text-slate-500">•</span>
@@ -442,6 +443,16 @@
         }
         updateClock();
         setInterval(updateClock, 1000);
+      }
+
+      // Greeting
+      const greeting = document.getElementById('greeting');
+      if (greeting) {
+        const hour = new Date().getHours();
+        let greet = 'Good evening';
+        if (hour < 12) greet = 'Good morning';
+        else if (hour < 18) greet = 'Good afternoon';
+        greeting.textContent = `${greet}, ${assistant_profile.given_name || 'User'}`;
       }
     })();
   </script>
