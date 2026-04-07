@@ -11,11 +11,87 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.models import GrowthLedgerEntry, NexusNudge, SignalLedgerEvent, User
 from mycelium_app.settings import settings
 from mycelium_app.stimulus import record_stimulus_event
-from mycelium_app.schemas import LiveHiveEdge, LiveHiveNode, LiveHiveStateResponse
+from mycelium_app.schemas import LiveHiveEdge, LiveHiveNode, LiveHiveStateResponse, MissionLogEntry
 from mycelium_app.viscosity import calculate_live_viscosity
 
 
 router = APIRouter(prefix="/api/nexus/live", tags=["live"])
+
+
+def _clamp_delta(value: float, limit: float = 0.25) -> float:
+    return max(-float(limit), min(float(limit), float(value)))
+
+
+def _delta_text(delta: float | None) -> str:
+    if delta is None:
+        return ""
+    arrow = "↑" if delta > 0 else "↓" if delta < 0 else "→"
+    return f"Δη: {delta:+.2f} {arrow}"
+
+
+def build_mission_log(
+    *,
+    signals: list[SignalLedgerEvent],
+    growth: list[GrowthLedgerEntry],
+    nudges: list[NexusNudge],
+    window_minutes: int,
+) -> list[MissionLogEntry]:
+    entries: list[MissionLogEntry] = []
+    window_minutes = max(1, int(window_minutes))
+    signal_load = len(signals) / float(window_minutes)
+    nudge_pressure = len(nudges) / float(window_minutes)
+
+    for row in signals[:3]:
+        signal_name = str(row.signal_type or "signal").replace("_", " ").strip() or "signal"
+        delta = _clamp_delta(-0.08 - (signal_load * 0.6))
+        entries.append(
+            MissionLogEntry(
+                at=row.created_at,
+                mode="[FLOW]",
+                tier="S",
+                title=f"{signal_name} observed",
+                detail=f"{row.device_id or 'local'} • {row.source or 'signal'}",
+                delta=delta,
+                delta_text=_delta_text(delta),
+                source_kind="signal",
+            )
+        )
+
+    for row in growth[:3]:
+        score = float(row.score or 0.0)
+        delta = _clamp_delta((score - 0.5) / 2.0)
+        tier = "E" if bool(row.accepted) else "Q"
+        mode = "[LEARN]" if bool(row.accepted) else "[QUEUE]"
+        entries.append(
+            MissionLogEntry(
+                at=row.created_at,
+                mode=mode,
+                tier=tier,
+                title=f"{row.domain or 'growth'} · {row.metric or 'outcome'}",
+                detail=f"score {score:.3f} • accepted={str(bool(row.accepted)).lower()}",
+                delta=delta,
+                delta_text=_delta_text(delta),
+                source_kind="growth",
+            )
+        )
+
+    for row in nudges[:2]:
+        delta = _clamp_delta(0.04 + (nudge_pressure * 0.5))
+        entries.append(
+            MissionLogEntry(
+                at=row.created_at,
+                mode="[GUARD]",
+                tier="Q",
+                title=str(row.title or row.kind or "nudge"),
+                detail=str(row.message or row.kind or "queued guidance"),
+                delta=delta,
+                delta_text=_delta_text(delta),
+                source_kind="nudge",
+            )
+        )
+
+    entries.sort(key=lambda entry: entry.at, reverse=True)
+    return entries[:8]
 
 
 @router.get("/state", response_model=LiveHiveStateResponse)
@@ -32,19 +108,20 @@ def live_state(
         select(SignalLedgerEvent).where(
             SignalLedgerEvent.created_by_user_id == user_id,
             SignalLedgerEvent.created_at >= since,
-        )
+        ).order_by(SignalLedgerEvent.created_at.desc())
     ).all()
     growth = session.exec(
         select(GrowthLedgerEntry).where(
             GrowthLedgerEntry.created_by_user_id == user_id,
             GrowthLedgerEntry.created_at >= since,
-        )
+        ).order_by(GrowthLedgerEntry.created_at.desc())
     ).all()
     unseen_nudges = session.exec(
         select(NexusNudge).where(
             NexusNudge.created_by_user_id == user_id,
+            NexusNudge.created_at >= since,
             NexusNudge.seen_at.is_(None),
-        )
+        ).order_by(NexusNudge.created_at.desc())
     ).all()
 
     sig_counts: Counter[str] = Counter()
@@ -98,6 +175,8 @@ def live_state(
     except Exception:
         pass
 
+    mission_log = build_mission_log(signals=signals, growth=growth, nudges=unseen_nudges, window_minutes=wm)
+
     return LiveHiveStateResponse(
         ok=True,
         as_of=datetime.utcnow(),
@@ -105,5 +184,6 @@ def live_state(
         counters=counters,
         nodes=nodes,
         edges=edges,
+        mission_log=mission_log,
         viscosity=viscosity,
     )

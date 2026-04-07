@@ -349,6 +349,19 @@
         </div>
       </div>
 
+      <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Mission log</div>
+            <div class="text-sm text-slate-300">Informational only — a compact current-session briefing.</div>
+          </div>
+          <div class="text-xs text-slate-400" id="mission-log-meta">Loading…</div>
+        </div>
+        <div class="mt-4 space-y-2 font-mono text-[12px] leading-5" id="mission-log-list">
+          <div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">Loading mission log…</div>
+        </div>
+      </div>
+
       <div class="mt-4 rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
         <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Core flow</div>
         <ol class="mt-2 space-y-2 text-sm text-slate-200 list-decimal list-inside">
@@ -464,6 +477,8 @@
         nudges24h: document.querySelector('[data-count="nudges_24h"]'),
         stimulusTrailMeta: document.getElementById('stimulus-trail-meta'),
         stimulusTrailList: document.getElementById('stimulus-trail-list'),
+        missionLogMeta: document.getElementById('mission-log-meta'),
+        missionLogList: document.getElementById('mission-log-list'),
         assistantNames: document.querySelectorAll('[data-role="assistant-name"]'),
         assistantModes: document.querySelectorAll('[data-role="assistant-mode"]'),
         assistantVoices: document.querySelectorAll('[data-role="assistant-voice"]'),
@@ -529,6 +544,54 @@
         });
       }
 
+      function renderMissionLog(entries) {
+        if (!ids.missionLogList) return;
+        if (!Array.isArray(entries) || !entries.length) {
+          ids.missionLogList.innerHTML = '<div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">No mission log entries yet.</div>';
+          if (ids.missionLogMeta) ids.missionLogMeta.textContent = '0 entries';
+          return;
+        }
+
+        if (ids.missionLogMeta) {
+          ids.missionLogMeta.textContent = `${entries.length} entries`;
+        }
+
+        ids.missionLogList.innerHTML = '';
+        entries.forEach((entry) => {
+          const row = document.createElement('div');
+          row.className = 'rounded-lg border border-slate-800 bg-slate-900 px-3 py-2';
+
+          const top = document.createElement('div');
+          top.className = 'flex flex-wrap items-start justify-between gap-2';
+
+          const left = document.createElement('div');
+          const stamp = document.createElement('div');
+          stamp.className = 'text-[11px] text-slate-500';
+          stamp.textContent = formatStamp(entry.at);
+
+          const title = document.createElement('div');
+          title.className = 'mt-1 text-slate-100';
+          title.textContent = `${entry.mode || '[FLOW]'} (${entry.tier || 'S'}) ${entry.title || 'mission event'}`;
+
+          const detail = document.createElement('div');
+          detail.className = 'mt-1 text-slate-400';
+          detail.textContent = entry.detail || '';
+
+          left.appendChild(stamp);
+          left.appendChild(title);
+          left.appendChild(detail);
+
+          const right = document.createElement('div');
+          right.className = 'shrink-0 text-right text-cyan-200';
+          right.textContent = entry.delta_text || '';
+
+          top.appendChild(left);
+          top.appendChild(right);
+          row.appendChild(top);
+          ids.missionLogList.appendChild(row);
+        });
+      }
+
       function renderSparkline(root) {
         if (!root) return;
         let points = [];
@@ -572,6 +635,7 @@
           if (assistant.given_name) ids.assistantNames.forEach((el) => { el.textContent = assistant.given_name; });
           if (assistant.gender_identity) ids.assistantModes.forEach((el) => { el.textContent = assistant.gender_identity; });
           if (assistant.vocal_preset) ids.assistantVoices.forEach((el) => { el.textContent = assistant.vocal_preset; });
+          renderMissionLog((data && data.mission_log) || []);
         } catch (e) {}
       }
 
@@ -590,6 +654,7 @@
       refreshStimulusTrail();
       setInterval(refreshSnapshot, 30000);
       setInterval(refreshStimulusTrail, 45000);
+      renderMissionLog({{ mission_log_json|tojson }});
 
       ids.sparklineRoots.forEach(renderSparkline);
 
@@ -625,6 +690,7 @@
           button.addEventListener('click', () => {
             refreshSnapshot();
             refreshStimulusTrail();
+            renderMissionLog({{ mission_log_json|tojson }});
             ids.sparklineRoots.forEach(renderSparkline);
           });
         });

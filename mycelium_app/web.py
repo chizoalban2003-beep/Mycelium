@@ -9,6 +9,7 @@ from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi import File, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
@@ -42,6 +43,7 @@ from mycelium_app.settings import settings
 from mycelium_app.routes.auth import consume_password_reset_token, create_password_reset_request_link
 from mycelium_app.routes.hybrid import auto_handoff_confirm as auto_handoff_confirm_api
 from mycelium_app.routes.hybrid import auto_handoff_launch as auto_handoff_launch_api
+from mycelium_app.routes.live import build_mission_log
 from mycelium_app.routes.reflection import daily_summary as reflection_daily_summary_api
 from mycelium_app.routes.tasks import bootstrap_work_session as bootstrap_work_session_api
 from mycelium_app.schemas import AutoHandoffConfirmRequest, AutoHandoffLaunchRequest, TaskBootstrapWorkSessionRequest
@@ -386,6 +388,7 @@ def device_shell_page(
     recent_nudges = session.exec(
         select(NexusNudge)
         .where(NexusNudge.created_by_user_id == current_user.id)
+        .where(NexusNudge.created_at >= since)
         .order_by(NexusNudge.created_at.desc())
         .limit(3)
     ).all()
@@ -401,6 +404,12 @@ def device_shell_page(
     growth_total = session.exec(
         select(GrowthLedgerEntry).where(GrowthLedgerEntry.created_by_user_id == current_user.id)
     ).all()
+    mission_log = build_mission_log(
+        signals=recent_signals,
+        growth=recent_growth,
+        nudges=recent_nudges,
+        window_minutes=window_hours * 60,
+    )
 
     def _bucket_series(rows: list[object], bucket_count: int = 8) -> list[int]:
         buckets = [0] * max(1, int(bucket_count))
@@ -438,6 +447,8 @@ def device_shell_page(
             "signal_trend": _bucket_series(recent_signals_24h),
             "growth_trend": _bucket_series(recent_growth_24h),
             "nudge_trend": _bucket_series(recent_nudges_24h),
+            "mission_log": mission_log,
+            "mission_log_json": jsonable_encoder(mission_log),
             "signal_count": len(signal_total),
             "growth_count": len(growth_total),
             "project_count": len(projects),
@@ -464,20 +475,30 @@ def device_snapshot(request: Request, session: Session = Depends(get_session)):
         select(SignalLedgerEvent)
         .where(SignalLedgerEvent.created_by_user_id == current_user.id)
         .where(SignalLedgerEvent.created_at >= since)
+        .order_by(SignalLedgerEvent.created_at.desc())
     ).all()
     recent_growth_items = session.exec(
         select(GrowthLedgerEntry)
         .where(GrowthLedgerEntry.created_by_user_id == current_user.id)
         .where(GrowthLedgerEntry.created_at >= since)
+        .order_by(GrowthLedgerEntry.created_at.desc())
     ).all()
     recent_nudge_items = session.exec(
         select(NexusNudge)
         .where(NexusNudge.created_by_user_id == current_user.id)
         .where(NexusNudge.created_at >= since)
+        .order_by(NexusNudge.created_at.desc())
     ).all()
+    mission_log = build_mission_log(
+        signals=recent_signal_items,
+        growth=recent_growth_items,
+        nudges=recent_nudge_items,
+        window_minutes=24 * 60,
+    )
 
     return JSONResponse(
-        content={
+        content=jsonable_encoder(
+            {
             "ok": True,
             "counts": {
                 "projects": len(projects),
@@ -489,7 +510,9 @@ def device_snapshot(request: Request, session: Session = Depends(get_session)):
                 "nudges_24h": len(recent_nudge_items),
             },
             "assistant": get_assistant_profile_effective(session, user_id=int(current_user.id or 0), project_id=None),
+            "mission_log": mission_log,
         }
+        ),
     )
 
 

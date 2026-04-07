@@ -812,6 +812,17 @@ class LiveHiveEdge(BaseModel):
     kind: str = "signal"
 
 
+class MissionLogEntry(BaseModel):
+    at: datetime
+    mode: str
+    tier: str
+    title: str
+    detail: str
+    delta: float | None = None
+    delta_text: str = ""
+    source_kind: str = ""
+
+
 class LiveViscositySnapshot(BaseModel):
     score: float = 0.0
     band: str = "medium"  # low|medium|high
@@ -831,6 +842,7 @@ class LiveHiveStateResponse(BaseModel):
     counters: dict[str, int] = Field(default_factory=dict)
     nodes: list[LiveHiveNode] = Field(default_factory=list)
     edges: list[LiveHiveEdge] = Field(default_factory=list)
+    mission_log: list[MissionLogEntry] = Field(default_factory=list)
     viscosity: LiveViscositySnapshot = Field(default_factory=LiveViscositySnapshot)
 
 
