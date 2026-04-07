@@ -1,47 +1,62 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <div class="pb-28 md:pb-0">
+  <div class="space-y-5 pb-28 md:pb-0">
   <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-4 sm:p-5">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Transparent Growth OS</div>
-        <h1 class="mt-2 text-3xl font-semibold">Device shell for {{ app_name }}</h1>
-        <div class="mt-2 text-sm text-slate-300">
+        <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80 md:text-xs md:tracking-[0.25em]">Transparent Growth OS</div>
+        <h1 class="mt-2 text-2xl font-semibold sm:text-3xl">Device shell for {{ app_name }}</h1>
+        <div class="mt-2 hidden text-sm text-slate-300 md:block">
           Assistant: <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
           <span class="text-slate-500">•</span>
           Mode: <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
           <span class="text-slate-500">•</span>
           Voice: <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
         </div>
-        <p class="mt-2 max-w-3xl text-sm text-slate-300">
+        <p class="mt-2 hidden max-w-3xl text-sm text-slate-300 md:block">
           A ready-made device product that learns from user-owned signals, explains what it learned, and keeps the user in control.
         </p>
-        <div class="mt-4 flex flex-wrap gap-2 text-xs">
+        <div class="mt-3 flex flex-wrap gap-2 text-xs md:mt-4">
           <span class="rounded-full border border-cyan-800 bg-cyan-950/30 px-3 py-1 text-cyan-100">Grow with Data</span>
           <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Builder Copilot</span>
           <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">HIVE</span>
           <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Child-Safe</span>
         </div>
       </div>
-      <div class="grid grid-cols-2 gap-3 text-center md:grid-cols-4">
+      <div class="grid grid-cols-4 gap-2 text-center sm:gap-3">
         <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Projects</div>
-          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="projects">{{ project_count }}</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">Projects</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="projects">{{ project_count }}</div>
         </div>
         <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Signals</div>
-          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="signals">{{ signal_count }}</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">Signals</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="signals">{{ signal_count }}</div>
         </div>
         <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Growth</div>
-          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="growth">{{ growth_count }}</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">Growth</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="growth">{{ growth_count }}</div>
         </div>
         <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">24h</div>
-          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">24h</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="grid gap-2 sm:grid-cols-3 md:hidden">
+    <div class="rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Identity</div>
+      <div class="mt-1 font-medium text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</div>
+    </div>
+    <div class="rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Mode</div>
+      <div class="mt-1 font-medium text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</div>
+    </div>
+    <div class="rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Voice</div>
+      <div class="mt-1 font-medium text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</div>
     </div>
   </div>
 
@@ -236,9 +251,9 @@
         signals24h: document.querySelector('[data-count="signals_24h"]'),
         growth24h: document.querySelector('[data-count="growth_24h"]'),
         nudges24h: document.querySelector('[data-count="nudges_24h"]'),
-        assistantName: document.querySelector('[data-role="assistant-name"]'),
-        assistantMode: document.querySelector('[data-role="assistant-mode"]'),
-        assistantVoice: document.querySelector('[data-role="assistant-voice"]'),
+        assistantNames: document.querySelectorAll('[data-role="assistant-name"]'),
+        assistantModes: document.querySelectorAll('[data-role="assistant-mode"]'),
+        assistantVoices: document.querySelectorAll('[data-role="assistant-voice"]'),
       };
 
       async function refreshSnapshot() {
@@ -254,9 +269,9 @@
           if (ids.growth24h) ids.growth24h.textContent = String(counts.growth_24h ?? ids.growth24h.textContent);
           if (ids.nudges24h) ids.nudges24h.textContent = String(counts.nudges_24h ?? ids.nudges24h.textContent);
           const assistant = (data && data.assistant) || {};
-          if (ids.assistantName && assistant.given_name) ids.assistantName.textContent = assistant.given_name;
-          if (ids.assistantMode && assistant.gender_identity) ids.assistantMode.textContent = assistant.gender_identity;
-          if (ids.assistantVoice && assistant.vocal_preset) ids.assistantVoice.textContent = assistant.vocal_preset;
+          if (assistant.given_name) ids.assistantNames.forEach((el) => { el.textContent = assistant.given_name; });
+          if (assistant.gender_identity) ids.assistantModes.forEach((el) => { el.textContent = assistant.gender_identity; });
+          if (assistant.vocal_preset) ids.assistantVoices.forEach((el) => { el.textContent = assistant.vocal_preset; });
         } catch (e) {}
       }
 
@@ -270,11 +285,11 @@
       <form action="/device/bootstrap-work-session" method="post">
         <input type="hidden" name="focus_app" value="mycelium" />
         <input type="hidden" name="duration_minutes" value="45" />
-        <button type="submit" class="w-full rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100">Work</button>
+        <button type="submit" class="w-full rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100">⚡ Work</button>
       </form>
       <form action="/device/daily-summary" method="post">
         <input type="hidden" name="window_hours" value="24" />
-        <button type="submit" class="w-full rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-2 text-xs font-medium text-indigo-100">Summary</button>
+        <button type="submit" class="w-full rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-2 text-xs font-medium text-indigo-100">◌ Summary</button>
       </form>
       <form action="/device/auto-handoff-launch-and-confirm" method="post">
         <input type="hidden" name="window_minutes" value="120" />
@@ -282,7 +297,7 @@
         <input type="hidden" name="current_device_id" value="local" />
         <input type="hidden" name="candidate_device_ids" value="local,laptop" />
         <input type="hidden" name="focus_app" value="mycelium" />
-        <button type="submit" class="w-full rounded-lg border border-fuchsia-500 bg-fuchsia-900/50 px-3 py-2 text-xs font-medium text-fuchsia-50">Hand off</button>
+        <button type="submit" class="w-full rounded-lg border border-fuchsia-500 bg-fuchsia-900/50 px-3 py-2 text-xs font-medium text-fuchsia-50">⇄ Handoff</button>
       </form>
     </div>
   </div>
