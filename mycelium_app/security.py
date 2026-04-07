@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -31,3 +34,17 @@ def create_access_token(*, subject: str, expires_minutes: Optional[int] = None, 
 
 def decode_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+
+
+def create_password_reset_token() -> tuple[str, str]:
+    token = secrets.token_urlsafe(32)
+    return token, hash_password_reset_token(token)
+
+
+def hash_password_reset_token(token: str) -> str:
+    key = str(getattr(settings, "secret_key", "") or "dev-secret-change-me").encode("utf-8")
+    return hmac.new(key, token.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_password_reset_token(token: str, token_hash: str) -> bool:
+    return hmac.compare_digest(hash_password_reset_token(token), str(token_hash or ""))

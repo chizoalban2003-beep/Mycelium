@@ -25,6 +25,24 @@ class UserPublic(BaseModel):
     created_at: datetime
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequestResponse(BaseModel):
+    ok: bool = True
+    message: str
+
+
+class PasswordResetConfirm(BaseModel):
+    new_password: str = Field(min_length=6)
+
+
+class PasswordResetConfirmResponse(BaseModel):
+    ok: bool = True
+    message: str
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"

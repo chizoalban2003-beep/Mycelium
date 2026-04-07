@@ -4,6 +4,7 @@ import io
 import json
 import math
 import time
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi import File, UploadFile
@@ -18,7 +19,7 @@ from mycelium_app.curiosity import capture_agitated_cases
 from mycelium_app.curiosity import answer_case, dismiss_case, next_pending_case
 from mycelium_app.db import get_session
 from mycelium_app.knowledge_sync import MemoryManager
-from mycelium_app.models import Project, ProjectMember, ProjectRole, TreeNode, User
+from mycelium_app.models import PasswordResetToken, Project, ProjectMember, ProjectRole, TreeNode, User
 from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
 from mycelium_app.presets import (
@@ -34,7 +35,9 @@ from mycelium_app.presets import (
 )
 from mycelium_app.security import create_access_token
 from mycelium_app.security import decode_token
+from mycelium_app.security import hash_password, hash_password_reset_token, verify_password, verify_password_reset_token
 from mycelium_app.settings import settings
+from mycelium_app.routes.auth import consume_password_reset_token, create_password_reset_request_link
 
 
 templates = Jinja2Templates(directory="templates")
@@ -101,6 +104,40 @@ def login_page(request: Request):
         "login.html",
         {"request": request, "app_name": settings.app_name, "error": error, "notice": notice},
     )
+
+
+@router.post("/recover")
+def recover_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    email: str = Form(...),
+):
+    base_url = str(getattr(settings, "app_public_base_url", "") or str(request.base_url)).rstrip("/")
+    _, message = create_password_reset_request_link(session, email=email, base_url=base_url)
+    return RedirectResponse(url=f"/login?notice={quote_plus(message)}", status_code=302)
+
+
+@router.get("/reset-password/{token}", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str):
+    notice = str(request.query_params.get("notice") or "").strip()[:160]
+    error = str(request.query_params.get("error") or "").strip()[:160]
+    return templates.TemplateResponse(
+        "reset_password.html",
+        {"request": request, "app_name": settings.app_name, "token": token, "notice": notice, "error": error},
+    )
+
+
+@router.post("/reset-password/{token}")
+def reset_password_action(
+    request: Request,
+    session: Session = Depends(get_session),
+    token: str = "",
+    new_password: str = Form(...),
+):
+    ok, message = consume_password_reset_token(session, token=token, new_password=new_password)
+    if not ok:
+        return RedirectResponse(url=f"/reset-password/{token}?error={quote_plus(message)}", status_code=302)
+    return RedirectResponse(url=f"/login?notice={quote_plus(message)}", status_code=302)
 
 
 @router.post("/login")
