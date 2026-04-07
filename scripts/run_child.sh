@@ -50,7 +50,9 @@ echo "Child starting: device=$DEVICE_ID parent=$BASE_URL"
 #
 # 2) Minimal Hive connectivity smoketest (headless): concept import via X-Hive-Token
 if [[ -n "$TOKEN" ]]; then
-  PARENT_HUB_URL="$BASE_URL" HIVE_INGEST_TOKEN="$TOKEN" python scripts/child_smoketest_ingest.py
+  if ! PARENT_HUB_URL="$BASE_URL" HIVE_INGEST_TOKEN="$TOKEN" python scripts/child_smoketest_ingest.py; then
+    echo "Child smoketest failed; continuing so the local service stays available." >&2
+  fi
 else
   echo "HIVE_INGEST_TOKEN is empty; skipping parent-hub smoketest so the local child agent can continue." >&2
 fi

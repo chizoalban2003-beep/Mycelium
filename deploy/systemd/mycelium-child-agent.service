@@ -9,17 +9,7 @@ WorkingDirectory=%h/Mycelium
 ExecStart=%h/Mycelium/scripts/run_child.sh
 Restart=always
 RestartSec=5
-Environment=CHILD_AUTO_START_TELEMETRY=true
-Environment=CHILD_AUTO_CAPTURE_TRAJECTORIES=true
-Environment=CHILD_TRAJECTORY_WINDOW_SIZE=3
-Environment=CHILD_TRAJECTORY_COOLDOWN_SECONDS=600
-Environment=CHILD_TRAJECTORY_MUST_INCLUDE_CSV=mycelium
-Environment=CHILD_BEARER_TOKEN=
-Environment=CHILD_EMAIL=
-Environment=CHILD_PASSWORD=
-Environment=HIVE_INGEST_TOKEN=
-Environment=PARENT_HUB_URL=http://127.0.0.1:8000
-Environment=NEXUS_DEVICE_ID=child-1
+EnvironmentFile=-%h/.config/mycelium/child-agent.env
 
 [Install]
 WantedBy=default.target

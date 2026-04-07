@@ -15,6 +15,7 @@ services:
 
   api:
     build: .
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -25,6 +26,8 @@ services:
       APP_NAME: ${APP_NAME:-Mycelium}
       SECRET_KEY: ${SECRET_KEY:-change-me-please}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}  # set true behind HTTPS
+      DB_AUTO_CREATE_TABLES: ${DB_AUTO_CREATE_TABLES:-false}
+      DB_MIGRATION_MODE: ${DB_MIGRATION_MODE:-migrate}
 
       # Postgres
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-mycelium}:${POSTGRES_PASSWORD:-mycelium}@db:5432/${POSTGRES_DB:-mycelium}}
@@ -36,6 +39,13 @@ services:
 
       # Optional: enable homeostasis daemon
       NEXUS_HOMEOSTASIS_ENABLED: ${NEXUS_HOMEOSTASIS_ENABLED:-true}
+    healthcheck:
+      test:
+        ["CMD-SHELL", "python -c \"import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
 volumes:
   mycelium_pg:

@@ -171,7 +171,7 @@ Useful toggles:
 - `CHILD_AUTO_CAPTURE_TRAJECTORIES=true`
 - `CHILD_AUTO_CAPTURE_TRAJECTORIES=false` if you only want passive app-open telemetry
 
-The service launches `scripts/run_child.sh`, which starts `scripts/passive_telemetry_daemon.py` when auth is present.
+The service launches `scripts/run_child.sh`, which starts `scripts/passive_telemetry_daemon.py` when auth is present. Its initial hub smoketest is best-effort, so a temporary hub outage won’t stop the local service.
 
 ## Telegram nudge bridge (optional)
 
