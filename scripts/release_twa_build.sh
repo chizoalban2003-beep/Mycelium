@@ -10,6 +10,28 @@ MANIFEST_URL="${MYCELIUM_MANIFEST_URL:-}"
 KEYSTORE_PATH="${MYCELIUM_KEYSTORE_PATH:-$ROOT_DIR/mycelium-release.jks}"
 KEYSTORE_ALIAS="${MYCELIUM_KEYSTORE_ALIAS:-mycelium}"
 OUT_DIR="${MYCELIUM_TWA_OUT_DIR:-$ROOT_DIR/twa}"
+FINGERPRINT_OUT="${MYCELIUM_FINGERPRINT_OUT:-$ROOT_DIR/twa-keystore-fingerprint.txt}"
+
+if [[ ! -f "$ROOT_DIR/twa-manifest.json" ]]; then
+  echo "Missing twa-manifest.json at $ROOT_DIR/twa-manifest.json" >&2
+  exit 2
+fi
+
+MANIFEST_VERSION_NAME="$(python - <<'PY'
+import json
+from pathlib import Path
+data = json.loads(Path('twa-manifest.json').read_text(encoding='utf-8'))
+print(str(data.get('versionName', '')).strip())
+PY
+)"
+
+MANIFEST_VERSION_CODE="$(python - <<'PY'
+import json
+from pathlib import Path
+data = json.loads(Path('twa-manifest.json').read_text(encoding='utf-8'))
+print(str(data.get('versionCode', '')).strip())
+PY
+)"
 
 if [[ -z "$DOMAIN" ]]; then
   echo "Set MYCELIUM_RAILWAY_DOMAIN to your production HTTPS domain." >&2
@@ -18,11 +40,6 @@ fi
 
 if [[ -z "$MANIFEST_URL" ]]; then
   MANIFEST_URL="https://$DOMAIN/static/manifest.webmanifest"
-fi
-
-if [[ ! -f "$ROOT_DIR/twa-manifest.json" ]]; then
-  echo "Missing twa-manifest.json at $ROOT_DIR/twa-manifest.json" >&2
-  exit 2
 fi
 
 if [[ ! -f "$KEYSTORE_PATH" ]]; then
@@ -46,12 +63,19 @@ echo "== Mycelium TWA release build =="
 echo "Domain:      $DOMAIN"
 echo "Package ID:  $PACKAGE_ID"
 echo "Manifest:    $MANIFEST_URL"
+echo "Version:     ${MANIFEST_VERSION_NAME:-unknown} (${MANIFEST_VERSION_CODE:-unknown})"
 echo "Keystore:    $KEYSTORE_PATH"
 echo "Output dir:  $OUT_DIR"
 
 echo
 echo "== Keystore SHA-256 fingerprint =="
-keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEYSTORE_ALIAS" | awk '/SHA256:/{print $2}' || true
+FINGERPRINT="$(keytool -list -v -keystore "$KEYSTORE_PATH" -alias "$KEYSTORE_ALIAS" | awk '/SHA256:/{print $2; exit}' || true)"
+if [[ -z "$FINGERPRINT" ]]; then
+  echo "Unable to extract SHA-256 fingerprint from keystore." >&2
+  exit 2
+fi
+printf '%s\n' "$FINGERPRINT" | tee "$FINGERPRINT_OUT"
+echo "Fingerprint written to: $FINGERPRINT_OUT"
 
 echo
 echo "== Bubblewrap init =="
@@ -71,4 +95,8 @@ popd >/dev/null
 
 echo
 echo "Build complete. Check $OUT_DIR for the generated APK/AAB artifacts."
-echo "Update Railway env vars with the SHA-256 fingerprint above before shipping."
+echo "Update Railway env vars with the SHA-256 fingerprint in $FINGERPRINT_OUT before shipping."
+echo ""
+echo "Railway env vars to set:"
+echo "  ANDROID_APP_PACKAGE_NAME=$PACKAGE_ID"
+echo "  ANDROID_APP_SHA256_CERT_FINGERPRINTS_CSV=$(cat \"$FINGERPRINT_OUT\")"

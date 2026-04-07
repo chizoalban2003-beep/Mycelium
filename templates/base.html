@@ -53,6 +53,7 @@
             <a href="/platform" class="text-sm text-slate-300 hover:text-white">Platform</a>
             <a href="/hive/health" class="text-sm text-slate-300 hover:text-white">Hive Health</a>
             <span id="identityBadge" class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700"></span>
+            <span id="organismBadge" class="text-xs px-2 py-1 rounded bg-cyan-950 text-cyan-100 border border-cyan-900">η -- · booting</span>
           {% endif %}
         </div>
         {% if user %}
@@ -151,6 +152,32 @@
           const data = await r.json();
           if (!data || !data.display_name) return;
           el.textContent = `${data.display_name} • ${data.mood}`;
+        } catch (e) {
+          return;
+        }
+      }
+
+      async function loadOrganismBadge() {
+        const el = document.getElementById('organismBadge');
+        if (!el) return;
+        try {
+          const r = await fetch('/api/nexus/live/state?window_minutes=30', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const vis = data && data.viscosity ? data.viscosity : null;
+          const score = vis && vis.score != null ? Number(vis.score) : null;
+          const state = vis && vis.prediction_state ? String(vis.prediction_state) : 'observe';
+          if (score == null || Number.isNaN(score)) return;
+          const label = state === 'flow' ? 'flow' : state === 'gated' ? 'gated' : 'observe';
+          el.textContent = `η ${score.toFixed(2)} · ${label}`;
+          el.classList.remove('bg-cyan-950', 'text-cyan-100', 'border-cyan-900', 'bg-emerald-950', 'text-emerald-100', 'border-emerald-900', 'bg-rose-950', 'text-rose-100', 'border-rose-900');
+          if (state === 'flow') {
+            el.classList.add('bg-emerald-950', 'text-emerald-100', 'border-emerald-900');
+          } else if (state === 'gated') {
+            el.classList.add('bg-rose-950', 'text-rose-100', 'border-rose-900');
+          } else {
+            el.classList.add('bg-cyan-950', 'text-cyan-100', 'border-cyan-900');
+          }
         } catch (e) {
           return;
         }
@@ -486,6 +513,7 @@
 
       const runWhenIdle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
       runWhenIdle(loadIdentityBadge);
+      runWhenIdle(loadOrganismBadge);
       runWhenIdle(loadNotifications);
       loadNudgeBanner();
       // Poll nudges periodically so the assistant feels alive.
