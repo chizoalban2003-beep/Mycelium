@@ -340,6 +340,37 @@ class TaskReplica(SQLModel, table=True):
     notes: str = ""
 
 
+class AdaptiveMemoryEntry(SQLModel, table=True):
+    """Adaptive memory lane entry.
+
+    Lanes:
+    - episodic: session/event memories
+    - semantic: stable facts/preferences
+    - procedural: routines/scripts that should become automatic
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    device_id: str = Field(default="", index=True)
+
+    lane: str = Field(default="episodic", index=True)  # episodic|semantic|procedural
+    memory_key: str = Field(default="", index=True)
+    source: str = Field(default="manual", index=True)
+
+    content_json: str = "{}"
+    tags_json: str = "[]"
+
+    strength: float = Field(default=0.5, index=True)  # [0,1]
+    decay_half_life_hours: float = Field(default=168.0)  # one week default
+
+    last_reinforced_at: Optional[datetime] = Field(default=None, index=True)
+    last_accessed_at: Optional[datetime] = Field(default=None, index=True)
+
+
 class MetricSnapshot(SQLModel, table=True):
     """Persisted metric measurement for validation-shadow honesty."""
 

@@ -31,6 +31,7 @@ from mycelium_app.routes.homeostasis import router as homeostasis_router
 from mycelium_app.routes.hybrid import router as hybrid_router
 from mycelium_app.routes.identity import router as identity_router
 from mycelium_app.routes.live import router as live_router
+from mycelium_app.routes.memory import router as memory_router
 from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.nudges import router as nudges_router
 from mycelium_app.routes.predict import router as predict_router
@@ -374,6 +375,7 @@ app.include_router(hybrid_router)
 app.include_router(nexus_router)
 app.include_router(identity_router)
 app.include_router(live_router)
+app.include_router(memory_router)
 app.include_router(nudges_router)
 app.include_router(growth_router)
 app.include_router(telemetry_router)

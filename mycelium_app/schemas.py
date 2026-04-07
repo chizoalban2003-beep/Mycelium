@@ -851,6 +851,65 @@ class NexusNudgeAckResponse(BaseModel):
     ok: bool = True
 
 
+class AdaptiveMemoryEntryPublic(BaseModel):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    project_id: int | None = None
+    device_id: str
+    lane: str
+    memory_key: str
+    source: str
+    content: dict[str, object] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    strength: float
+    decay_half_life_hours: float
+    last_reinforced_at: datetime | None = None
+    last_accessed_at: datetime | None = None
+
+
+class AdaptiveMemoryUpsertRequest(BaseModel):
+    project_id: int | None = None
+    lane: str = "episodic"  # episodic|semantic|procedural
+    memory_key: str
+    content: dict[str, object] = Field(default_factory=dict)
+    tags: list[str] = Field(default_factory=list)
+    source: str = "manual"
+    strength_delta: float = 0.10
+    decay_half_life_hours: float = 168.0
+
+
+class AdaptiveMemoryUpsertResponse(BaseModel):
+    ok: bool = True
+    memory: AdaptiveMemoryEntryPublic
+
+
+class AdaptiveMemoryListResponse(BaseModel):
+    memories: list[AdaptiveMemoryEntryPublic]
+
+
+class AdaptiveMemoryReinforceRequest(BaseModel):
+    delta: float = 0.10
+
+
+class AdaptiveMemoryReinforceResponse(BaseModel):
+    ok: bool = True
+    memory: AdaptiveMemoryEntryPublic
+
+
+class AdaptiveMemoryDecayRunRequest(BaseModel):
+    project_id: int | None = None
+    lane: str | None = None
+    min_elapsed_hours: float = 1.0
+
+
+class AdaptiveMemoryDecayRunResponse(BaseModel):
+    ok: bool = True
+    updated: int
+    mean_strength_before: float
+    mean_strength_after: float
+
+
 class CuriosityCasePublic(BaseModel):
     id: int
     created_at: datetime

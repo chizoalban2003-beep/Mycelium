@@ -363,6 +363,19 @@ Phase 2: adaptive memory
 - Separate episodic, semantic, and procedural memory lanes.
 - Add reinforcement/decay so stable routines strengthen while stale behaviors fade.
 
+Phase 2 API (implemented):
+
+- `POST /api/nexus/memory/upsert`
+- `GET /api/nexus/memory/list`
+- `POST /api/nexus/memory/{memory_id}/reinforce`
+- `POST /api/nexus/memory/decay/run`
+
+Lane values:
+
+- `episodic`
+- `semantic`
+- `procedural`
+
 Phase 3: trust and governance
 - Per-action permission tiers (`suggest`, `queue`, `execute`).
 - Explainability surface for every autonomous action (“why now, why this device”).
