@@ -87,6 +87,11 @@ Adaptive directive endpoint (duration adapts to viscosity):
 
 - `POST /api/nexus/hybrid/directive/work-session/adaptive`
 
+Multi-node coordination endpoint (device handoff):
+
+- `POST /api/nexus/hybrid/directive/work-session/multinode`
+- Ranks candidate devices by live viscosity and recommends when to move from phone to laptop/desktop.
+
 Config flags:
 
 - `HYBRID_PREDICTOR_ENABLED`

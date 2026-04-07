@@ -754,6 +754,34 @@ class AdaptiveDirectiveResponse(BaseModel):
     viscosity: LiveViscositySnapshot
 
 
+class AdaptiveNodeRecommendation(BaseModel):
+    device_id: str
+    n_signals: int = 0
+    suggested_duration_minutes: int = 45
+    strategy: str = "hold"
+    reason: str = ""
+    viscosity: LiveViscositySnapshot
+
+
+class AdaptiveMultiNodeDirectiveRequest(BaseModel):
+    project_id: int | None = None
+    window_minutes: int = 120
+    base_duration_minutes: int = 45
+    current_device_id: str | None = None
+    candidate_device_ids: list[str] = Field(default_factory=list)
+
+
+class AdaptiveMultiNodeDirectiveResponse(BaseModel):
+    ok: bool = True
+    project_id: int | None = None
+    current_device_id: str | None = None
+    recommended_device_id: str | None = None
+    handoff_recommended: bool = False
+    reason: str = ""
+    hybrid: HybridWorkSessionPredictResponse
+    recommendations: list[AdaptiveNodeRecommendation] = Field(default_factory=list)
+
+
 class NexusNudgePublic(BaseModel):
     id: int
     created_at: datetime

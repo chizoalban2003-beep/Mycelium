@@ -231,6 +231,12 @@ Adaptive directive API (session duration adjusts to viscosity):
 - Request body: `{"project_id": null, "window_minutes": 120, "base_duration_minutes": 45}`
 - Response includes `suggested_duration_minutes`, `strategy`, and merged `hybrid` + `viscosity` snapshots.
 
+Multi-node coordination API (device handoff suggestion):
+
+- `POST /api/nexus/hybrid/directive/work-session/multinode`
+- Request body: `{"project_id": null, "window_minutes": 120, "base_duration_minutes": 45, "current_device_id": "phone", "candidate_device_ids": ["phone","laptop"]}`
+- Response ranks devices by viscosity and returns `recommended_device_id` + `handoff_recommended`.
+
 SelfReflection (analyze best sweeps):
 
 - `GET /api/nexus/reflection?window_days=30&top_limit=5`
