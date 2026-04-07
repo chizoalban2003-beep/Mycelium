@@ -169,6 +169,19 @@ Telegram inbound webhook endpoint:
 - Add request header `X-Telegram-Bot-Api-Secret-Token: <secret-token>` when webhook secret is configured.
 - Telegram status prompts like "how are you" or `/status` return a viscosity-grounded state summary, including active node count.
 
+Example Telegram update payload:
+
+```json
+{
+	"update_id": 10001,
+	"message": {
+		"chat": {"id": 12345, "type": "private"},
+		"text": "/status",
+		"from": {"id": 12345, "is_bot": false}
+	}
+}
+```
+
 Smoke test the Telegram command path before launch:
 
 ```bash
