@@ -34,6 +34,34 @@ def _weights_by_feature(weights: list[WeightInfo] | None) -> dict[str, WeightInf
     return out
 
 
+def _shift_direction(delta: float, signed: bool) -> str:
+    if delta > 0:
+                return "more"
+    if delta < 0:
+                return "less" if signed else "weaker"
+    return "steady"
+
+
+def _format_shift(row: dict[str, Any]) -> str:
+    feature = str(row.get("feature", "feature"))
+    delta = _safe_float(row.get("delta_weight"))
+    change = str(row.get("change", "shifted"))
+    method = str(row.get("method", ""))
+    feature_kind = str(row.get("feature_kind", ""))
+    signed = bool(row.get("signed", False))
+    direction = _shift_direction(delta, signed)
+
+    parts = [feature, f"{direction} pull"]
+    if change != "shifted":
+        parts.append(change)
+    if feature_kind:
+        parts.append(feature_kind)
+    if method:
+        parts.append(method)
+    parts.append(f"Δ={delta:+.4f}")
+    return " • ".join(parts)
+
+
 def extract_causal_trace(
     baseline: PredictionResult,
     trial: PredictionResult,
@@ -95,17 +123,12 @@ def extract_causal_trace(
     shifts_sorted = sorted(shifts, key=lambda r: abs(_safe_float(r.get("delta_weight"))), reverse=True)
     top = shifts_sorted[: max(1, min(int(top_k), 25))]
 
-    def _fmt_feat(r: dict[str, Any]) -> str:
-        f = str(r.get("feature", "feature"))
-        d = float(_safe_float(r.get("delta_weight")))
-        direction = "more" if d > 0 else "less"
-        return f"{f} ({direction} pull)"
-
-    # Build a compact narrative.
+    top_text = _format_shift(top[0])
     if len(top) == 1:
-        narrative = f"I’m leaning {_fmt_feat(top[0])} than before."
+        narrative = f"Top shift: {top_text}."
     else:
-        narrative = f"I’m leaning more on {_fmt_feat(top[0])} and {_fmt_feat(top[1])}."
+        next_text = _format_shift(top[1])
+        narrative = f"Top shifts: {top_text}; {next_text}."
 
     return CausalTrace(ok=True, narrative=narrative, top_shifts=top)
 

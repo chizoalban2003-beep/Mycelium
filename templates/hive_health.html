@@ -419,6 +419,38 @@
     return includesAny(rowText, scope.focusTerms || scope.tokens);
   }
 
+  function memoryMatchReason(memory, scope) {
+    const lane = normalizeText(memory && memory.lane);
+    if (scope.lane && lane === scope.lane) return `lane=${scope.lane}`;
+    if (scope.id === 'growth' || scope.label.includes('growth')) return 'growth / learning adjacency';
+    if (scope.id === 'assistant') return 'assistant workflow memory';
+    if (scope.id === 'nudges') return 'nudge or reminder memory';
+    if (scope.id.startsWith('sig:')) return `signal lane ${scope.id.slice(4)}`;
+    if (scope.id === 'telemetry') return 'telemetry / signal / metric memory';
+    if (scope.id === 'user') return 'user/session context memory';
+    return 'scope keyword match';
+  }
+
+  function growthMatchReason(entry, scope) {
+    if (scope.id === 'growth' || scope.label.includes('growth')) return 'growth node';
+    if (scope.id === 'assistant' && entry.accepted) return 'accepted learning signal';
+    if (scope.id === 'assistant') return 'assistant workflow';
+    if (scope.id === 'nudges') return 'reminder-aligned growth';
+    if (scope.id === 'telemetry') return 'telemetry / metric growth';
+    if (scope.id === 'user') return 'feedback-aligned growth';
+    if (scope.id.startsWith('sig:')) return `signal type ${scope.id.slice(4)}`;
+    return 'scope keyword match';
+  }
+
+  function validationMatchReason(item, scope) {
+    if (scope.id === 'growth' || scope.id === 'assistant') return 'broad validation lens';
+    if (scope.id === 'telemetry') return 'metric / telemetry validation';
+    if (scope.id === 'user') return 'user / feedback validation';
+    if (scope.id.startsWith('sig:')) return `signal trace ${scope.id.slice(4)}`;
+    if (scope.id === 'nudges') return 'nudge-related validation';
+    return item.metric_name ? `metric ${item.metric_name}` : 'scope keyword match';
+  }
+
   function renderCompactRows(items, renderRow, emptyText) {
     if (!Array.isArray(items) || !items.length) {
       return `<div class="text-xs text-slate-400">${esc(emptyText || 'No items yet.')}</div>`;
@@ -471,6 +503,7 @@
               </div>
               <div class="mt-1 text-[11px] text-slate-400">strength=${esc(Number(m.strength || 0).toFixed(2))} • ${esc(fmtTime(m.updated_at))}</div>
               <div class="mt-1 text-[11px] text-slate-500">tags=${esc((m.tags || []).slice(0, 3).join(', ') || 'none')}</div>
+              <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(memoryMatchReason(m, scope))}</div>
             </div>
           `, 'No matching memory rows yet.')}
         </div>
@@ -485,6 +518,7 @@
               </div>
               <div class="mt-1 text-[11px] text-slate-400">score=${esc(Number(g.score || 0).toFixed(2))} • ${esc(fmtTime(g.created_at))}</div>
               <div class="mt-1 text-[11px] text-slate-500">${esc(g.notes || '')}</div>
+              <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(growthMatchReason(g, scope))}</div>
             </div>
           `, 'No matching growth rows yet.')}
         </div>
@@ -502,6 +536,7 @@
               <div class="rounded border border-slate-800 bg-slate-900 p-2">
                 <div class="text-xs font-semibold text-slate-100">${esc(s.metric_name || 'snapshot')}</div>
                 <div class="mt-1 text-[11px] text-slate-400">phase=${esc(s.phase || 'n/a')} • value=${esc(Number(s.metric_value || 0).toFixed(4))} • ${esc(fmtTime(s.created_at))}</div>
+                <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(validationMatchReason(s, scope))}</div>
               </div>
             `, 'No matching snapshots yet.')}
             ${renderCompactRows(traces, (t) => `
@@ -509,6 +544,7 @@
                 <div class="text-xs font-semibold text-slate-100">${esc(t.metric_name || 'trace')}</div>
                 <div class="mt-1 text-[11px] text-slate-400">method=${esc(t.method || 'n/a')} • Δ=${esc(t.improvement_frac == null ? 'n/a' : Number(t.improvement_frac).toFixed(4))}</div>
                 <div class="mt-1 text-[11px] text-slate-500">${esc(t.narrative || '')}</div>
+                <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(validationMatchReason(t, scope))}</div>
               </div>
             `, 'No matching traces yet.')}
           </div>
