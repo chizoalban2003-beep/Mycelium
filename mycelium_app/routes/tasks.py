@@ -264,6 +264,10 @@ def approve_replica_and_queue(
 
     policy = get_policy(session, user_id)
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    assistant_cfg = policy.get("assistant") if isinstance(policy.get("assistant"), dict) else {}
+    persona_mode = str(assistant_cfg.get("persona_mode", "calm")).strip().lower()
+    if persona_mode not in {"coach", "calm", "briefing"}:
+        persona_mode = "calm"
     if bool(actions_cfg.get("kill_switch", False)):
         raise HTTPException(status_code=423, detail="Action kill-switch is enabled")
     if not bool(actions_cfg.get("enabled", False)):
@@ -345,6 +349,7 @@ def approve_replica_and_queue(
                         or str(device_id or row.device_id or settings.nexus_device_id or "local")[:128]
                     ),
                 },
+                "persona_mode": persona_mode,
             }
         ),
         submitted_at=None,

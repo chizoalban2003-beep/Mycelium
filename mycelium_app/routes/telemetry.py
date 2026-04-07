@@ -492,6 +492,10 @@ def assistant_action(
 
     policy = get_policy(session, user_id)
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    assistant_cfg = policy.get("assistant") if isinstance(policy.get("assistant"), dict) else {}
+    persona_mode = str(assistant_cfg.get("persona_mode", "calm")).strip().lower()
+    if persona_mode not in {"coach", "calm", "briefing"}:
+        persona_mode = "calm"
     if bool(actions_cfg.get("kill_switch", False)):
         raise HTTPException(status_code=423, detail="Action kill-switch is enabled")
     actions_enabled = bool(actions_cfg.get("enabled", False))
@@ -614,6 +618,7 @@ def assistant_action(
                 "duration_minutes": 45,
                 "enable_dnd": True,
                 "open_app": "focus",
+                "persona_mode": persona_mode,
             },
         )
         detail = f"Device action queued for companion agent ({target_device_id})."

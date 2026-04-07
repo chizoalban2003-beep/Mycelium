@@ -47,6 +47,9 @@ def default_policy() -> dict[str, object]:
                 "telemetry_focus_zone",
             ],
         },
+        "assistant": {
+            "persona_mode": "calm",  # coach|calm|briefing
+        },
     }
 
 
@@ -184,6 +187,19 @@ def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
             (notifications or {}).get("telegram_chat_id", base_notifications.get("telegram_chat_id", ""))
         ).strip()[:64],
         "telegram_nudge_kinds": telegram_nudge_kinds,
+    }
+
+    assistant = merged.get("assistant")
+    if not isinstance(assistant, dict):
+        assistant = {}
+    base_assistant = base.get("assistant") if isinstance(base.get("assistant"), dict) else {}
+    persona_mode = str((assistant or {}).get("persona_mode", base_assistant.get("persona_mode", "calm"))).strip().lower()
+    if persona_mode not in {"coach", "calm", "briefing"}:
+        persona_mode = "calm"
+    merged["assistant"] = {
+        **base_assistant,
+        **assistant,
+        "persona_mode": persona_mode,
     }
 
     return merged

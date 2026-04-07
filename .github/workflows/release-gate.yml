@@ -1,0 +1,114 @@
+name: release-gate
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/base.txt
+
+      - name: DB migration preflight
+        run: |
+          python scripts/db_migration_preflight.py
+
+      - name: Start API server
+        env:
+          SECRET_KEY: ci-secret-key
+          DATABASE_URL: sqlite:///storage/ci.db
+          DB_AUTO_CREATE_TABLES: "true"
+          DB_MIGRATION_MODE: create_all
+          COOKIE_SECURE: "false"
+        run: |
+          nohup uvicorn mycelium_app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Server failed to start"
+          cat /tmp/uvicorn.log
+          exit 1
+
+      - name: Create auth token
+        id: auth
+        run: |
+          curl -sS -X POST http://127.0.0.1:8000/api/auth/register \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci@example.com","password":"pass1234","full_name":"CI"}' >/dev/null || true
+
+          TOK=$(curl -sS -X POST http://127.0.0.1:8000/api/auth/login \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode 'username=ci@example.com' \
+            --data-urlencode 'password=pass1234' \
+            | python -c 'import sys,json; print(json.load(sys.stdin)["access_token"])')
+          echo "token=$TOK" >> $GITHUB_OUTPUT
+
+      - name: Smoke autonomy handoff flow
+        run: |
+          python scripts/smoke_autonomy_handoff_flow.py \
+            --base-url http://127.0.0.1:8000 \
+            --token '${{ steps.auth.outputs.token }}' \
+            --completed --planned-minutes 45 --focused-minutes 45
+
+      - name: Eval autonomy modes
+        run: |
+          python scripts/eval_autonomy_modes.py \
+            --base-url http://127.0.0.1:8000 \
+            --token '${{ steps.auth.outputs.token }}' > /tmp/eval_autonomy_modes.json
+          cat /tmp/eval_autonomy_modes.json
+
+      - name: Global audit report
+        run: |
+          python scripts/global_audit_report.py \
+            --base-url http://127.0.0.1:8000 \
+            --token '${{ steps.auth.outputs.token }}' > /tmp/global_audit_report.json
+          cat /tmp/global_audit_report.json
+
+      - name: Enforce audit pass-rate gate
+        run: |
+          python - <<'PY'
+          import json
+          r = json.load(open('/tmp/global_audit_report.json'))
+          pr = float(((r.get('audit') or {}).get('pass_rate', 0.0) or 0.0))
+          if pr < 0.5:
+              raise SystemExit(f'Gate failed: pass_rate={pr:.3f} < 0.5')
+          print(f'Gate passed: pass_rate={pr:.3f}')
+          PY
+
+      - name: Optional deployed SHA verification
+        if: ${{ secrets.RAILWAY_BASE_URL != '' && secrets.RAILWAY_BEARER_TOKEN != '' }}
+        run: |
+          python scripts/verify_deploy_version.py \
+            --base-url '${{ secrets.RAILWAY_BASE_URL }}' \
+            --token '${{ secrets.RAILWAY_BEARER_TOKEN }}' \
+            --expected-git-sha '${{ github.sha }}'
+
+      - name: Optional SLO alert check
+        if: ${{ secrets.RAILWAY_BASE_URL != '' && secrets.RAILWAY_BEARER_TOKEN != '' }}
+        continue-on-error: true
+        run: |
+          python scripts/check_handoff_slo.py \
+            --base-url '${{ secrets.RAILWAY_BASE_URL }}' \
+            --token '${{ secrets.RAILWAY_BEARER_TOKEN }}' \
+            --window-hours 24 \
+            --error-budget-failure-rate 0.10 \
+            --telegram-bot-token '${{ secrets.NOTIFICATIONS_TELEGRAM_BOT_TOKEN }}' \
+            --telegram-chat-id '${{ secrets.AUDIT_TELEGRAM_CHAT_ID }}'

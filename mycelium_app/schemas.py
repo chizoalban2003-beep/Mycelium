@@ -731,6 +731,14 @@ class ChatHistoryResponse(BaseModel):
     messages: list[ChatMessagePublic]
 
 
+class ChatToneCheckResponse(BaseModel):
+    ok: bool = True
+    persona_mode: str
+    n_messages: int
+    tone_consistency: float
+    markers: list[str] = Field(default_factory=list)
+
+
 class LiveHiveNode(BaseModel):
     id: str
     kind: str
@@ -1076,6 +1084,19 @@ class HandoffSessionTickRequest(BaseModel):
 class HandoffSessionTickResponse(BaseModel):
     ok: bool = True
     session: HandoffSessionPublic
+
+
+class HandoffSLOResponse(BaseModel):
+    ok: bool = True
+    window_hours: int
+    total: int
+    completed: int
+    failed: int
+    timed_out: int
+    recovery: int
+    failure_rate: float
+    timeout_rate: float
+    error_budget_ok: bool
 
 
 class TaskActionAuditItem(BaseModel):

@@ -28,6 +28,7 @@ from mycelium_app.schemas import (
     ChatMessagePublic,
     ChatSendRequest,
     ChatSendResponse,
+    ChatToneCheckResponse,
 )
 from mycelium_app.settings import settings
 from mycelium_app.self_reflection import compute_daily_consolidation
@@ -35,6 +36,13 @@ from mycelium_app.viscosity import calculate_live_viscosity
 
 
 router = APIRouter(prefix="/api/nexus/chat", tags=["chat"])
+
+
+_PERSONA_MARKERS: dict[str, list[str]] = {
+    "coach": ["let's", "next step", "you can", "momentum", "goal"],
+    "calm": ["steady", "breathe", "calm", "pace", "gentle"],
+    "briefing": ["status", "summary", "risk", "next", "decision"],
+}
 
 
 def _dumps(obj: object) -> str:
@@ -135,6 +143,34 @@ def _build_status_message(session: Session, *, user_id: int, assistant_name: str
 def _build_daily_summary_message(session: Session, *, user_id: int, assistant_name: str) -> str:
     out = compute_daily_consolidation(session, user_id=int(user_id), project_id=None, window_hours=24)
     return f"I’m {assistant_name}. {str(out.get('summary_text') or '').strip()}"
+
+
+def _persona_mode_from_policy(session: Session, *, user_id: int) -> str:
+    policy = get_policy(session, int(user_id))
+    assistant = policy.get("assistant") if isinstance(policy.get("assistant"), dict) else {}
+    mode = str(assistant.get("persona_mode", "calm")).strip().lower()
+    if mode not in {"coach", "calm", "briefing"}:
+        mode = "calm"
+    return mode
+
+
+def _apply_persona_tone(text: str, *, mode: str) -> str:
+    base = str(text or "").strip()
+    m = str(mode or "calm").strip().lower()
+    if m == "coach":
+        return f"Coach mode: {base} Next step: execute one focused action now."
+    if m == "briefing":
+        return f"Briefing mode: {base} Decision: proceed if confidence and policy gates are green."
+    return f"Calm mode: {base} Keep a steady, low-friction pace."
+
+
+def _tone_consistency_score(*, mode: str, text: str) -> float:
+    markers = _PERSONA_MARKERS.get(str(mode), _PERSONA_MARKERS["calm"])
+    t = str(text or "").lower()
+    if not markers:
+        return 0.0
+    hits = sum(1 for m in markers if m in t)
+    return float(hits) / float(len(markers))
 
 
 def _set_kill_switch(
@@ -286,6 +322,9 @@ def send_chat(
             "If you want, ask me to bootstrap or verify your next work session."
         )
 
+    persona_mode = _persona_mode_from_policy(session, user_id=user_id)
+    assistant_text = _apply_persona_tone(assistant_text, mode=persona_mode)
+
     assistant_row = ConversationMessage(
         created_by_user_id=user_id,
         project_id=payload.project_id,
@@ -293,7 +332,7 @@ def send_chat(
         channel=channel,
         role="assistant",
         content=assistant_text,
-        metadata_json=_dumps({"assistant_name": assistant_name}),
+        metadata_json=_dumps({"assistant_name": assistant_name, "persona_mode": persona_mode}),
     )
     session.add(assistant_row)
     session.flush()
@@ -333,6 +372,42 @@ def send_chat(
         user_message=_to_public(user_row),
         assistant_message=_to_public(assistant_row),
         delivered_external=bool(delivered_external),
+    )
+
+
+@router.get("/tone/check", response_model=ChatToneCheckResponse)
+def tone_check(
+    limit: int = 50,
+    project_id: int | None = None,
+    conversation_key: str = "default",
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, project_id)
+
+    lim = max(1, min(int(limit), 500))
+    conv_key = str(conversation_key or "default").strip()[:64] or "default"
+    mode = _persona_mode_from_policy(session, user_id=user_id)
+
+    q = select(ConversationMessage).where(ConversationMessage.created_by_user_id == int(user_id))
+    q = q.where(ConversationMessage.conversation_key == conv_key)
+    q = q.where(ConversationMessage.role == "assistant")
+    if project_id is None:
+        q = q.where(ConversationMessage.project_id.is_(None))
+    else:
+        q = q.where(ConversationMessage.project_id == int(project_id))
+    rows = session.exec(q.order_by(ConversationMessage.created_at.desc()).limit(lim)).all()
+
+    scores = [_tone_consistency_score(mode=mode, text=str(r.content or "")) for r in rows]
+    mean = float(sum(scores) / float(len(scores))) if scores else 0.0
+
+    return ChatToneCheckResponse(
+        ok=True,
+        persona_mode=mode,
+        n_messages=int(len(rows)),
+        tone_consistency=float(round(mean, 6)),
+        markers=list(_PERSONA_MARKERS.get(mode, [])),
     )
 
 
@@ -470,6 +545,9 @@ async def telegram_webhook(
             "I can help with work-session planning, task replicas, and telemetry insight."
         )
 
+    persona_mode = _persona_mode_from_policy(session, user_id=int(user_id))
+    assistant_text = _apply_persona_tone(assistant_text, mode=persona_mode)
+
     assistant_row = ConversationMessage(
         created_by_user_id=int(user_id),
         project_id=None,
@@ -477,7 +555,9 @@ async def telegram_webhook(
         channel="telegram",
         role="assistant",
         content=assistant_text,
-        metadata_json=_dumps({"assistant_name": assistant_name, "source": "telegram_webhook"}),
+        metadata_json=_dumps(
+            {"assistant_name": assistant_name, "source": "telegram_webhook", "persona_mode": persona_mode}
+        ),
     )
     session.add(assistant_row)
     session.flush()

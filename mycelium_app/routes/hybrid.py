@@ -31,6 +31,7 @@ from mycelium_app.schemas import (
     HandoffSessionStartResponse,
     HandoffSessionTickRequest,
     HandoffSessionTickResponse,
+    HandoffSLOResponse,
 )
 from mycelium_app.settings import settings
 from mycelium_app.viscosity import calculate_live_viscosity
@@ -738,3 +739,54 @@ def handoff_session_tick(
     session.commit()
     session.refresh(hs)
     return HandoffSessionTickResponse(ok=True, session=_handoff_to_public(hs))
+
+
+@router.get("/handoff/slo", response_model=HandoffSLOResponse)
+def handoff_slo(
+    window_hours: int = 24,
+    project_id: int | None = None,
+    error_budget_failure_rate: float = 0.10,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    _ensure_project_access(session, user_id, project_id)
+
+    hours = max(1, min(int(window_hours), 24 * 30))
+    since = datetime.utcnow() - timedelta(hours=hours)
+    q = (
+        select(HandoffSession)
+        .where(HandoffSession.created_by_user_id == int(user_id))
+        .where(HandoffSession.created_at >= since)
+    )
+    if project_id is None:
+        q = q.where(HandoffSession.project_id.is_(None))
+    else:
+        q = q.where(HandoffSession.project_id == int(project_id))
+
+    rows = session.exec(q.order_by(HandoffSession.created_at.desc()).limit(5000)).all()
+
+    total = int(len(rows))
+    completed = sum(1 for r in rows if str(r.status or "") == "completed")
+    failed = sum(1 for r in rows if str(r.status or "") == "failed")
+    timed_out = sum(1 for r in rows if str(r.status or "") == "timed_out")
+    recovery = sum(1 for r in rows if str(r.status or "") == "recovery")
+
+    failure_rate = float((failed + timed_out) / total) if total > 0 else 0.0
+    timeout_rate = float(timed_out / total) if total > 0 else 0.0
+
+    budget = max(0.0, min(float(error_budget_failure_rate), 1.0))
+    error_budget_ok = bool(failure_rate <= budget)
+
+    return HandoffSLOResponse(
+        ok=True,
+        window_hours=hours,
+        total=total,
+        completed=int(completed),
+        failed=int(failed),
+        timed_out=int(timed_out),
+        recovery=int(recovery),
+        failure_rate=float(round(failure_rate, 6)),
+        timeout_rate=float(round(timeout_rate, 6)),
+        error_budget_ok=error_budget_ok,
+    )

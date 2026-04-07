@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     secret_key: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 60 * 24 * 7
     database_url: str = "sqlite:///storage/mycelium.db"
+    db_auto_create_tables: bool = True
+    db_migration_mode: str = "create_all"  # create_all|migrate
     cookie_name: str = "mycelium_access_token"
     cookie_secure: bool = False
 

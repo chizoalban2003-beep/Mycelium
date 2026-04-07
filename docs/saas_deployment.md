@@ -18,6 +18,8 @@ This is the current default strategy for market velocity:
 - `CORS_ALLOW_ORIGINS_CSV=https://<your-domain>`
 - `HIVE_WISDOM_MIN_WHISPERS=2`
 - `HIVE_WISDOM_MIN_DEVICES=3`
+- `DB_MIGRATION_MODE=migrate` (production recommended)
+- `DB_AUTO_CREATE_TABLES=false` (production recommended)
 
 ### Closed-loop directive quick check (manual)
 
@@ -137,6 +139,11 @@ Deterministic handoff session endpoints:
 Chat UX:
 
 - "launch now" in chat/Telegram triggers analyze → propose → confirm flow.
+
+Handoff SLO endpoint:
+
+- `GET /api/nexus/hybrid/handoff/slo?window_hours=24&error_budget_failure_rate=0.10`
+- Returns `failure_rate`, `timeout_rate`, and `error_budget_ok` for alerting.
 
 Autonomy policy modes (`POST /api/nexus/policy`, field `actions.autonomy_mode`):
 
@@ -434,6 +441,27 @@ Global audit report (implemented):
   - `--telegram-bot-token <token> --telegram-chat-id <chat_id>`
   - or env: `NOTIFICATIONS_TELEGRAM_BOT_TOKEN` + `AUDIT_TELEGRAM_CHAT_ID`
 
+Deployed version verification script (implemented):
+
+- `python3 scripts/verify_deploy_version.py --base-url <url> --token <token> --expected-git-sha <sha>`
+
+SLO alert script (implemented):
+
+- `python3 scripts/check_handoff_slo.py --base-url <url> --token <token> --window-hours 24 --error-budget-failure-rate 0.10`
+- Optional Telegram alert flags:
+  - `--telegram-bot-token <token> --telegram-chat-id <chat_id>`
+
+CI release gate (implemented):
+
+- Workflow: `.github/workflows/release-gate.yml`
+- Runs, in order:
+  1. DB migration preflight (`scripts/db_migration_preflight.py`)
+  2. smoke autonomy flow (`scripts/smoke_autonomy_handoff_flow.py`)
+  3. mode eval (`scripts/eval_autonomy_modes.py`)
+  4. global audit report (`scripts/global_audit_report.py`)
+  5. pass-rate gate check
+  6. optional deployed SHA verification + SLO alert using GitHub secrets
+
 Deterministic handoff states:
 
 - `proposed`
@@ -447,6 +475,14 @@ Deterministic handoff states:
 Phase 5: identity depth
 - Persona mode profiles (coach, calm, briefing) with context-aware tone routing.
 - Keep identity presentation consistent across web + Telegram + device actions.
+
+Phase 5 baseline (implemented):
+
+- Persona policy key: `assistant.persona_mode` (`coach|calm|briefing`) via `POST /api/nexus/policy`
+- Chat + Telegram responses now route through persona tone adapters.
+- Device-action payloads include `persona_mode` for downstream execution context.
+- Tone consistency metric endpoint:
+  - `GET /api/nexus/chat/tone/check?limit=50`
 
 ---
 
