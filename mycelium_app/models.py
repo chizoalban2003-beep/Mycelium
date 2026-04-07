@@ -222,6 +222,24 @@ class SignalLedgerEvent(SQLModel, table=True):
     payload_json: str = "{}"  # JSON dict; must never contain raw secrets by policy
 
 
+class MissionLogLedgerEntry(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_by_user_id: int = Field(foreign_key="user.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+
+    device_id: str = Field(default="", index=True)
+    source_kind: str = Field(default="", index=True)  # signal|growth|nudge|diagnostic
+    source_ref: str = Field(default="", index=True, unique=True)
+
+    mode: str = Field(default="", index=True)
+    tier: str = Field(default="", index=True)
+    title: str = Field(default="", index=True)
+    detail: str = Field(default="")
+    delta: float | None = Field(default=None, index=True)
+    delta_text: str = Field(default="")
+
+
 class GrowthLedgerEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)

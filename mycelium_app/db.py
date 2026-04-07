@@ -36,6 +36,8 @@ engine = create_engine(
 
 
 def create_db_and_tables() -> None:
+    from mycelium_app import models  # noqa: F401
+
     mode = str(getattr(settings, "db_migration_mode", "create_all") or "create_all").strip().lower()
     auto_create = bool(getattr(settings, "db_auto_create_tables", True))
     if not auto_create:

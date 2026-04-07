@@ -37,9 +37,16 @@ def calculate_live_viscosity(signals: list[SignalLedgerEvent]) -> LiveViscosityS
     for s in signals:
         signal_type = str(s.signal_type or "").strip().lower()
         payload = _loads_dict(s.payload_json)
+        surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else {}
+        tabular = payload.get("tabular") if isinstance(payload.get("tabular"), dict) else {}
 
         battery = (
-            _to_float(payload.get("battery_level"))
+            _to_float(surface.get("trial_battery_level"))
+            or _to_float(surface.get("battery_level"))
+            or _to_float(tabular.get("trial_battery_level"))
+            or _to_float(tabular.get("battery_level"))
+            or _to_float(payload.get("trial_battery_level"))
+            or _to_float(payload.get("battery_level"))
             or _to_float(payload.get("battery_pct"))
             or _to_float(payload.get("battery"))
         )
@@ -47,7 +54,16 @@ def calculate_live_viscosity(signals: list[SignalLedgerEvent]) -> LiveViscosityS
             battery_vals.append(max(0.0, min(float(battery), 100.0)))
 
         temp = (
-            _to_float(payload.get("cpu_temp"))
+            _to_float(surface.get("trial_cpu_temp_c"))
+            or _to_float(surface.get("cpu_temp_c"))
+            or _to_float(surface.get("baseline_cpu_temp_c"))
+            or _to_float(tabular.get("trial_cpu_temp_c"))
+            or _to_float(tabular.get("cpu_temp_c"))
+            or _to_float(tabular.get("baseline_cpu_temp_c"))
+            or _to_float(payload.get("trial_cpu_temp_c"))
+            or _to_float(payload.get("cpu_temp_c"))
+            or _to_float(payload.get("baseline_cpu_temp_c"))
+            or _to_float(payload.get("cpu_temp"))
             or _to_float(payload.get("cpu_temperature"))
             or _to_float(payload.get("temp_c"))
             or _to_float(payload.get("thermal_c"))
@@ -56,6 +72,18 @@ def calculate_live_viscosity(signals: list[SignalLedgerEvent]) -> LiveViscosityS
             temp_vals.append(max(0.0, min(float(temp), 120.0)))
 
         ic = _to_float(payload.get("interruption_count"))
+        if ic is None:
+            ic = _to_float(surface.get("trial_interruptions"))
+        if ic is None:
+            ic = _to_float(surface.get("baseline_interruptions"))
+        if ic is None:
+            ic = _to_float(tabular.get("trial_interruptions"))
+        if ic is None:
+            ic = _to_float(tabular.get("baseline_interruptions"))
+        if ic is None:
+            ic = _to_float(payload.get("trial_interruptions"))
+        if ic is None:
+            ic = _to_float(payload.get("baseline_interruptions"))
         if ic is not None:
             interruptions += max(0, int(ic))
 

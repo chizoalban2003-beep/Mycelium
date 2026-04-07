@@ -405,6 +405,10 @@ def device_shell_page(
         select(GrowthLedgerEntry).where(GrowthLedgerEntry.created_by_user_id == current_user.id)
     ).all()
     mission_log = build_mission_log(
+        session=session,
+        user_id=int(current_user.id or 0),
+        project_id=None,
+        device_id=str(settings.nexus_device_id or "local"),
         signals=recent_signals,
         growth=recent_growth,
         nudges=recent_nudges,
@@ -490,6 +494,10 @@ def device_snapshot(request: Request, session: Session = Depends(get_session)):
         .order_by(NexusNudge.created_at.desc())
     ).all()
     mission_log = build_mission_log(
+        session=session,
+        user_id=int(current_user.id or 0),
+        project_id=None,
+        device_id=str(settings.nexus_device_id or "local"),
         signals=recent_signal_items,
         growth=recent_growth_items,
         nudges=recent_nudge_items,

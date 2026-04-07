@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     nexus_homeostasis_prune_growth_retention_days: int = 90
     nexus_homeostasis_prune_experience_retention_days: int = 90
     nexus_homeostasis_prune_experience_confidence_lt: float = 0.55
+    nexus_mission_log_retention_days: int = 14
 
     # Identity backup
     nexus_homeostasis_identity_backup_hours: int = 24
