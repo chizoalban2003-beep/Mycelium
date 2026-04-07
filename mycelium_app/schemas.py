@@ -396,6 +396,28 @@ class DigitalStimulusIngestResponse(BaseModel):
     tabular: dict[str, object] = Field(default_factory=dict)
 
 
+class DigitalStimulusEventPublic(BaseModel):
+    id: int
+    created_at: datetime
+    project_id: int | None
+    device_id: str
+    source: str
+    modality: str
+    signal_type: str
+    payload_kind: str
+    payload_digest: str
+    learning_profile: dict[str, object] = Field(default_factory=dict)
+    tabular: dict[str, object] = Field(default_factory=dict)
+    surface: object = Field(default_factory=dict)
+
+
+class DigitalStimulusRecentResponse(BaseModel):
+    ok: bool = True
+    limit: int
+    n_events: int
+    events: list[DigitalStimulusEventPublic] = Field(default_factory=list)
+
+
 class TelemetrySummaryResponse(BaseModel):
     ok: bool = True
     window_hours: int

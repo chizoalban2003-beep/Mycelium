@@ -47,7 +47,7 @@
       <div class="mt-4 flex justify-end">
         <div class="flex gap-2">
           <input type="text" id="quick-search" aria-label="Search projects, signals, or growth" placeholder="Search projects, signals..." class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none">
-          <button id="refresh-snapshot" type="button" aria-label="Refresh live snapshot" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">🔄 Refresh</button>
+          <button data-refresh-snapshot type="button" aria-label="Refresh live snapshot" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">🔄 Refresh</button>
           <a href="/assistant/profile" aria-label="Open assistant settings" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
         </div>
       </div>
@@ -152,7 +152,7 @@
           <h2 class="mt-1 text-lg font-semibold">Recent activity at a glance</h2>
         </div>
           <div class="flex flex-wrap items-center gap-2">
-            <button id="refresh-snapshot" type="button" class="text-xs text-slate-400 hover:text-cyan-300">🔄 Refresh</button>
+            <button data-refresh-snapshot type="button" class="text-xs text-slate-400 hover:text-cyan-300">🔄 Refresh</button>
             <div class="text-xs text-slate-400">Live snapshot</div>
           </div>
         </div>
@@ -298,6 +298,19 @@
         </div>
       </div>
 
+      <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Live learning trail</div>
+            <div class="text-sm text-slate-300">Fresh signals the device just turned into learning rows.</div>
+          </div>
+          <div class="text-xs text-slate-400" id="stimulus-trail-meta">Loading…</div>
+        </div>
+        <div class="mt-4 space-y-2" id="stimulus-trail-list">
+          <div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">Loading recent stimuli…</div>
+        </div>
+      </div>
+
       <div class="mt-4 rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
         <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Core flow</div>
         <ol class="mt-2 space-y-2 text-sm text-slate-200 list-decimal list-inside">
@@ -411,11 +424,72 @@
         signals24h: document.querySelector('[data-count="signals_24h"]'),
         growth24h: document.querySelector('[data-count="growth_24h"]'),
         nudges24h: document.querySelector('[data-count="nudges_24h"]'),
+        stimulusTrailMeta: document.getElementById('stimulus-trail-meta'),
+        stimulusTrailList: document.getElementById('stimulus-trail-list'),
         assistantNames: document.querySelectorAll('[data-role="assistant-name"]'),
         assistantModes: document.querySelectorAll('[data-role="assistant-mode"]'),
         assistantVoices: document.querySelectorAll('[data-role="assistant-voice"]'),
         sparklineRoots: document.querySelectorAll('[data-sparkline]'),
       };
+
+      function formatStamp(value) {
+        if (!value) return 'just now';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return date.toLocaleString();
+      }
+
+      function renderStimulusTrail(events) {
+        if (!ids.stimulusTrailList) return;
+        if (!Array.isArray(events) || !events.length) {
+          ids.stimulusTrailList.innerHTML = '<div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">No recent stimuli yet. Interact with the app to build the trail.</div>';
+          if (ids.stimulusTrailMeta) ids.stimulusTrailMeta.textContent = '0 events';
+          return;
+        }
+
+        if (ids.stimulusTrailMeta) {
+          ids.stimulusTrailMeta.textContent = `${events.length} recent events`;
+        }
+
+        ids.stimulusTrailList.innerHTML = '';
+        events.forEach((event) => {
+          const title = event.signal_type || 'stimulus';
+          const source = event.source || 'stimulus';
+          const modality = event.modality || 'auto';
+          const digest = String(event.payload_digest || '').slice(0, 12);
+          const details = [source, modality, event.payload_kind].filter(Boolean).join(' • ');
+
+          const card = document.createElement('div');
+          card.className = 'rounded-lg border border-slate-800 bg-slate-900 px-3 py-2';
+
+          const headingRow = document.createElement('div');
+          headingRow.className = 'flex flex-wrap items-center justify-between gap-2';
+
+          const heading = document.createElement('div');
+          heading.className = 'font-medium text-slate-100';
+          heading.textContent = title;
+
+          const stamp = document.createElement('div');
+          stamp.className = 'text-xs text-slate-500';
+          stamp.textContent = formatStamp(event.created_at);
+
+          headingRow.appendChild(heading);
+          headingRow.appendChild(stamp);
+
+          const detail = document.createElement('div');
+          detail.className = 'mt-1 text-xs text-slate-400';
+          detail.textContent = details;
+
+          const digestLine = document.createElement('div');
+          digestLine.className = 'mt-1 text-xs text-cyan-200/90';
+          digestLine.textContent = `digest ${digest || '—'}`;
+
+          card.appendChild(headingRow);
+          card.appendChild(detail);
+          card.appendChild(digestLine);
+          ids.stimulusTrailList.appendChild(card);
+        });
+      }
 
       function renderSparkline(root) {
         if (!root) return;
@@ -463,8 +537,21 @@
         } catch (e) {}
       }
 
+      async function refreshStimulusTrail() {
+        try {
+          const r = await fetch('/api/nexus/stimulus/recent?limit=5', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          renderStimulusTrail((data && data.events) || []);
+        } catch (e) {
+          if (ids.stimulusTrailMeta) ids.stimulusTrailMeta.textContent = 'Unable to load';
+        }
+      }
+
       refreshSnapshot();
+      refreshStimulusTrail();
       setInterval(refreshSnapshot, 30000);
+      setInterval(refreshStimulusTrail, 45000);
 
       ids.sparklineRoots.forEach(renderSparkline);
 
@@ -494,11 +581,14 @@
       }
 
       // Manual refresh
-      const refreshBtn = document.getElementById('refresh-snapshot');
-      if (refreshBtn) {
-        refreshBtn.addEventListener('click', () => {
-          refreshSnapshot();
-          ids.sparklineRoots.forEach(renderSparkline);
+      const refreshButtons = document.querySelectorAll('[data-refresh-snapshot]');
+      if (refreshButtons.length) {
+        refreshButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            refreshSnapshot();
+            refreshStimulusTrail();
+            ids.sparklineRoots.forEach(renderSparkline);
+          });
         });
       }
 

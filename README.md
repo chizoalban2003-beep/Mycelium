@@ -260,6 +260,10 @@ Use the universal ingest endpoint when the source is not a plain text note:
 
 - `POST /api/nexus/stimulus/ingest`
 
+To inspect the visible learning trail that powers the Home / Builder Copilot story:
+
+- `GET /api/nexus/stimulus/recent`
+
 It stores:
 
 - a safe surface copy of the stimulus
