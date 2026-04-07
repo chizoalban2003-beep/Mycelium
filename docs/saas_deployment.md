@@ -388,6 +388,18 @@ Phase 3: trust and governance
 - Explainability surface for every autonomous action (“why now, why this device”).
 - Operator kill-switch and audit replay as standard controls.
 
+Phase 3 API (implemented):
+
+- `GET /api/nexus/tasks/replicas/{replica_id}/explain`
+- `POST /api/nexus/tasks/actions/kill-switch`
+- `POST /api/nexus/tasks/actions/{message_id}/replay`
+
+Phase 3 policy keys (implemented under `actions`):
+
+- `default_permission_tier`: `suggest|queue|execute`
+- `permission_tiers`: per-capability tier map (for example `{"start_focus_session":"queue"}`)
+- `kill_switch`: hard-stop for queuing/replaying device actions
+
 Phase 4: reliability and evaluation
 - Deterministic handoff state machine with retries and timeout recovery.
 - Scenario-based autonomy eval suite (`strict|balanced|auto`) and regression gates.

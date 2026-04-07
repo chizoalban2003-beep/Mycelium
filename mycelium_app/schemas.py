@@ -525,6 +525,44 @@ class TaskReplicaFeedbackSummaryResponse(BaseModel):
     label_acceptance: dict[str, float] = Field(default_factory=dict)
 
 
+class TaskReplicaExplainResponse(BaseModel):
+    ok: bool = True
+    replica_id: int
+    status: str
+    capability: str
+    species_confidence: float
+    policy_min_confidence: float
+    permission_tier: str
+    kill_switch: bool
+    autonomy: dict[str, object] = Field(default_factory=dict)
+    gates: list[str] = Field(default_factory=list)
+    recommended_decision: str = "reject"
+
+
+class TaskActionKillSwitchRequest(BaseModel):
+    enabled: bool = True
+    clear_pending: bool = False
+    project_id: int | None = None
+
+
+class TaskActionKillSwitchResponse(BaseModel):
+    ok: bool = True
+    enabled: bool
+    cleared_pending: int = 0
+
+
+class TaskActionReplayRequest(BaseModel):
+    device_id: str | None = None
+    reason: str = "manual_replay"
+
+
+class TaskActionReplayResponse(BaseModel):
+    ok: bool = True
+    original_message_id: int
+    replay_message_id: int
+    detail: str = ""
+
+
 class TaskBootstrapWorkSessionRequest(BaseModel):
     project_id: int | None = None
     device_id: str | None = None

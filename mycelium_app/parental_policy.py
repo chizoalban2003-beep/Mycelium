@@ -28,6 +28,9 @@ def default_policy() -> dict[str, object]:
             "device_control_enabled": False,
             "min_confidence": 0.90,
             "allowed_capabilities": [],
+            "default_permission_tier": "execute",  # suggest|queue|execute
+            "permission_tiers": {},  # per-capability override, e.g. {"start_focus_session": "queue"}
+            "kill_switch": False,
         },
         "intro": {
             "mode": str(getattr(settings, "nexus_intro_mode", "ask")),
@@ -127,6 +130,24 @@ def normalize_policy(policy: dict[str, object]) -> dict[str, object]:
     merged["actions"]["allowed_capabilities"] = [
         str(x).strip().lower()[:64] for x in caps_raw if str(x).strip()
     ][:20]
+
+    tier_default = str((actions or {}).get("default_permission_tier", "execute")).strip().lower()
+    if tier_default not in {"suggest", "queue", "execute"}:
+        tier_default = "execute"
+    merged["actions"]["default_permission_tier"] = tier_default
+
+    tiers_raw = (actions or {}).get("permission_tiers", {})
+    if not isinstance(tiers_raw, dict):
+        tiers_raw = {}
+    tiers_norm: dict[str, str] = {}
+    for k, v in list(tiers_raw.items())[:100]:
+        cap = str(k).strip().lower()[:64]
+        tier = str(v).strip().lower()[:16]
+        if not cap or tier not in {"suggest", "queue", "execute"}:
+            continue
+        tiers_norm[cap] = tier
+    merged["actions"]["permission_tiers"] = tiers_norm
+    merged["actions"]["kill_switch"] = bool((actions or {}).get("kill_switch", False))
 
     intro = merged.get("intro")
     if not isinstance(intro, dict):

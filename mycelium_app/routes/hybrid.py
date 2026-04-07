@@ -524,6 +524,7 @@ def auto_handoff_launch(
                 user_id=user_id,
                 row=replica,
                 device_id=selected_device_id,
+                auto_execute=True,
             )
             launch_mode = "approved"
             queued_device_action_id = int(message_id or 0)
@@ -569,6 +570,7 @@ def auto_handoff_confirm(
         user_id=user_id,
         row=row,
         device_id=payload.device_id,
+        auto_execute=False,
     )
 
     return AutoHandoffConfirmResponse(

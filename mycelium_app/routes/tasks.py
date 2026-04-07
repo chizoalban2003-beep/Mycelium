@@ -19,7 +19,7 @@ from mycelium_app.models import (
     TaskTrajectory,
     User,
 )
-from mycelium_app.parental_policy import get_policy
+from mycelium_app.parental_policy import get_policy, set_policy
 from mycelium_app.schemas import (
     TaskBootstrapWorkSessionRequest,
     TaskBootstrapWorkSessionResponse,
@@ -33,6 +33,11 @@ from mycelium_app.schemas import (
     TaskReplicaPublic,
     TaskReplicaVerifyRequest,
     TaskReplicaFeedbackSummaryResponse,
+    TaskReplicaExplainResponse,
+    TaskActionKillSwitchRequest,
+    TaskActionKillSwitchResponse,
+    TaskActionReplayRequest,
+    TaskActionReplayResponse,
     TaskReplicaVerifyResponse,
     TaskTrajectoryRecordRequest,
     TaskTrajectoryRecordResponse,
@@ -112,6 +117,26 @@ def _trajectory_key_from_sequence(sequence: list[str]) -> str:
 
 def _clamp01(x: float) -> float:
     return max(0.0, min(float(x), 1.0))
+
+
+def _permission_tier_for_capability(actions_cfg: dict[str, object], capability: str) -> str:
+    caps = actions_cfg.get("permission_tiers") if isinstance(actions_cfg.get("permission_tiers"), dict) else {}
+    key = str(capability or "").strip().lower()
+    raw = caps.get(key, actions_cfg.get("default_permission_tier", "execute"))
+    tier = str(raw or "execute").strip().lower()
+    if tier not in {"suggest", "queue", "execute"}:
+        tier = "execute"
+    return tier
+
+
+def _capability_from_action_payload(payload: dict[str, object]) -> str:
+    cap = str(payload.get("capability") or "").strip().lower()[:64]
+    if cap:
+        return cap
+    action_id = str(payload.get("action_id") or "").strip().lower()[:64]
+    if action_id == "device_start_focus_session":
+        return "start_focus_session"
+    return ""
 
 
 def _memory_upsert(
@@ -195,6 +220,7 @@ def approve_replica_and_queue(
     user_id: int,
     row: TaskReplica,
     device_id: str | None = None,
+    auto_execute: bool = False,
 ) -> tuple[int, str, bool]:
     """Approve a replica and queue execution with idempotent outbox behavior.
 
@@ -203,10 +229,18 @@ def approve_replica_and_queue(
 
     policy = get_policy(session, user_id)
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    if bool(actions_cfg.get("kill_switch", False)):
+        raise HTTPException(status_code=423, detail="Action kill-switch is enabled")
     if not bool(actions_cfg.get("enabled", False)):
         raise HTTPException(status_code=403, detail="Actions disabled by user policy")
     if not bool(actions_cfg.get("device_control_enabled", False)):
         raise HTTPException(status_code=403, detail="Device control not granted by user policy")
+
+    permission_tier = _permission_tier_for_capability(actions_cfg, str(row.capability or ""))
+    if permission_tier == "suggest":
+        raise HTTPException(status_code=403, detail="Capability is configured as suggest-only")
+    if bool(auto_execute) and permission_tier != "execute":
+        raise HTTPException(status_code=403, detail="Capability tier blocks autonomous execution")
 
     caps = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
     allowed = {str(c).strip().lower() for c in caps if str(c).strip()}
@@ -268,6 +302,14 @@ def approve_replica_and_queue(
                 "autonomy_mode": _loads_dict(row.command_json).get("autonomy", {}).get("mode"),
                 "auto_confirmed": bool(_loads_dict(row.command_json).get("autonomy", {}).get("auto_confirmed", False)),
                 "gate_reason": _loads_dict(row.command_json).get("autonomy", {}).get("gate_reason"),
+                "permission_tier": permission_tier,
+                "explain": {
+                    "why_now": _loads_dict(row.command_json).get("autonomy", {}).get("gate_reason"),
+                    "why_device": (
+                        _loads_dict(row.command_json).get("handoff", {}).get("recommended_device_id")
+                        or str(device_id or row.device_id or settings.nexus_device_id or "local")[:128]
+                    ),
+                },
             }
         ),
         submitted_at=None,
@@ -498,6 +540,7 @@ def replica_decision(
         user_id=user_id,
         row=row,
         device_id=payload.device_id,
+        auto_execute=False,
     )
 
     return TaskReplicaDecisionResponse(
@@ -506,6 +549,190 @@ def replica_decision(
         decision=decision,
         queued_device_action_id=int(message_id or 0),
         detail=detail,
+    )
+
+
+@router.get("/replicas/{replica_id}/explain", response_model=TaskReplicaExplainResponse)
+def replica_explain(
+    replica_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    row = session.exec(
+        select(TaskReplica).where(TaskReplica.id == int(replica_id), TaskReplica.created_by_user_id == user_id)
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Replica not found")
+
+    _ensure_project_access(session, user_id, row.project_id)
+
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+
+    caps = actions_cfg.get("allowed_capabilities") if isinstance(actions_cfg.get("allowed_capabilities"), list) else []
+    allowed = {str(c).strip().lower() for c in caps if str(c).strip()}
+
+    try:
+        min_conf = float(actions_cfg.get("min_confidence", 0.90))
+    except Exception:
+        min_conf = 0.90
+    min_conf = max(0.0, min(min_conf, 1.0))
+
+    capability = str(row.capability or "").strip().lower()
+    tier = _permission_tier_for_capability(actions_cfg, capability)
+    gates: list[str] = []
+    if bool(actions_cfg.get("kill_switch", False)):
+        gates.append("kill_switch_enabled")
+    if not bool(actions_cfg.get("enabled", False)):
+        gates.append("actions_disabled")
+    if not bool(actions_cfg.get("device_control_enabled", False)):
+        gates.append("device_control_disabled")
+    if allowed and capability not in allowed:
+        gates.append("capability_not_allowed")
+    if float(row.species_confidence or 0.0) < min_conf:
+        gates.append("confidence_below_minimum")
+    if tier == "suggest":
+        gates.append("permission_tier_suggest")
+
+    cmd = _loads_dict(row.command_json)
+    autonomy = cmd.get("autonomy") if isinstance(cmd.get("autonomy"), dict) else {}
+    handoff = cmd.get("handoff") if isinstance(cmd.get("handoff"), dict) else {}
+
+    return TaskReplicaExplainResponse(
+        ok=True,
+        replica_id=int(row.id or 0),
+        status=str(row.status or ""),
+        capability=capability,
+        species_confidence=float(round(float(row.species_confidence or 0.0), 6)),
+        policy_min_confidence=float(round(min_conf, 6)),
+        permission_tier=tier,
+        kill_switch=bool(actions_cfg.get("kill_switch", False)),
+        autonomy={
+            "mode": autonomy.get("mode"),
+            "auto_confirmed": bool(autonomy.get("auto_confirmed", False)),
+            "gate_reason": autonomy.get("gate_reason"),
+            "recommended_device_id": handoff.get("recommended_device_id"),
+            "handoff_recommended": bool(handoff.get("handoff_recommended", False)),
+        },
+        gates=gates,
+        recommended_decision=("approve" if not gates else "reject"),
+    )
+
+
+@router.post("/actions/kill-switch", response_model=TaskActionKillSwitchResponse)
+def set_action_kill_switch(
+    payload: TaskActionKillSwitchRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    if payload.project_id is not None:
+        role = _ensure_project_access(session, user_id, payload.project_id)
+        if role not in {ProjectRole.owner, ProjectRole.editor}:
+            raise HTTPException(status_code=403, detail="Owner or editor role required")
+
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    updated_policy = {
+        **policy,
+        "actions": {
+            **actions_cfg,
+            "kill_switch": bool(payload.enabled),
+        },
+    }
+    set_policy(session, user_id, updated_policy)
+
+    cleared = 0
+    if bool(payload.clear_pending):
+        q = (
+            select(HiveOutboxMessage)
+            .where(HiveOutboxMessage.created_by_user_id == user_id)
+            .where(HiveOutboxMessage.kind == "device_action")
+            .where(HiveOutboxMessage.submitted_at.is_(None))
+        )
+        if payload.project_id is None:
+            q = q.where(HiveOutboxMessage.project_id.is_(None))
+        else:
+            q = q.where(HiveOutboxMessage.project_id == int(payload.project_id))
+
+        rows = session.exec(q.order_by(HiveOutboxMessage.created_at.asc()).limit(2000)).all()
+        now = datetime.utcnow()
+        for m in rows:
+            p = _loads_dict(m.payload_json)
+            p["ack"] = {
+                "status": "rejected",
+                "notes": "cleared_by_kill_switch",
+                "acked_at": now.isoformat() + "Z",
+            }
+            m.payload_json = _dumps(p)
+            m.submitted_at = now
+            session.add(m)
+            cleared += 1
+        session.commit()
+
+    return TaskActionKillSwitchResponse(ok=True, enabled=bool(payload.enabled), cleared_pending=int(cleared))
+
+
+@router.post("/actions/{message_id}/replay", response_model=TaskActionReplayResponse)
+def replay_device_action(
+    message_id: int,
+    payload: TaskActionReplayRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    msg = session.exec(
+        select(HiveOutboxMessage).where(
+            HiveOutboxMessage.id == int(message_id),
+            HiveOutboxMessage.created_by_user_id == int(user_id),
+            HiveOutboxMessage.kind == "device_action",
+        )
+    ).first()
+    if not msg:
+        raise HTTPException(status_code=404, detail="Device action not found")
+
+    role = _ensure_project_access(session, user_id, msg.project_id)
+    if msg.project_id is not None and role not in {ProjectRole.owner, ProjectRole.editor}:
+        raise HTTPException(status_code=403, detail="Owner or editor role required")
+
+    policy = get_policy(session, user_id)
+    actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    if bool(actions_cfg.get("kill_switch", False)):
+        raise HTTPException(status_code=423, detail="Action kill-switch is enabled")
+
+    old_payload = _loads_dict(msg.payload_json)
+    capability = _capability_from_action_payload(old_payload)
+    if capability:
+        tier = _permission_tier_for_capability(actions_cfg, capability)
+        if tier == "suggest":
+            raise HTTPException(status_code=403, detail="Capability is configured as suggest-only")
+
+    replay_payload = dict(old_payload)
+    replay_payload.pop("ack", None)
+    replay_payload["replay"] = {
+        "from_message_id": int(msg.id or 0),
+        "requested_at": datetime.utcnow().isoformat() + "Z",
+        "reason": str(payload.reason or "manual_replay")[:120],
+    }
+
+    new_msg = HiveOutboxMessage(
+        created_by_user_id=int(user_id),
+        project_id=msg.project_id,
+        device_id=str(payload.device_id or msg.device_id or settings.nexus_device_id or "local")[:128],
+        kind="device_action",
+        payload_json=_dumps(replay_payload),
+        submitted_at=None,
+    )
+    session.add(new_msg)
+    session.commit()
+    session.refresh(new_msg)
+
+    return TaskActionReplayResponse(
+        ok=True,
+        original_message_id=int(msg.id or 0),
+        replay_message_id=int(new_msg.id or 0),
+        detail="Device action replay queued",
     )
 
 

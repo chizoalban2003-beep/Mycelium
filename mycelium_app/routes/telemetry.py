@@ -421,6 +421,16 @@ def _safe_float(v: object, default: float = 0.0) -> float:
         return float(default)
 
 
+def _permission_tier_for_capability(actions_cfg: dict[str, object], capability: str) -> str:
+    caps = actions_cfg.get("permission_tiers") if isinstance(actions_cfg.get("permission_tiers"), dict) else {}
+    key = str(capability or "").strip().lower()
+    raw = caps.get(key, actions_cfg.get("default_permission_tier", "execute"))
+    tier = str(raw or "execute").strip().lower()
+    if tier not in {"suggest", "queue", "execute"}:
+        tier = "execute"
+    return tier
+
+
 def _queue_device_action(
     *,
     session: Session,
@@ -482,6 +492,8 @@ def assistant_action(
 
     policy = get_policy(session, user_id)
     actions_cfg = policy.get("actions") if isinstance(policy.get("actions"), dict) else {}
+    if bool(actions_cfg.get("kill_switch", False)):
+        raise HTTPException(status_code=423, detail="Action kill-switch is enabled")
     actions_enabled = bool(actions_cfg.get("enabled", False))
     require_confirm = bool(actions_cfg.get("require_confirm", True))
     if not actions_enabled:
@@ -579,6 +591,8 @@ def assistant_action(
             raise HTTPException(status_code=403, detail="Device control not granted by user policy")
         if "start_focus_session" not in capabilities:
             raise HTTPException(status_code=403, detail="Capability not allowed by user policy")
+        if _permission_tier_for_capability(actions_cfg, "start_focus_session") == "suggest":
+            raise HTTPException(status_code=403, detail="Capability is configured as suggest-only")
 
         conf = _safe_float(nudge_payload.get("confidence"), 0.0)
         if conf < min_confidence:
