@@ -42,6 +42,9 @@
           <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
         </div>
       </div>
+      <div class="mt-4 flex justify-end">
+        <a href="/assistant/profile" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
+      </div>
     </div>
   </div>
 
@@ -146,21 +149,21 @@
       </div>
 
       <div class="mt-4 grid gap-3 sm:grid-cols-3">
-        <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+        <a href="/knowledge" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📊 Signals</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Last 24 hours of observed learning events.</div>
-        </div>
-        <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+        </a>
+        <a href="/projects" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📈 Growth</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_growth_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Accepted outcomes and progress signals.</div>
-        </div>
-        <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+        </a>
+        <a href="/hive/health" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
           <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">💡 Nudges</div>
           <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_nudges_24h_count }}</div>
           <div class="mt-1 text-sm text-slate-300">Visible prompts and assistant suggestions.</div>
-        </div>
+        </a>
       </div>
 
       <div class="mt-4 grid gap-3 grid-cols-3">
@@ -198,28 +201,33 @@
     </div>
 
     <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
-      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Status</div>
-      <div class="mt-1 text-lg font-semibold text-slate-100">Current mode</div>
-      <div class="mt-3 space-y-2 text-sm text-slate-300">
-        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
-          <span>Assistant</span>
-          <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
-        </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
-          <span>Mode</span>
-          <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
-        </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
-          <span>Voice</span>
-          <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
-        </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
-          <span>Projects</span>
-          <span class="text-cyan-200">{{ project_count }}</span>
-        </div>
-        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
-          <span>Signals</span>
-          <span class="text-cyan-200" data-count="signals">{{ signal_count }}</span>
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Status</div>
+        <button id="status-toggle" class="text-xs text-slate-400 hover:text-slate-200">▼</button>
+      </div>
+      <div id="status-content">
+        <div class="text-lg font-semibold text-slate-100">Current mode</div>
+        <div class="mt-3 space-y-2 text-sm text-slate-300">
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Assistant</span>
+            <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Mode</span>
+            <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Voice</span>
+            <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Projects</span>
+            <span class="text-cyan-200">{{ project_count }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Signals</span>
+            <span class="text-cyan-200" data-count="signals">{{ signal_count }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -237,15 +245,15 @@
 
       <div class="mt-4 grid gap-3 md:grid-cols-3">
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-          <div class="text-xs text-slate-400">Observed</div>
-          <div class="mt-1 text-sm text-slate-200">Signals, actions, feedback, and state changes from the user’s own device.</div>
+          <div class="text-xs text-slate-400">🔍 Observed</div>
+          <div class="mt-1 text-sm text-slate-200">Signals, actions, feedback, and state changes from the user's own device.</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-          <div class="text-xs text-slate-400">Normalized</div>
+          <div class="text-xs text-slate-400">🔧 Normalized</div>
           <div class="mt-1 text-sm text-slate-200">Every input is flattened into structured rows for prediction and memory.</div>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
-          <div class="text-xs text-slate-400">Explained</div>
+          <div class="text-xs text-slate-400">✅ Explained</div>
           <div class="mt-1 text-sm text-slate-200">The app surfaces why it acted, what changed, and how to revoke it.</div>
         </div>
       </div>
@@ -389,6 +397,17 @@
 
       refreshSnapshot();
       setInterval(refreshSnapshot, 30000);
+
+      // Status sidebar toggle
+      const statusToggle = document.getElementById('status-toggle');
+      const statusContent = document.getElementById('status-content');
+      if (statusToggle && statusContent) {
+        statusToggle.addEventListener('click', () => {
+          const isHidden = statusContent.style.display === 'none';
+          statusContent.style.display = isHidden ? 'block' : 'none';
+          statusToggle.textContent = isHidden ? '▼' : '▶';
+        });
+      }
     })();
   </script>
 

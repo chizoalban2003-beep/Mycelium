@@ -262,3 +262,16 @@ Optional tuning:
 - `NEXUS_ACTIVE_CURIOSITY_MIN_ABS_ERROR=0.0`
 - `NEXUS_ACTIVE_CURIOSITY_NUDGE_ENABLED=true`
 - `NEXUS_ACTIVE_CURIOSITY_NUDGE_THROTTLE_MINUTES=120`
+
+## 5) Device Shell UI Polish (Apr 7, 2026)
+
+The device shell (`/device`) has been refined to feel more like a native app dashboard:
+
+- **Compact Header**: Reduced padding and title sizes for tighter desktop layout.
+- **Interactive Today Tiles**: Activity tiles (Signals, Growth, Nudges) are now clickable links to relevant pages (/knowledge, /projects, /hive/health) with hover effects.
+- **Collapsible Status Sidebar**: Added toggle button to hide/show the status panel for better space management.
+- **Enhanced Learning Trail**: Added icons (🔍 Observed, 🔧 Normalized, ✅ Explained) for better visual hierarchy.
+- **Quick Settings**: Added a settings button in the header linking to assistant profile.
+- **Mobile Optimizations**: Improved bottom navigation bar with consistent touch targets.
+
+Architecture confirmed: HIVE collaboration, child-safe controls, physics-guided prediction, and data-driven growth remain core. The UI now better supports transparent, device-native AI learning loops.
