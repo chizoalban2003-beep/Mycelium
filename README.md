@@ -198,6 +198,8 @@ You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 - Live state API: `GET /api/nexus/live/state?window_minutes=30`
 - Visual map UI: `/hive/health`
 
+Live state now includes a `viscosity` barometer payload (`score`, `band`, `prediction_state`, and component factors) used by the Hive Health Viscosity Gauge.
+
 Chat APIs:
 
 - `POST /api/nexus/chat/send`

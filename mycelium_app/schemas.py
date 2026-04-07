@@ -686,6 +686,18 @@ class LiveHiveEdge(BaseModel):
     kind: str = "signal"
 
 
+class LiveViscositySnapshot(BaseModel):
+    score: float = 0.0
+    band: str = "medium"  # low|medium|high
+    prediction_state: str = "observe"  # flow|observe|gated
+    battery_factor: float = 0.0
+    thermal_factor: float = 0.0
+    interruption_factor: float = 0.0
+    battery_level: float | None = None
+    cpu_temp_c: float | None = None
+    recent_interruptions: int = 0
+
+
 class LiveHiveStateResponse(BaseModel):
     ok: bool = True
     as_of: datetime
@@ -693,6 +705,7 @@ class LiveHiveStateResponse(BaseModel):
     counters: dict[str, int] = Field(default_factory=dict)
     nodes: list[LiveHiveNode] = Field(default_factory=list)
     edges: list[LiveHiveEdge] = Field(default_factory=list)
+    viscosity: LiveViscositySnapshot = Field(default_factory=LiveViscositySnapshot)
 
 
 class HybridWorkSessionPredictRequest(BaseModel):

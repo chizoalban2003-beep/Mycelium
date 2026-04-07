@@ -71,9 +71,28 @@
 
   <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
     <div class="font-semibold text-slate-100">Live Neural Map</div>
-    <div class="text-xs text-slate-400 mt-1">Animated real-time flow of signals, growth memory, and assistant nudges.</div>
+    <div class="text-xs text-slate-400 mt-1">Animated real-time flow of signals, growth memory, assistant nudges, and environmental friction.</div>
     <div id="liveMeta" class="text-xs text-slate-400 mt-2"></div>
-    <canvas id="liveMap" class="mt-2 w-full rounded border border-slate-800 bg-slate-950" width="960" height="280"></canvas>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-2">
+      <div class="lg:col-span-2">
+        <canvas id="liveMap" class="w-full rounded border border-slate-800 bg-slate-950" width="960" height="280"></canvas>
+      </div>
+      <div class="rounded border border-slate-800 bg-slate-900 p-3">
+        <div class="text-sm font-semibold text-slate-100">Viscosity Gauge</div>
+        <div class="text-xs text-slate-400 mt-1">Digital barometer for runtime resistance.</div>
+        <div class="mt-3 flex items-end gap-3">
+          <div class="relative h-44 w-16 rounded-xl border border-slate-700 bg-slate-950 overflow-hidden">
+            <div id="viscosityFluid" class="absolute inset-x-0 bottom-0 h-1/2 transition-all duration-700"></div>
+          </div>
+          <div class="flex-1 space-y-1 text-xs">
+            <div id="viscosityScore" class="text-slate-100 font-semibold">η 0.00</div>
+            <div id="viscosityBand" class="text-slate-300">Band: n/a</div>
+            <div id="viscosityMode" class="text-slate-300">Prediction: observe</div>
+            <div id="viscosityVitals" class="text-slate-400 mt-2">battery=n/a • cpu=n/a • interruptions=0</div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -88,6 +107,43 @@
 
   let liveState = { nodes: [], edges: [], counters: {}, as_of: null, window_minutes: 30 };
   let liveTicks = 0;
+
+  function viscosityTheme(score) {
+    const v = Math.max(0, Math.min(1, Number(score || 0)));
+    if (v >= 0.75) {
+      return { label: 'High', fluid: 'linear-gradient(180deg, rgba(239,68,68,0.95), rgba(127,29,29,0.95))' };
+    }
+    if (v <= 0.35) {
+      return { label: 'Low', fluid: 'linear-gradient(180deg, rgba(56,189,248,0.95), rgba(30,64,175,0.95))' };
+    }
+    return { label: 'Medium', fluid: 'linear-gradient(180deg, rgba(251,191,36,0.95), rgba(146,64,14,0.95))' };
+  }
+
+  function renderViscosityGauge(vs) {
+    const fluid = document.getElementById('viscosityFluid');
+    const scoreEl = document.getElementById('viscosityScore');
+    const bandEl = document.getElementById('viscosityBand');
+    const modeEl = document.getElementById('viscosityMode');
+    const vitalsEl = document.getElementById('viscosityVitals');
+
+    const score = Math.max(0, Math.min(1, Number((vs && vs.score) || 0)));
+    const theme = viscosityTheme(score);
+    const band = String((vs && vs.band) || theme.label || 'Medium');
+    const mode = String((vs && vs.prediction_state) || 'observe');
+    const battery = (vs && vs.battery_level != null) ? `${Number(vs.battery_level).toFixed(1)}%` : 'n/a';
+    const cpu = (vs && vs.cpu_temp_c != null) ? `${Number(vs.cpu_temp_c).toFixed(1)}°C` : 'n/a';
+    const interruptions = Number((vs && vs.recent_interruptions) || 0);
+
+    if (fluid) {
+      fluid.style.height = `${Math.max(6, score * 100)}%`;
+      fluid.style.background = theme.fluid;
+      fluid.style.boxShadow = 'inset 0 0 18px rgba(255,255,255,0.1)';
+    }
+    if (scoreEl) scoreEl.textContent = `η ${score.toFixed(2)}`;
+    if (bandEl) bandEl.textContent = `Band: ${band}`;
+    if (modeEl) modeEl.textContent = `Prediction: ${mode}`;
+    if (vitalsEl) vitalsEl.textContent = `battery=${battery} • cpu=${cpu} • interruptions=${interruptions}`;
+  }
 
   function nodePos(id, width, height) {
     const map = {
@@ -176,10 +232,13 @@
       liveState = d || {};
       if (meta) {
         const c = liveState.counters || {};
-        meta.textContent = `as_of=${liveState.as_of || 'n/a'} • signals=${c.signals || 0} • growth=${c.growth_entries || 0} • unseen_nudges=${c.unseen_nudges || 0}`;
+        const vs = liveState.viscosity || {};
+        meta.textContent = `as_of=${liveState.as_of || 'n/a'} • signals=${c.signals || 0} • growth=${c.growth_entries || 0} • unseen_nudges=${c.unseen_nudges || 0} • η=${Number(vs.score || 0).toFixed(2)} (${vs.prediction_state || 'observe'})`;
       }
+      renderViscosityGauge(liveState.viscosity || {});
     } catch (_) {
       if (meta) meta.textContent = 'Live map unavailable.';
+      renderViscosityGauge({});
     }
   }
 
