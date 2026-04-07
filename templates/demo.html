@@ -5,8 +5,8 @@
     <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Mission simulator</div>
     <h1 class="mt-2 text-2xl font-semibold">{{ app_name }} • GROW WITH DATA</h1>
     <p class="mt-2 text-sm text-slate-300 max-w-3xl">
-      Start your baby AI in the mode that matches your technical depth, then let it evolve by observing your real signals.
-      The more you use the system, the more it becomes your personal assistant.
+      Start in guided mode, let the assistant learn from the signals you intentionally allow, and grow from infancy to adulthood.
+      The more it learns, the more it can help — always within the permissions you set.
     </p>
   </div>
 
@@ -16,26 +16,26 @@
       <div class="mt-3 grid gap-2 sm:grid-cols-2">
         <button data-profile="explorer" class="profileBtn rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left hover:border-cyan-600">
           <div class="font-medium">Explorer</div>
-          <div class="text-xs text-slate-400">Non-technical / guided mode</div>
+          <div class="text-xs text-slate-400">Infancy: gentle guided mode</div>
         </button>
         <button data-profile="builder" class="profileBtn rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left hover:border-cyan-600">
           <div class="font-medium">Builder</div>
-          <div class="text-xs text-slate-400">Practical prompts + quick controls</div>
+          <div class="text-xs text-slate-400">Childhood: practical prompts + quick controls</div>
         </button>
         <button data-profile="architect" class="profileBtn rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left hover:border-cyan-600">
           <div class="font-medium">Architect</div>
-          <div class="text-xs text-slate-400">Full control + advanced tuning</div>
+          <div class="text-xs text-slate-400">Adolescence: full control + advanced tuning</div>
         </button>
         <button data-profile="autolearn" class="profileBtn rounded-lg border border-cyan-700 bg-cyan-950/30 px-3 py-2 text-left hover:border-cyan-500">
           <div class="font-medium text-cyan-100">Auto-Learn</div>
-          <div class="text-xs text-cyan-200/80">Model adapts from observed signals</div>
+          <div class="text-xs text-cyan-200/80">Adulthood: adapts from consented signals</div>
         </button>
       </div>
 
       <div class="mt-4 rounded-lg border border-slate-700 bg-slate-950 p-3">
-        <div id="demoTitle" class="font-medium text-cyan-200">Explorer: Baby AI onboarding</div>
+        <div id="demoTitle" class="font-medium text-cyan-200">Explorer: Guided infancy</div>
         <div id="demoText" class="mt-1 text-sm text-slate-300">
-          The UI keeps only essential actions visible. The assistant asks simple questions and explains each step.
+          The UI keeps only essential actions visible. The assistant asks simple questions, explains each step, and learns only from the signals you allow.
         </div>
         <div id="demoFlow" class="mt-2 text-xs text-slate-400"></div>
       </div>
@@ -50,7 +50,7 @@
         <li>• Shifts from baby AI to proactive assistant</li>
       </ul>
       <div class="mt-4 rounded-lg border border-indigo-800/60 bg-indigo-950/30 p-3 text-xs text-indigo-100">
-        Default path: start with expertise profile, then transition to Auto-Learn for personalized growth.
+        Default path: start with expertise profile, then transition to Auto-Learn for consented, personalized growth.
       </div>
 
       <div class="mt-4 rounded-lg border border-cyan-800/60 bg-cyan-950/20 p-3">
@@ -67,24 +67,24 @@
     (function () {
       const data = {
         explorer: {
-          title: 'Explorer: Baby AI onboarding',
+          title: 'Explorer: Guided infancy',
           text: 'The UI keeps only essential actions visible. The assistant asks simple questions and explains each step.',
           flow: 'Flow: Welcome mission → Guided project setup → 1-click recommendations'
         },
         builder: {
-          title: 'Builder: Fast iteration mode',
+          title: 'Builder: Growing confidence',
           text: 'You get templates, practical defaults, and editable recommendations to ship quickly.',
           flow: 'Flow: Import data → Iterate with hints → Validate and deploy'
         },
         architect: {
-          title: 'Architect: Full systems control',
+          title: 'Architect: Mature control',
           text: 'All advanced controls are available, including tuning parameters and deeper diagnostics.',
           flow: 'Flow: Configure planes → Tune cycles → Compare traces and outcomes'
         },
         autolearn: {
-          title: 'Auto-Learn: Personal assistant evolution',
-          text: 'The app continuously adapts to your digital footprints/signals and starts proposing context-aware actions.',
-          flow: 'Flow: Observe behavior → Detect patterns → Deliver proactive assistant actions'
+          title: 'Auto-Learn: Adult autonomy',
+          text: 'The app continuously adapts to consented digital signals and starts proposing context-aware actions.',
+          flow: 'Flow: Observe allowed signals → Detect patterns → Deliver proactive assistant actions'
         }
       };
 

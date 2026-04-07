@@ -307,7 +307,7 @@ Mycelium learns from signals the user intentionally generates or allows, such as
 - explicit feedback, corrections, and reflection summaries
 
 If you enable device-side companions, they should start visibly and remain revocable by policy.
-The goal is an assistant that can start with boot-time awareness on the user's own device, but only within the permissions the user grants.
+The goal is an assistant that can grow from infancy to adulthood on the user's own device, but only within the permissions the user grants.
 
 ### Child trajectory capture: manual first, auto optional
 

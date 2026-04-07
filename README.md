@@ -201,7 +201,7 @@ Telemetry assistant nudges also include the configured assistant name/voice trai
 ## Learning contract
 
 Mycelium learns from consented digital signals, including app launches, open/close activity, approved actions, chat messages, and explicit feedback.
-It does not need covert or hidden monitoring to improve; the goal is a transparent assistant that grows with your data while staying user-controlled.
+It is designed to grow from infancy to adulthood as a transparent assistant that stays user-controlled, visible, and reversible.
 You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
 ## Live neural map + chat
