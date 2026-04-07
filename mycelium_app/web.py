@@ -291,6 +291,57 @@ def projects_page(
     )
 
 
+def _compose_today_story(
+    recent_signals: list[SignalLedgerEvent],
+    recent_growth: list[GrowthLedgerEntry],
+    recent_nudges: list[NexusNudge],
+    window_hours: int,
+) -> dict[str, str]:
+    signal_count = len(recent_signals)
+    growth_count = len(recent_growth)
+    nudge_count = len(recent_nudges)
+
+    latest_signal = recent_signals[0] if recent_signals else None
+    latest_growth = recent_growth[0] if recent_growth else None
+    latest_nudge = recent_nudges[0] if recent_nudges else None
+
+    signal_label = str(getattr(latest_signal, "signal_type", "signal") or "signal") if latest_signal else "signal"
+    signal_source = str(getattr(latest_signal, "source", None) or getattr(latest_signal, "origin", None) or "your device")
+    growth_label = str(getattr(latest_growth, "domain", "growth") or "growth") if latest_growth else "growth"
+    growth_metric = str(getattr(latest_growth, "metric", None) or getattr(latest_growth, "name", None) or "outcome")
+    nudge_label = str(getattr(latest_nudge, "nudge_type", None) or getattr(latest_nudge, "kind", None) or "next step")
+    nudge_target = str(getattr(latest_nudge, "target_kind", None) or getattr(latest_nudge, "title", None) or "one signal")
+
+    if signal_count == 0:
+        headline = "No new signals yet"
+        summary = f"The learning loop is ready; connect a source and let it start observing the last {window_hours} hours."
+        next_step = "Connect a signal source to begin the learning trail."
+    elif growth_count == 0:
+        headline = "Signals are flowing"
+        summary = f"The system saw {signal_count} signal{'s' if signal_count != 1 else ''} in the last {window_hours} hours, but no growth events have been accepted yet."
+        next_step = f"Turn the latest {signal_label} from {signal_source} into a growth action."
+    else:
+        headline = "The assistant is learning"
+        summary = (
+            f"In the last {window_hours} hours, Mycelium observed {signal_count} signal{'s' if signal_count != 1 else ''}, "
+            f"recorded {growth_count} growth event{'s' if growth_count != 1 else ''}, and queued {nudge_count} nudge{'s' if nudge_count != 1 else ''}."
+        )
+        next_step = f"Review the latest {growth_label} {growth_metric} and turn it into the next guided action."
+
+    spotlight = (
+        f"Latest signal: {signal_label} from {signal_source}. "
+        f"Latest growth: {growth_label} · {growth_metric}. "
+        f"Latest nudge: {nudge_label} toward {nudge_target}."
+    )
+
+    return {
+        "headline": headline,
+        "summary": summary,
+        "next_step": next_step,
+        "spotlight": spotlight,
+    }
+
+
 @router.get("/device", response_class=HTMLResponse)
 def device_shell_page(
     request: Request,
@@ -383,6 +434,7 @@ def device_shell_page(
             "recent_nudges": recent_nudges,
             "recent_nudges_24h_count": len(recent_nudges_24h),
             "snapshot_window_hours": window_hours,
+            "today_story": _compose_today_story(recent_signals, recent_growth, recent_nudges, window_hours),
             "signal_trend": _bucket_series(recent_signals_24h),
             "growth_trend": _bucket_series(recent_growth_24h),
             "nudge_trend": _bucket_series(recent_nudges_24h),

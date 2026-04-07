@@ -162,9 +162,12 @@
         <div class="flex items-center justify-between gap-3">
           <div>
             <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Today’s story</div>
-            <div class="text-sm text-slate-300">A quick founder-readable summary of what changed and what to do next.</div>
+            <div class="text-sm text-slate-300">{{ today_story.headline }}</div>
           </div>
           <a href="/knowledge" class="text-xs text-cyan-300 hover:text-cyan-200">Open memory</a>
+        </div>
+        <div class="mt-3 rounded-lg border border-slate-800 bg-slate-950/80 p-3 text-sm text-slate-200">
+          {{ today_story.summary }}
         </div>
         <div class="mt-3 grid gap-3 md:grid-cols-3">
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
@@ -180,11 +183,7 @@
           <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
             <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Next best step</div>
             <div class="mt-1 text-sm text-slate-200">
-              {% if recent_signals %}
-                Review the latest signal trail and turn one signal into a project action.
-              {% else %}
-                Connect a signal source to start the learning loop.
-              {% endif %}
+              {{ today_story.next_step }}
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               <a href="/device/daily-summary" class="rounded-full border border-cyan-700 bg-cyan-950/30 px-3 py-1 text-xs text-cyan-100 hover:bg-cyan-900/40">Daily summary</a>
@@ -193,18 +192,7 @@
           </div>
         </div>
         <div class="mt-3 text-xs text-slate-400">
-          Latest: 
-          {% if recent_signals %}
-            signal <span class="text-slate-200">{{ recent_signals[0].signal_type }}</span>
-          {% else %}
-            no signals yet
-          {% endif %}
-          {% if recent_growth %}
-            • growth <span class="text-slate-200">{{ recent_growth[0].domain }} · {{ recent_growth[0].metric }}</span>
-          {% endif %}
-          {% if recent_nudges %}
-            • nudge <span class="text-slate-200">{{ recent_nudges[0].title }}</span>
-          {% endif %}
+          {{ today_story.spotlight }}
         </div>
       </div>
 
