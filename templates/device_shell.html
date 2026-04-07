@@ -135,6 +135,96 @@
     </div>
   </div>
 
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Today</div>
+          <h2 class="mt-1 text-lg font-semibold">Recent activity at a glance</h2>
+        </div>
+        <div class="text-xs text-slate-400">Live snapshot</div>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Signals</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
+          <div class="mt-1 text-sm text-slate-300">Last 24 hours of observed learning events.</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Growth</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_growth_24h_count }}</div>
+          <div class="mt-1 text-sm text-slate-300">Accepted outcomes and progress signals.</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Nudges</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_nudges_24h_count }}</div>
+          <div class="mt-1 text-sm text-slate-300">Visible prompts and assistant suggestions.</div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest signal</div>
+          {% if recent_signals %}
+            {% set latest_signal = recent_signals[0] %}
+            <div class="mt-2 text-sm font-medium text-slate-100">{{ latest_signal.signal_type }}</div>
+            <div class="mt-1 text-xs text-slate-400">{{ latest_signal.modality }} • {{ latest_signal.created_at }}</div>
+          {% else %}
+            <div class="mt-2 text-sm text-slate-500">No signal yet.</div>
+          {% endif %}
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest growth</div>
+          {% if recent_growth %}
+            {% set latest_growth = recent_growth[0] %}
+            <div class="mt-2 text-sm font-medium text-slate-100">{{ latest_growth.domain }} · {{ latest_growth.metric }}</div>
+            <div class="mt-1 text-xs text-slate-400">Score {{ '%.3f'|format(latest_growth.score) }} • accepted={{ latest_growth.accepted }}</div>
+          {% else %}
+            <div class="mt-2 text-sm text-slate-500">No growth yet.</div>
+          {% endif %}
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest nudge</div>
+          {% if recent_nudges %}
+            {% set latest_nudge = recent_nudges[0] %}
+            <div class="mt-2 text-sm font-medium text-slate-100">{{ latest_nudge.title }}</div>
+            <div class="mt-1 text-xs text-slate-400">{{ latest_nudge.message }}</div>
+          {% else %}
+            <div class="mt-2 text-sm text-slate-500">No nudge yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Status</div>
+      <div class="mt-1 text-lg font-semibold text-slate-100">Current mode</div>
+      <div class="mt-3 space-y-2 text-sm text-slate-300">
+        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+          <span>Assistant</span>
+          <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+          <span>Mode</span>
+          <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+          <span>Voice</span>
+          <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+          <span>Projects</span>
+          <span class="text-cyan-200">{{ project_count }}</span>
+        </div>
+        <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+          <span>Signals</span>
+          <span class="text-cyan-200" data-count="signals">{{ signal_count }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="mt-5 grid gap-5 lg:grid-cols-3">
     <section class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2">
       <div class="flex items-center justify-between gap-3">
