@@ -55,9 +55,10 @@ Option B (API): `POST /api/auth/register`
 - SQLite DB is stored in `storage/mycelium.db` (created automatically).
 - `storage/` is ignored by git.
 
-## Passive Telemetry (Silent-24)
+## Consent-based device telemetry
 
-This repo includes a best-effort Linux PassiveTelemetry daemon that posts `app_open` signals into the Nexus telemetry ledger.
+This repo includes an opt-in Linux telemetry daemon that posts `app_open` signals into the Nexus telemetry ledger.
+It is designed for transparent, user-controlled learning from the devices you own and use.
 
 Requirements:
 - X11 session (needs `DISPLAY`)
@@ -182,7 +183,7 @@ End-to-end autonomy smoke script (launch → confirm → ack → verify):
 
 - `python3 scripts/smoke_autonomy_handoff_flow.py --base-url <url> --token <token> --completed --planned-minutes 45 --focused-minutes 45`
 
-This updates directive confidence and records a growth-ledger outcome for learning.
+This updates directive confidence and records a GrowthLedger outcome for learning.
 
 ## Assistant profile (name/gender/voice)
 
@@ -196,6 +197,11 @@ Personalize assistant identity:
 
 This updates identity presentation so the assistant is addressed by the configured name.
 Telemetry assistant nudges also include the configured assistant name/voice traits.
+
+## Learning contract
+
+Mycelium learns from consented digital signals, including app launches, open/close activity, approved actions, chat messages, and explicit feedback.
+It does not need covert or hidden monitoring to improve; the goal is a transparent assistant that grows with your data while staying user-controlled.
 You can also set `assistant_avatar_url` (optional `http(s)` image URL).
 
 ## Live neural map + chat

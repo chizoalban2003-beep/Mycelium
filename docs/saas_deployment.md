@@ -104,6 +104,27 @@ Emergency brake commands (Telegram, implemented):
 - `/unfreeze` → disables `actions.kill_switch`
 - `/freeze status` (or `/killswitch`) → returns current governance safety state
 
+Telegram-only operation (supported):
+
+- Yes — this build can run with Telegram as the primary/only active conversation channel.
+- The system still stores chat state in the same backend, but user interaction can be constrained to Telegram by policy and client behavior.
+
+Minimum setup for Telegram-only usage:
+
+1. Enable bridge env vars (`NOTIFICATIONS_BRIDGE_ENABLED`, bot token, webhook secret).
+2. Configure Telegram webhook to `POST /api/nexus/chat/telegram/webhook`.
+3. Set user policy via `POST /api/nexus/policy`:
+  - `notifications.enabled=true`
+  - `notifications.telegram_enabled=true`
+  - `notifications.telegram_chat_id=<your_chat_id>`
+4. Use Telegram chat messages for commands (for example: `launch now`, `/freeze`, `/unfreeze`).
+
+Phone communication in current state:
+
+- Supported through Telegram on any phone running Telegram.
+- Also supported through installed PWA/TWA app on phone (in-app chat channel).
+- Optional background nudges on Android via Termux poller (`scripts/poll_nudges_and_notify.py`).
+
 ### Hybrid predictor API (physics governor + timing model)
 
 Use this endpoint to ask whether a focus work session should be recommended now:
@@ -275,6 +296,18 @@ Memory consolidation trigger:
 
 - Send "daily summary" through app chat or Telegram.
 - Backed by: `GET /api/nexus/reflection/daily-summary?window_hours=24`
+
+### Consent-first learning model
+
+Mycelium learns from signals the user intentionally generates or allows, such as:
+
+- app launches and session starts
+- approved actions and task outcomes
+- chat messages and Telegram conversations when enabled
+- explicit feedback, corrections, and reflection summaries
+
+If you enable device-side companions, they should start visibly and remain revocable by policy.
+The goal is an assistant that can start with boot-time awareness on the user's own device, but only within the permissions the user grants.
 
 ### Child trajectory capture: manual first, auto optional
 
