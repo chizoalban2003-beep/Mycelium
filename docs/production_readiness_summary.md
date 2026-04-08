@@ -22,11 +22,14 @@ Mycelium is already **deployable pilot-ready**, but not yet fully hardened for a
    - Replace placeholder secrets such as `SECRET_KEY`
    - Store tokens, SMTP secrets, and webhook secrets in the platform secret store
    - Document rotation and revocation for external credentials
+   - Run `STRICT_PRODUCTION=true python scripts/db_migration_preflight.py` before release
 
 3. Observability
    - Add uptime checks for `/health` and main write paths
    - Track app errors, login failures, and queue/daemon failures
    - Confirm log retention and incident triage steps
+   - Use `scripts/health_smoketest.py` after deploy to confirm `/health` and `/docs`
+   - Compose now restarts both API and Postgres automatically
 
 4. Recovery and backup
    - Back up Postgres regularly

@@ -29,6 +29,8 @@ This repo currently ships an MVP platform:
 - The Android packaging path is documented in [docs/android_twa_packaging.md](docs/android_twa_packaging.md).
 - The release checklist is documented in [docs/release_launch_checklist.md](docs/release_launch_checklist.md).
 - For Railway production, use `requirements/prod.txt`, Postgres, `COOKIE_SECURE=true`, and `DB_MIGRATION_MODE=migrate`.
+- Before launch, run `STRICT_PRODUCTION=true python scripts/db_migration_preflight.py` to catch placeholder secrets and insecure defaults.
+- After deploy, run `BASE_URL=https://<your-app> ./.venv/bin/python scripts/health_smoketest.py` to verify `/health` and `/docs`.
 
 ## Quickstart (Linux)
 
