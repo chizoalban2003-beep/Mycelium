@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 import io
 import math
 import time
@@ -13,6 +14,7 @@ from mycelium_app.curiosity import capture_agitated_cases
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import User
+from mycelium_app.feature_settling import run_feature_settling
 from mycelium_app.knowledge_sync import MemoryManager
 from mycelium_app.predictor_homeostasis import apply_homeostasis_from_db
 from mycelium_app.physics_predictor import PhysicsPlane, PredictorError, infer_target_kind, run_physics_prediction
@@ -32,6 +34,13 @@ from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/predict", tags=["predict"])
+
+
+def _parse_csv_columns(raw: str | None) -> list[str]:
+    if raw is None:
+        return []
+    cols = [c.strip() for c in str(raw).split(",")]
+    return [c for c in cols if c]
 
 
 def _r2_from_actual_pred(actual: list[object] | None, predicted: list[object] | None) -> float | None:
@@ -509,3 +518,119 @@ async def electrophoresis_predict(
         return {"ok": False, "error": str(e)}
     except Exception as e:
         return {"ok": False, "error": f"Failed to run predictor: {type(e).__name__}: {e}"}
+
+
+@router.post("/feature-settling")
+async def feature_settling_predict(
+    file: UploadFile = File(...),
+    exclude_cols: str | None = Form(None),
+    train_ratio: float = Form(1.0),
+    random_seed: int = Form(42),
+    max_rows: int = Form(5000),
+    max_features: int = Form(120),
+    top_bond_pairs: int = Form(80),
+    min_bond_affinity: float = Form(0.08),
+    collinearity_threshold: float = Form(0.90),
+    weight_affinity: float = Form(0.45),
+    weight_variance: float = Form(0.25),
+    weight_low_entropy: float = Form(0.20),
+    weight_kl_divergence: float = Form(0.10),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Run unsupervised feature sedimentation and return bottom-up ordering."""
+
+    _ = current_user
+    try:
+        raw = await file.read()
+        if not raw:
+            raise PredictorError("Empty upload")
+
+        df = pd.read_csv(io.BytesIO(raw), nrows=max(1, min(int(max_rows), 200_000)))
+        excl = _parse_csv_columns(exclude_cols)
+
+        try:
+            train_ratio = float(train_ratio)
+        except Exception:
+            train_ratio = 1.0
+        train_ratio = max(0.05, min(1.0, train_ratio))
+
+        t0 = time.perf_counter()
+        settled = run_feature_settling(
+            df,
+            exclude_cols=excl,
+            train_fraction=float(train_ratio),
+            random_seed=int(random_seed),
+            max_features=max(2, min(int(max_features), 500)),
+            top_bond_pairs=max(1, min(int(top_bond_pairs), 300)),
+            min_bond_affinity=float(min_bond_affinity),
+            collinearity_threshold=float(collinearity_threshold),
+            weight_affinity=float(weight_affinity),
+            weight_variance=float(weight_variance),
+            weight_low_entropy=float(weight_low_entropy),
+            weight_kl_divergence=float(weight_kl_divergence),
+        )
+        elapsed_s = float(time.perf_counter() - t0)
+
+        try:
+            record_stimulus_event(
+                session,
+                user_id=int(current_user.id or 0),
+                project_id=None,
+                device_id=str(settings.nexus_device_id or "local"),
+                source="predict_api",
+                modality="predict",
+                signal_type="predict_feature_settling",
+                stimulus={
+                    "rows": int(len(df)),
+                    "columns": int(len(df.columns)),
+                    "excluded_columns": excl[:32],
+                    "features_used": int(settled.diagnostics.get("n_features_used", 0) or 0),
+                },
+                occurred_at=datetime.utcnow(),
+            )
+        except Exception:
+            pass
+
+        return {
+            "ok": True,
+            "feature_order": settled.feature_order,
+            "features": [
+                {
+                    "feature": info.feature,
+                    "kind": info.kind,
+                    "entropy": round(float(info.entropy), 6),
+                    "variance": round(float(info.variance), 6),
+                    "standard_error": round(float(info.standard_error), 6),
+                    "kl_divergence": round(float(info.kl_divergence), 6),
+                    "mean_affinity": round(float(info.mean_affinity), 6),
+                    "weighted_degree": round(float(info.weighted_degree), 6),
+                    "bond_count": int(info.bond_count),
+                    "collinearity_complex_id": info.collinearity_complex_id,
+                    "collinearity_complex_size": int(info.collinearity_complex_size),
+                    "mass": round(float(info.mass), 6),
+                    "viscosity": round(float(info.viscosity), 6),
+                    "settling_velocity": round(float(info.settling_velocity), 6),
+                    "settling_score": round(float(info.settling_score), 6),
+                    "depth": round(float(info.depth), 6),
+                    "layer": info.layer,
+                }
+                for info in settled.features
+            ],
+            "bonding_map": [
+                {
+                    "feature_a": b.feature_a,
+                    "feature_b": b.feature_b,
+                    "affinity": round(float(b.affinity), 6),
+                    "bonding_factor": round(float(b.bonding_factor), 6),
+                    "bond_type": b.bond_type,
+                }
+                for b in settled.bonding_map
+            ],
+            "collinearity_complexes": {str(k): v for k, v in settled.collinearity_complexes.items()},
+            "diagnostics": {**settled.diagnostics, "elapsed_s": round(float(elapsed_s), 6)},
+        }
+    except PredictorError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:
+        return {"ok": False, "error": f"Failed to run feature settling: {type(e).__name__}: {e}"}
