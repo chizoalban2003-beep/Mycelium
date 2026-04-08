@@ -1,0 +1,2 @@
+# Convenience wrapper for tooling that expects a top-level requirements.txt
+-r requirements/base.txt

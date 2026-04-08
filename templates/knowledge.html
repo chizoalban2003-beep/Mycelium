@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rounded border border-slate-800 bg-slate-900 p-4">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-lg font-semibold">Knowledge Audit</h1>
+      <div class="text-sm text-slate-300 mt-1">What the child learned locally, what the Hive can see, and how feedback shapes memory.</div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2 text-xs text-slate-300">
+        <input id="exportToggle" type="checkbox" class="h-4 w-4" />
+        <label for="exportToggle" class="select-none">Share anonymized lessons with the Hive?</label>
+      </div>
+      <button id="refreshAudit" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">Refresh</button>
+    </div>
+  </div>
+
+  <div id="exportStatus" class="text-xs text-slate-400 mt-2"></div>
+  <div class="mt-2 rounded border border-cyan-900/40 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
+    Every export passes through the privacy membrane; only consented lessons leave the device.
+  </div>
+
+  <div id="auditMeta" class="text-xs text-slate-400 mt-3"></div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">You taught (local)</div>
+      <div id="localSummary" class="text-xs text-slate-400 mt-1"></div>
+      <div id="localList" class="text-sm text-slate-200 mt-3 space-y-2"></div>
+    </div>
+
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Hive taught (global)</div>
+      <div id="hiveSummary" class="text-xs text-slate-400 mt-1"></div>
+      <div class="mt-3">
+        <div class="text-xs text-slate-400">Top concepts</div>
+        <div id="hiveConcepts" class="text-sm text-slate-200 mt-2 space-y-1"></div>
+      </div>
+      <div class="mt-4">
+        <div class="text-xs text-slate-400">Top tags</div>
+        <div id="hiveTags" class="text-sm text-slate-200 mt-2 space-y-1"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Validation Shadow (recent)</div>
+    <div class="text-xs text-slate-400 mt-1">Recent measured snapshots and causal traces.</div>
+    <div id="traceList" class="text-sm text-slate-200 mt-3 space-y-2"></div>
+  </div>
+</div>
+
+<script>
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function pill(text) {
+    return `<span class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700">${esc(text)}</span>`;
+  }
+
+  async function loadAudit() {
+    const metaEl = document.getElementById('auditMeta');
+    const localSummary = document.getElementById('localSummary');
+    const localList = document.getElementById('localList');
+    const hiveSummary = document.getElementById('hiveSummary');
+    const hiveConcepts = document.getElementById('hiveConcepts');
+    const hiveTags = document.getElementById('hiveTags');
+    const traceList = document.getElementById('traceList');
+
+    metaEl.textContent = 'Loading…';
+    localSummary.textContent = '';
+    localList.innerHTML = '';
+    hiveSummary.textContent = '';
+    hiveConcepts.innerHTML = '';
+    hiveTags.innerHTML = '';
+    traceList.innerHTML = '';
+
+    try {
+      const r = await fetch('/api/nexus/knowledge/audit?limit=25', { credentials: 'same-origin' });
+      const data = await r.json();
+      if (!r.ok) {
+        metaEl.textContent = (data && data.detail) ? String(data.detail) : 'Failed to load audit.';
+        return;
+      }
+
+      metaEl.textContent = `As of: ${data.as_of || 'unknown'}`;
+
+      const local = data.local || {};
+      const recent = Array.isArray(local.recent) ? local.recent : [];
+      localSummary.textContent = `confirm=${local.n_confirm || 0} • correct=${local.n_correct || 0} • scanned=${local.n_entries_scanned || 0}`;
+      if (!recent.length) {
+        localList.innerHTML = '<div class="text-xs text-slate-400">No local ionized concepts yet.</div>';
+      } else {
+        localList.innerHTML = recent.map((x) => {
+          const a = (x.action || 'confirm');
+          const tag = (x.hint_tag || '');
+          const c = (x.concept || '');
+          return `<div class="flex flex-wrap items-center gap-2">${pill(a)}${pill(tag)}<span class="text-sm text-slate-100">${esc(c)}</span></div>`;
+        }).join('');
+      }
+
+      const hive = data.hive || {};
+      const ev = (hive.evidence && typeof hive.evidence === 'object') ? hive.evidence : {};
+      const cur = (ev.curiosity && typeof ev.curiosity === 'object') ? ev.curiosity : {};
+
+      hiveSummary.textContent = `concepts_used=${cur.n_concepts_used || 0} • feedback_used=${cur.n_feedback_used || 0}`;
+
+      const topConcepts = Array.isArray(cur.top_concepts) ? cur.top_concepts : [];
+      hiveConcepts.innerHTML = topConcepts.length ? topConcepts.map((x) => {
+        return `<div class="flex items-center justify-between gap-2"><span>${esc(x.concept || '')}</span><span class="text-xs text-slate-400">${esc(x.count || 0)}</span></div>`;
+      }).join('') : '<div class="text-xs text-slate-400">No Hive concepts yet.</div>';
+
+      const topTags = Array.isArray(cur.top_tags) ? cur.top_tags : [];
+      hiveTags.innerHTML = topTags.length ? topTags.map((x) => {
+        return `<div class="flex items-center justify-between gap-2"><span>${esc(x.tag || '')}</span><span class="text-xs text-slate-400">${esc(x.count || 0)}</span></div>`;
+      }).join('') : '<div class="text-xs text-slate-400">No Hive tags yet.</div>';
+
+      const val = data.validation || {};
+      const traces = Array.isArray(val.recent_traces) ? val.recent_traces : [];
+      if (!traces.length) {
+        traceList.innerHTML = '<div class="text-xs text-slate-400">No validation traces yet.</div>';
+      } else {
+        traceList.innerHTML = traces.slice(0, 10).map((t) => {
+          const imp = (t.improvement_frac === null || t.improvement_frac === undefined) ? '' : ` • Δ=${(100.0 * t.improvement_frac).toFixed(2)}%`;
+          const narr = (t.narrative || '').trim();
+          return `<div class="rounded border border-slate-800 bg-slate-900 p-2">
+            <div class="text-xs text-slate-400">${esc(t.created_at || '')} • ${esc(t.metric_name || '')}${esc(imp)} • ${esc(t.method || '')}</div>
+            <div class="text-sm text-slate-100 mt-1">${esc(narr || '(no narrative)')}</div>
+          </div>`;
+        }).join('');
+      }
+
+    } catch (e) {
+      metaEl.textContent = 'Failed to load audit.';
+    }
+  }
+
+  async function loadExportStatus() {
+    const toggle = document.getElementById('exportToggle');
+    const status = document.getElementById('exportStatus');
+    status.textContent = 'Loading export settings…';
+    toggle.disabled = true;
+
+    try {
+      const r = await fetch('/api/nexus/privacy/export', { credentials: 'same-origin' });
+      const data = await r.json();
+      if (!r.ok) {
+        status.textContent = (data && data.detail) ? String(data.detail) : 'Failed to load export settings.';
+        return;
+      }
+
+      const hiveEnabled = !!data.hive_enabled;
+      const exportEnabled = !!data.export_enabled;
+
+      toggle.checked = exportEnabled;
+      toggle.disabled = !hiveEnabled;
+
+      if (!hiveEnabled) {
+        status.textContent = 'Hive is disabled in settings.';
+      } else if (exportEnabled) {
+        status.textContent = 'Enabled. A privacy membrane redacts (and may block) obvious PII before export.';
+      } else {
+        status.textContent = 'Disabled. Nothing is exported to the Hive.';
+      }
+    } catch (e) {
+      status.textContent = 'Failed to load export settings.';
+    }
+  }
+
+  async function setExportEnabled(v) {
+    const toggle = document.getElementById('exportToggle');
+    const status = document.getElementById('exportStatus');
+    toggle.disabled = true;
+    status.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/nexus/privacy/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ export_enabled: !!v }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        status.textContent = (data && data.detail) ? String(data.detail) : 'Failed to save export settings.';
+      }
+    } catch (e) {
+      status.textContent = 'Failed to save export settings.';
+    }
+    await loadExportStatus();
+  }
+
+  document.getElementById('refreshAudit').onclick = loadAudit;
+  document.getElementById('exportToggle').onchange = (e) => setExportEnabled(!!e.target.checked);
+  loadExportStatus();
+  loadAudit();
+</script>
+{% endblock %}

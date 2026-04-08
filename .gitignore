@@ -1,0 +1,18 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+
+storage/
+.env
+twa/
+android.keystore
+mycelium-release.jks
+version_bump.txt
+twa-keystore-fingerprint.txt
+
+# Local experiment outputs / benchmark datasets (not part of the app)
+tmp_eval/

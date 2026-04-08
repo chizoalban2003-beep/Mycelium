@@ -1,0 +1,5 @@
+# Production/SaaS requirements (Postgres + containers)
+-r base.txt
+
+# Postgres driver for SQLAlchemy/SQLModel
+psycopg[binary]>=3.2,<4

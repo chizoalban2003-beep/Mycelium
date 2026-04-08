@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% set project_count = projects|length %}
+  {% if project_count <= 1 %}
+    {% set growth_stage = "Infant Core" %}
+    {% set growth_hint = "Collect more signals to accelerate learning." %}
+  {% elif project_count <= 3 %}
+    {% set growth_stage = "Adaptive Cadet" %}
+    {% set growth_hint = "Patterns are forming. Keep feeding high-quality data." %}
+  {% else %}
+    {% set growth_stage = "Personal Assistant Orbit" %}
+    {% set growth_hint = "Your AI is now operating with mature context awareness." %}
+  {% endif %}
+
+  <div class="mb-5 rounded-xl border border-cyan-900/60 bg-gradient-to-r from-slate-900 via-slate-900 to-cyan-950/40 p-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Signal cockpit</div>
+        <div class="mt-1 text-lg font-semibold">GROW WITH DATA</div>
+        <div class="text-sm text-slate-300">Companion status: <span class="text-cyan-300">{{ growth_stage }}</span></div>
+        <div class="text-xs text-slate-400 mt-1">{{ growth_hint }}</div>
+      </div>
+      <div class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-right">
+        <div class="text-xs text-slate-400">Active projects</div>
+        <div class="text-2xl font-semibold text-slate-100">{{ project_count }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-5 rounded-xl border border-indigo-900/60 bg-slate-900/90 p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-indigo-300/80">Adaptive demo</div>
+        <div class="mt-1 text-sm text-slate-300">Two storylines, one relationship:</div>
+        <ul class="mt-2 text-sm text-slate-300 space-y-1">
+          <li>• <span class="text-slate-100">Expertise-based onboarding</span> (Explorer / Builder / Architect)</li>
+          <li>• <span class="text-slate-100">Signal-based evolution</span> as the companion learns from consented patterns</li>
+        </ul>
+        <div class="text-xs text-slate-400 mt-2">Your digital footprints stay useful: actions, project activity, and feedback loops shape the assistant persona without hiding the process.</div>
+      </div>
+      <a href="/demo" class="inline-flex items-center rounded-md border border-indigo-700 bg-indigo-900/40 hover:bg-indigo-800/50 px-3 py-2 text-sm font-medium text-indigo-100">
+        Enter the live demo
+      </a>
+    </div>
+  </div>
+
+  <div class="mb-5 rounded-xl border border-cyan-900/60 bg-cyan-950/20 p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Governance center</div>
+        <div class="mt-1 text-sm text-slate-300">Trust before autonomy: explain every action, keep confirmations visible, and leave a kill-switch path available.</div>
+        <ul class="mt-2 space-y-1 text-xs text-slate-400">
+          <li>• Review assistant identity and permissions in policy surfaces.</li>
+          <li>• Inspect explainability and audit timelines from the task ledger.</li>
+          <li>• Keep device handoff behavior constrained by policy and visibility.</li>
+        </ul>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/assistant/profile" class="inline-flex items-center rounded-md border border-cyan-700 bg-cyan-950/30 hover:bg-cyan-900/40 px-3 py-2 text-sm font-medium text-cyan-100">Policy</a>
+        <a href="/hive/health" class="inline-flex items-center rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100">Hive Health</a>
+        <a href="/knowledge" class="inline-flex items-center rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100">Knowledge Audit</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-5 rounded-xl border border-indigo-900/60 bg-indigo-950/20 p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-indigo-300/80">Release readiness</div>
+        <div class="mt-1 text-sm text-slate-300">Phase 4 is about shipping safely: run the handoff smoke flow, check the audit timeline, verify the deployed SHA, and watch the SLO gate before rollout.</div>
+        <ul class="mt-2 space-y-1 text-xs text-slate-400">
+          <li>• Use the audit timeline to inspect what the assistant would execute now.</li>
+          <li>• Compare the live deploy version with the expected git SHA.</li>
+          <li>• Keep the handoff SLO and regression gates green before expanding cohorts.</li>
+        </ul>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/hive/health" class="inline-flex items-center rounded-md border border-indigo-700 bg-indigo-950/30 hover:bg-indigo-900/40 px-3 py-2 text-sm font-medium text-indigo-100">Health</a>
+        <a href="/knowledge" class="inline-flex items-center rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100">Audit</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="organismCard" class="mb-5 rounded-xl border border-cyan-900/70 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950/40 p-5 shadow-[0_0_0_1px_rgba(34,211,238,0.05)]">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0 flex-1">
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Organism State</div>
+        <div id="organismMode" class="mt-1 text-3xl font-semibold tracking-[0.20em] text-cyan-100">BOOTING</div>
+        <div id="organismStatusLine" class="mt-2 max-w-3xl text-sm text-slate-300">Waiting for live viscosity and policy signals.</div>
+        <div class="mt-3 flex flex-wrap gap-2 text-xs text-slate-300">
+          <span id="organismPermissionTier" class="rounded-full border border-cyan-900 bg-cyan-950 px-3 py-1 text-cyan-100">Permission: --</span>
+          <span id="organismAutonomyMode" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Autonomy: --</span>
+          <span id="organismSignals" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Signals: --</span>
+        </div>
+      </div>
+
+      <div class="w-full max-w-sm rounded-xl border border-slate-800 bg-slate-950/70 p-4">
+        <div class="flex items-center justify-between gap-2 text-xs uppercase tracking-[0.25em] text-slate-400">
+          <span>Viscosity trend</span>
+          <span id="organismTrendLabel">Δ --</span>
+        </div>
+        <div id="organismSparkline" class="mt-3 flex h-16 items-end gap-2"></div>
+        <div class="mt-3 grid grid-cols-3 gap-2 text-[11px] text-slate-400">
+          <div class="rounded-lg border border-slate-800 bg-slate-900/80 px-2 py-2"><span class="block text-slate-500">Flow</span><span id="organismFlowCount">--</span></div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900/80 px-2 py-2"><span class="block text-slate-500">Observe</span><span id="organismObserveCount">--</span></div>
+          <div class="rounded-lg border border-slate-800 bg-slate-900/80 px-2 py-2"><span class="block text-slate-500">Gated</span><span id="organismGatedCount">--</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-5 rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-emerald-300/80">Customer package</div>
+        <div class="mt-1 text-sm text-slate-300">This is the onboarding path for the first customers: a calm, visible assistant that learns from approved signals and proves value in the first session.</div>
+        <ul class="mt-2 space-y-1 text-xs text-slate-400">
+          <li>• Lead with the live learning trail and today summary.</li>
+          <li>• Use project creation as the first “memory” moment.</li>
+          <li>• Keep policy, memory, and shared wisdom surfaces one click away.</li>
+        </ul>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a href="/demo" class="inline-flex items-center rounded-md border border-emerald-700 bg-emerald-950/30 hover:bg-emerald-900/40 px-3 py-2 text-sm font-medium text-emerald-100">Open demo</a>
+        <a href="/device" class="inline-flex items-center rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100">Open shell</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="flex items-start justify-between gap-6">
+    <div class="flex-1">
+      <h1 class="text-lg font-semibold mb-3">Projects</h1>
+      {% if projects|length == 0 %}
+        <div class="text-slate-400">No projects yet — this is where the first memories will live.</div>
+      {% else %}
+        <ul class="space-y-2">
+          {% for p in projects %}
+            <li class="bg-slate-900 border border-slate-800 rounded-lg px-4 py-3">
+              <a class="font-medium hover:underline" href="/projects/{{ p.id }}">{{ p.name }}</a>
+              <div class="text-sm text-slate-400">{{ p.description }}</div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+
+    <div class="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-xl p-4">
+      <h2 class="font-semibold mb-2">New project</h2>
+      <form action="/projects" method="post" class="space-y-3">
+        <div>
+          <label class="block text-sm text-slate-300">Name</label>
+          <input name="name" required class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Description</label>
+          <textarea name="description" rows="3" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2"></textarea>
+        </div>
+        <button type="submit" class="w-full rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 font-medium">Create memory</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    async function loadOrganismCard() {
+      const modeEl = document.getElementById('organismMode');
+      const statusEl = document.getElementById('organismStatusLine');
+      const permissionEl = document.getElementById('organismPermissionTier');
+      const autonomyEl = document.getElementById('organismAutonomyMode');
+      const signalsEl = document.getElementById('organismSignals');
+      const trendLabelEl = document.getElementById('organismTrendLabel');
+      const sparklineEl = document.getElementById('organismSparkline');
+      const flowCountEl = document.getElementById('organismFlowCount');
+      const observeCountEl = document.getElementById('organismObserveCount');
+      const gatedCountEl = document.getElementById('organismGatedCount');
+      if (!modeEl || !statusEl || !permissionEl || !autonomyEl || !signalsEl || !trendLabelEl || !sparklineEl || !flowCountEl || !observeCountEl || !gatedCountEl) return;
+
+      try {
+        const windows = [5, 15, 30, 60, 120];
+        const [policyRes, ...liveResults] = await Promise.all([
+          fetch('/api/nexus/policy', { credentials: 'same-origin' }),
+          ...windows.map((wm) => fetch(`/api/nexus/live/state?window_minutes=${wm}`, { credentials: 'same-origin' }))
+        ]);
+
+        const policyData = policyRes.ok ? await policyRes.json() : null;
+        const policy = policyData && policyData.policy ? policyData.policy : {};
+        const actions = policy && policy.actions ? policy.actions : {};
+        const autonomyMode = String(actions.autonomy_mode || 'strict');
+        const requireConfirm = Boolean(actions.require_confirm);
+
+        const livePayloads = [];
+        for (const res of liveResults) {
+          if (!res.ok) continue;
+          const data = await res.json();
+          livePayloads.push(data);
+        }
+        if (!livePayloads.length) return;
+
+        const current = livePayloads.find((item) => Number(item.window_minutes) === 30) || livePayloads[0];
+        const vis = current && current.viscosity ? current.viscosity : null;
+        const score = vis && vis.score != null ? Number(vis.score) : 0;
+        const state = actions.kill_switch ? 'gated' : String(vis && vis.prediction_state ? vis.prediction_state : 'observe');
+        const signals = current && current.counters ? Number(current.counters.signals || 0) : 0;
+        const growth = current && current.counters ? Number(current.counters.accepted_growth || 0) : 0;
+        const unseen = current && current.counters ? Number(current.counters.unseen_nudges || 0) : 0;
+
+        modeEl.textContent = state === 'flow' ? 'FLOW' : state === 'gated' ? 'GATED' : 'OBSERVE';
+        modeEl.classList.remove('text-cyan-100', 'text-emerald-100', 'text-rose-100');
+        modeEl.classList.add(state === 'flow' ? 'text-emerald-100' : state === 'gated' ? 'text-rose-100' : 'text-cyan-100');
+
+        const mission = state === 'flow'
+          ? `Optimal conditions detected across ${signals} signals. Ready for deep-work initialization.`
+          : state === 'gated'
+            ? `Policy or thermal pressure is high. Inhibiting autonomous handoffs to protect hardware.`
+            : `Baseline established across ${signals} signals. Monitoring trajectory before escalation.`;
+        statusEl.textContent = mission;
+
+        permissionEl.textContent = `Permission: ${state === 'gated' ? 'blocked' : String(actions.default_permission_tier || 'execute').toUpperCase()}`;
+        autonomyEl.textContent = `Autonomy: ${autonomyMode}${requireConfirm ? ' · confirm' : ''}`;
+        signalsEl.textContent = `Signals: ${signals} · Growth: ${growth} · Nudges: ${unseen}`;
+
+        const scores = livePayloads.map((item) => {
+          const v = item && item.viscosity && item.viscosity.score != null ? Number(item.viscosity.score) : 0;
+          return Number.isNaN(v) ? 0 : v;
+        });
+        const min = Math.min(...scores);
+        const max = Math.max(...scores);
+        const range = Math.max(0.0001, max - min);
+        sparklineEl.innerHTML = '';
+        scores.forEach((value, idx) => {
+          const normalized = (value - min) / range;
+          const height = 20 + Math.round(normalized * 44);
+          const bar = document.createElement('div');
+          bar.className = 'flex-1 rounded-t-md border border-cyan-900/50 bg-gradient-to-t from-cyan-950 to-cyan-400/70';
+          bar.style.height = `${height}px`;
+          bar.title = `${windows[idx]}m · η ${value.toFixed(2)}`;
+          sparklineEl.appendChild(bar);
+        });
+
+        const delta = scores.length >= 2 ? scores[scores.length - 1] - scores[0] : 0;
+        trendLabelEl.textContent = `Δ ${delta >= 0 ? '+' : ''}${delta.toFixed(2)}`;
+
+        flowCountEl.textContent = String(livePayloads.filter((item) => item && item.viscosity && String(item.viscosity.prediction_state || '') === 'flow').length);
+        observeCountEl.textContent = String(livePayloads.filter((item) => item && item.viscosity && String(item.viscosity.prediction_state || '') === 'observe').length);
+        gatedCountEl.textContent = String(actions.kill_switch ? livePayloads.length : livePayloads.filter((item) => item && item.viscosity && String(item.viscosity.prediction_state || '') === 'gated').length);
+      } catch (error) {
+        if (statusEl) statusEl.textContent = 'Unable to load live organism state right now.';
+      }
+    }
+
+    const organismIdle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
+    organismIdle(loadOrganismCard);
+    setInterval(loadOrganismCard, 30000);
+  </script>
+{% endblock %}

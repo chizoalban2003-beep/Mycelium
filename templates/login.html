@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="grid gap-4 md:grid-cols-2 md:items-stretch">
+    <div class="rounded-xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/50 p-6">
+      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">First contact</div>
+      <h1 class="mt-2 text-2xl font-semibold leading-tight">GROW WITH DATA</h1>
+      <p class="mt-3 text-sm text-slate-300">
+        This is the moment the wall goes transparent. Mycelium begins in child-first guided mode, learns only from consented signals, and grows into a presence that feels familiar instead of mysterious.
+      </p>
+      <div class="mt-4 rounded-lg border border-cyan-800/50 bg-cyan-950/20 p-3 text-xs text-cyan-100">
+        If you run it on your own device, that device can act as the main brain while the rest of the Hive whispers in safely through policy.
+      </div>
+      <ul class="mt-4 space-y-2 text-sm text-slate-300">
+        <li>• Phase 01: Observe the signal field</li>
+        <li>• Phase 02: Learn the user’s rhythm</li>
+        <li>• Phase 03: Earn trust before autonomy</li>
+      </ul>
+    </div>
+
+    <div class="bg-slate-900 rounded-xl p-6 border border-slate-800">
+      <h2 class="text-lg font-semibold mb-4">Enter the Hive</h2>
+      {% if error %}
+        <div class="mb-3 rounded-md border border-rose-800/80 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">{{ error }}</div>
+      {% endif %}
+      {% if notice %}
+        <div class="mb-3 rounded-md border border-cyan-800/80 bg-cyan-950/30 px-3 py-2 text-sm text-cyan-200">{{ notice }}</div>
+      {% endif %}
+      <form action="/login" method="post" class="space-y-3">
+        <div>
+          <label class="block text-sm text-slate-300">Email</label>
+          <input name="email" type="email" autocomplete="email" required class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm text-slate-300">Password</label>
+          <input name="password" type="password" autocomplete="current-password" required class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+        </div>
+        <button type="submit" class="w-full rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 font-medium">Sign in</button>
+      </form>
+      <div class="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Account recovery</div>
+        <p class="mt-1 text-xs text-slate-400">
+          If your account has a linked Hive recovery channel, we can send a one-time reset link by email or Telegram.
+        </p>
+        <form action="/recover" method="post" class="mt-3 flex gap-2">
+          <input name="email" type="email" autocomplete="email" required placeholder="you@example.com" class="flex-1 rounded-md bg-slate-950 border border-slate-800 px-3 py-2 text-sm" />
+          <button type="submit" class="rounded-md bg-slate-700 hover:bg-slate-600 px-3 py-2 text-sm font-medium">Send link</button>
+        </form>
+      </div>
+      <div class="mt-4 text-sm text-slate-400">
+        Or initialize a new identity and start the growth cycle.
+      </div>
+
+      <div class="mt-5 border-t border-slate-800 pt-4">
+        <h3 class="text-sm font-semibold text-slate-200">Initialize account</h3>
+        <form action="/register" method="post" class="mt-3 space-y-3">
+          <div>
+            <label class="block text-sm text-slate-300">Full name</label>
+            <input name="full_name" type="text" autocomplete="name" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-300">Email</label>
+            <input name="email" type="email" autocomplete="email" required class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-300">Password</label>
+            <input name="password" type="password" autocomplete="new-password" required minlength="6" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
+          </div>
+          <button type="submit" class="w-full rounded-md bg-cyan-700 hover:bg-cyan-600 px-3 py-2 font-medium">Begin growth</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endblock %}

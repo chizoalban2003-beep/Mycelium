@@ -1,0 +1,1105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rounded border border-slate-800 bg-slate-900 p-4">
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h1 class="text-lg font-semibold">Hive Health</h1>
+      <div class="text-sm text-slate-300 mt-1">Global intelligence growth curve, validation trends, and explainability for shared wisdom.</div>
+    </div>
+    <div class="flex items-center gap-2">
+      <select id="windowDays" class="text-xs bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100">
+        <option value="7">7d</option>
+        <option value="30" selected>30d</option>
+        <option value="90">90d</option>
+        <option value="180">180d</option>
+      </select>
+      <label class="text-xs text-slate-300 flex items-center gap-1 select-none">
+        <input id="optRegression" type="checkbox" class="accent-slate-300" checked>
+        regression
+      </label>
+      <label class="text-xs text-slate-300 flex items-center gap-1 select-none">
+        <input id="optSmoothing" type="checkbox" class="accent-slate-300">
+        smoothing
+      </label>
+      <input id="smoothingWindow" value="7" class="w-12 text-xs bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100" title="Smoothing window (days)">
+      <label class="text-xs text-slate-300 flex items-center gap-1 select-none">
+        <input id="optBroadcast" type="checkbox" class="accent-slate-300">
+        broadcast impact
+      </label>
+      <button id="runStressTest" class="text-xs px-2 py-1 rounded bg-rose-900/40 hover:bg-rose-800/50 border border-rose-700 text-rose-100">
+        Synthetic CPU spike
+      </button>
+      <button id="refreshHealth" class="text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700">Refresh</button>
+    </div>
+  </div>
+
+  <div id="healthMeta" class="text-xs text-slate-400 mt-3"></div>
+  <div id="stressMeta" class="text-xs text-slate-400 mt-1"></div>
+  <div class="mt-2 rounded border border-slate-800 bg-slate-950 p-3">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Reasoning</div>
+        <div id="reasoningTitle" class="mt-1 text-sm font-semibold text-slate-100">Loading causal summary…</div>
+      </div>
+      <div id="reasoningBadge" class="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-300">empty</div>
+    </div>
+    <div id="reasoningBody" class="mt-2 text-xs text-slate-300">This card will surface the latest causal narrative and top shifts without another fetch.</div>
+    <div id="reasoningShifts" class="mt-2"></div>
+    <div id="reasoningEmptyCta" class="mt-2 hidden rounded border border-cyan-900/40 bg-cyan-950/20 px-3 py-2 text-xs text-cyan-100">
+      No recent trace yet. Run the synthetic CPU spike to generate your first causal explanation.
+    </div>
+  </div>
+  <div class="mt-2 rounded border border-fuchsia-900/40 bg-fuchsia-950/20 px-3 py-2 text-xs text-fuchsia-100">
+    Broadcast impact and validation are only meaningful when local learning stays auditable and reversible.
+  </div>
+  <div class="mt-2 rounded border border-indigo-900/40 bg-indigo-950/20 px-3 py-2 text-xs text-indigo-100">
+    Release readiness lives here too: compare the live deploy version, inspect the audit timeline, and keep the handoff SLO healthy before opening the next cohort.
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Nodes</div>
+      <div id="summaryNodes" class="mt-2 text-2xl font-semibold text-slate-100">0</div>
+      <div class="text-xs text-slate-400 mt-1">Connected actors and streams</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Edges</div>
+      <div id="summaryEdges" class="mt-2 text-2xl font-semibold text-slate-100">0</div>
+      <div class="text-xs text-slate-400 mt-1">Current signal paths</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Flow state</div>
+      <div id="summaryFlow" class="mt-2 text-2xl font-semibold text-slate-100">observe</div>
+      <div class="text-xs text-slate-400 mt-1">Low, medium, or gated</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Unseen nudges</div>
+      <div id="summaryNudges" class="mt-2 text-2xl font-semibold text-slate-100">0</div>
+      <div class="text-xs text-slate-400 mt-1">Open actions and reminders</div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Hive topology</div>
+      <div class="text-xs text-slate-400 mt-1">Live node list and connection state.</div>
+      <div id="hiveNodes" class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+    </div>
+
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Hive edges</div>
+      <div class="text-xs text-slate-400 mt-1">Signal flow between the visible nodes.</div>
+      <div id="hiveEdges" class="mt-3 space-y-2"></div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Totals</div>
+      <div id="totals" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+    </div>
+
+    <div class="rounded border border-slate-800 bg-slate-950 p-3">
+      <div class="font-semibold text-slate-100">Messages by kind</div>
+      <div id="messages" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+    </div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Growth curve (per day)</div>
+    <div id="curve" class="text-sm text-slate-200 mt-3 overflow-x-auto"></div>
+    <div id="curveSmoothed" class="text-sm text-slate-200 mt-3 overflow-x-auto"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Regression sentinel</div>
+    <div class="text-xs text-slate-400 mt-1">Flags global metric regressions vs a rolling baseline.</div>
+    <div id="alerts" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Broadcast impact (optional)</div>
+    <div class="text-xs text-slate-400 mt-1">Correlation lens: pre/post metric shifts around wisdom-whisper days.</div>
+    <div id="impact" class="text-sm text-slate-200 mt-3 space-y-1"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Metric trends (trial snapshots)</div>
+    <div class="text-xs text-slate-400 mt-1">Daily averages across all children.</div>
+    <div id="trends" class="text-sm text-slate-200 mt-3 space-y-3"></div>
+  </div>
+
+  <div class="rounded border border-slate-800 bg-slate-950 p-3 mt-4">
+    <div class="font-semibold text-slate-100">Live Neural Map</div>
+    <div class="text-xs text-slate-400 mt-1">Spatial graph of devices, learning flow, and trust state.</div>
+    <div id="liveMeta" class="text-xs text-slate-400 mt-2"></div>
+    <div class="grid grid-cols-1 xl:grid-cols-4 gap-3 mt-2">
+      <div class="xl:col-span-3 rounded border border-slate-800 bg-slate-950 p-3">
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Spatial Hive Map</div>
+          <div class="text-[10px] text-slate-500">Click a node for details</div>
+        </div>
+        <svg id="forceGraph" viewBox="0 0 960 340" class="w-full rounded border border-slate-800 bg-slate-950"></svg>
+      </div>
+      <div class="space-y-3">
+        <div class="rounded border border-slate-800 bg-slate-900 p-3">
+          <div class="text-sm font-semibold text-slate-100">Selected node</div>
+          <div id="nodeDetail" class="mt-3 text-xs text-slate-300 space-y-2">
+            <div class="text-slate-400">Select a node to inspect its role, weight, and flow state.</div>
+          </div>
+        </div>
+        <div class="rounded border border-slate-800 bg-slate-900 p-3">
+          <div class="text-sm font-semibold text-slate-100">Viscosity Gauge</div>
+          <div class="text-xs text-slate-400 mt-1">Digital barometer for runtime resistance.</div>
+          <div class="mt-3 flex items-end gap-3">
+            <div class="relative h-44 w-16 rounded-xl border border-slate-700 bg-slate-950 overflow-hidden">
+              <div id="viscosityFluid" class="absolute inset-x-0 bottom-0 h-1/2 transition-all duration-700"></div>
+            </div>
+            <div class="flex-1 space-y-1 text-xs">
+              <div id="viscosityScore" class="text-slate-100 font-semibold">η 0.00</div>
+              <div id="viscosityBand" class="text-slate-300">Band: n/a</div>
+              <div id="viscosityMode" class="text-slate-300">Prediction: observe</div>
+              <div id="viscosityVitals" class="text-slate-400 mt-2">battery=n/a • cpu=n/a • interruptions=0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function kv(k, v) {
+    return `<div class="flex items-center justify-between gap-3"><span class="text-slate-300">${esc(k)}</span><span class="text-slate-100">${esc(v)}</span></div>`;
+  }
+
+  let liveState = { nodes: [], edges: [], counters: {}, as_of: null, window_minutes: 30 };
+
+  function viscosityTheme(score) {
+    const v = Math.max(0, Math.min(1, Number(score || 0)));
+    if (v >= 0.75) {
+      return { label: 'High', fluid: 'linear-gradient(180deg, rgba(239,68,68,0.95), rgba(127,29,29,0.95))' };
+    }
+    if (v <= 0.35) {
+      return { label: 'Low', fluid: 'linear-gradient(180deg, rgba(56,189,248,0.95), rgba(30,64,175,0.95))' };
+    }
+    return { label: 'Medium', fluid: 'linear-gradient(180deg, rgba(251,191,36,0.95), rgba(146,64,14,0.95))' };
+  }
+
+  function renderViscosityGauge(vs) {
+    const fluid = document.getElementById('viscosityFluid');
+    const scoreEl = document.getElementById('viscosityScore');
+    const bandEl = document.getElementById('viscosityBand');
+    const modeEl = document.getElementById('viscosityMode');
+    const vitalsEl = document.getElementById('viscosityVitals');
+
+    const score = Math.max(0, Math.min(1, Number((vs && vs.score) || 0)));
+    const theme = viscosityTheme(score);
+    const band = String((vs && vs.band) || theme.label || 'Medium');
+    const mode = String((vs && vs.prediction_state) || 'observe');
+    const battery = (vs && vs.battery_level != null) ? `${Number(vs.battery_level).toFixed(1)}%` : 'n/a';
+    const cpu = (vs && vs.cpu_temp_c != null) ? `${Number(vs.cpu_temp_c).toFixed(1)}°C` : 'n/a';
+    const interruptions = Number((vs && vs.recent_interruptions) || 0);
+
+    if (fluid) {
+      fluid.style.height = `${Math.max(6, score * 100)}%`;
+      fluid.style.background = theme.fluid;
+      fluid.style.boxShadow = 'inset 0 0 18px rgba(255,255,255,0.1)';
+    }
+    if (scoreEl) scoreEl.textContent = `η ${score.toFixed(2)}`;
+    if (bandEl) bandEl.textContent = `Band: ${band}`;
+    if (modeEl) modeEl.textContent = `Prediction: ${mode}`;
+    if (vitalsEl) vitalsEl.textContent = `battery=${battery} • cpu=${cpu} • interruptions=${interruptions}`;
+  }
+
+  function graphKindClass(kind) {
+    switch (String(kind || '').toLowerCase()) {
+      case 'actor': return { fill: '#0891b2', stroke: '#67e8f9' };
+      case 'stream': return { fill: '#4f46e5', stroke: '#a5b4fc' };
+      case 'memory': return { fill: '#047857', stroke: '#6ee7b7' };
+      case 'voice': return { fill: '#a21caf', stroke: '#f0abfc' };
+      case 'agent': return { fill: '#b45309', stroke: '#fcd34d' };
+      case 'signal': return { fill: '#334155', stroke: '#cbd5e1' };
+      default: return { fill: '#334155', stroke: '#cbd5e1' };
+    }
+  }
+
+  function nodeKindLabel(kind) {
+    const map = {
+      actor: 'Actor',
+      stream: 'Stream',
+      memory: 'Memory',
+      voice: 'Voice',
+      agent: 'Agent',
+      signal: 'Signal',
+    };
+    return map[String(kind || '').toLowerCase()] || String(kind || 'Node');
+  }
+
+  function nodeKindClass(kind) {
+    switch (String(kind || '').toLowerCase()) {
+      case 'actor': return 'border-cyan-700 bg-cyan-950/30 text-cyan-100';
+      case 'stream': return 'border-indigo-700 bg-indigo-950/30 text-indigo-100';
+      case 'memory': return 'border-emerald-700 bg-emerald-950/30 text-emerald-100';
+      case 'voice': return 'border-fuchsia-700 bg-fuchsia-950/30 text-fuchsia-100';
+      case 'agent': return 'border-amber-700 bg-amber-950/30 text-amber-100';
+      case 'signal': return 'border-slate-700 bg-slate-900 text-slate-100';
+      default: return 'border-slate-700 bg-slate-900 text-slate-100';
+    }
+  }
+
+  function graphLabelForNode(node) {
+    return String((node && node.label) || (node && node.id) || 'Node');
+  }
+
+  function forceInitNode(node, width, height) {
+    const seed = Math.abs(Array.from(String(node.id || '')).reduce((acc, ch) => acc + ch.charCodeAt(0), 0));
+    const angle = (seed % 360) * Math.PI / 180;
+    const radius = 70 + (seed % 180);
+    return {
+      id: String(node.id || ''),
+      kind: String(node.kind || 'signal'),
+      label: String(node.label || node.id || ''),
+      weight: Number(node.weight || 1),
+      x: width * 0.5 + Math.cos(angle) * radius,
+      y: height * 0.5 + Math.sin(angle) * radius,
+      vx: 0,
+      vy: 0,
+    };
+  }
+
+  function forceStep(layout, width, height) {
+    const nodes = Object.values(layout.nodes);
+    const edges = layout.edges;
+    if (!nodes.length) return;
+
+    const centerX = width * 0.5;
+    const centerY = height * 0.5;
+    const repulse = 7000;
+    const spring = 0.014;
+    const damping = 0.84;
+
+    for (let i = 0; i < nodes.length; i += 1) {
+      const a = nodes[i];
+      let fx = (centerX - a.x) * 0.002;
+      let fy = (centerY - a.y) * 0.002;
+
+      for (let j = 0; j < nodes.length; j += 1) {
+        if (i === j) continue;
+        const b = nodes[j];
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        const dist2 = Math.max(60, dx * dx + dy * dy);
+        const force = repulse / dist2;
+        const dist = Math.sqrt(dist2);
+        fx += (dx / dist) * force;
+        fy += (dy / dist) * force;
+      }
+
+      edges.forEach((e) => {
+        const source = layout.nodes[e.source];
+        const target = layout.nodes[e.target];
+        if (!source || !target) return;
+        if (source.id !== a.id && target.id !== a.id) return;
+        const other = source.id === a.id ? target : source;
+        const dx = other.x - a.x;
+        const dy = other.y - a.y;
+        const dist = Math.max(40, Math.sqrt(dx * dx + dy * dy));
+        const desired = 150;
+        const flow = Number(e.flow || 0);
+        const magnitude = (dist - desired) * spring * (1 + Math.min(2.5, flow / 20));
+        fx += (dx / dist) * magnitude;
+        fy += (dy / dist) * magnitude;
+      });
+
+      a.vx = (a.vx + fx) * damping;
+      a.vy = (a.vy + fy) * damping;
+      a.x = Math.min(width - 28, Math.max(28, a.x + a.vx));
+      a.y = Math.min(height - 28, Math.max(28, a.y + a.vy));
+    }
+  }
+
+  const detailState = { memories: [], growth: [], audit: null, loadedAt: null };
+
+  function fmtTime(value) {
+    if (!value) return 'n/a';
+    const text = String(value);
+    return text.endsWith('Z') ? text : `${text}Z`;
+  }
+
+  function detailTag(label, value) {
+    return `<div class="flex items-center justify-between gap-2 text-xs"><span class="text-slate-400">${esc(label)}</span><span class="text-slate-100">${esc(value)}</span></div>`;
+  }
+
+  function normalizeText(value) {
+    return String(value || '').trim().toLowerCase();
+  }
+
+  function joinDetailText(parts) {
+    return parts
+      .flatMap((part) => Array.isArray(part) ? part : [part])
+      .map((part) => normalizeText(part))
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  function detailScopeForNode(node) {
+    const id = normalizeText(node && node.id);
+    const label = normalizeText(node && node.label);
+    const kind = normalizeText(node && node.kind);
+    const tokens = Array.from(new Set([id, label, kind].filter(Boolean)));
+    const focusTerms = (() => {
+      if (id === 'user') return ['self', 'session', 'preference', 'context', 'feedback'];
+      if (id === 'telemetry') return ['telemetry', 'signal', 'metric', 'event', 'device'];
+      if (id === 'growth') return ['growth', 'learning', 'assistant', 'handoff', 'summary'];
+      if (id === 'assistant') return ['assistant', 'handoff', 'recommend', 'summary', 'learn'];
+      if (id === 'nudges') return ['nudge', 'reminder', 'prompt', 'action', 'follow-up'];
+      if (id.startsWith('sig:')) return [id.slice(4), 'signal', 'metric'];
+      return tokens;
+    })();
+    const lane = id === 'user' ? 'episodic' : id === 'telemetry' ? 'semantic' : id === 'nudges' ? 'procedural' : null;
+    return { id, label, kind, tokens, focusTerms, lane };
+  }
+
+  function includesAny(text, tokens) {
+    const haystack = normalizeText(text);
+    return tokens.some((token) => token && haystack.includes(token));
+  }
+
+  function memoryMatchesScope(memory, scope) {
+    const rowText = joinDetailText([
+      memory.memory_key,
+      memory.lane,
+      memory.source,
+      memory.tags,
+      memory.content && JSON.stringify(memory.content),
+    ]);
+    if (scope.lane && normalizeText(memory.lane) === scope.lane) return true;
+    if (scope.id === 'growth' || scope.label.includes('growth')) {
+      return includesAny(rowText, ['growth', 'assistant', 'signal', 'telemetry', 'nudge']);
+    }
+    if (scope.id === 'assistant') {
+      return includesAny(rowText, ['assistant', 'handoff', 'recommend', 'learn', 'summary']);
+    }
+    if (scope.id === 'nudges') {
+      return includesAny(rowText, ['nudge', 'reminder', 'prompt', 'follow-up', 'action']);
+    }
+    if (scope.id.startsWith('sig:')) {
+      return includesAny(rowText, [scope.id.slice(4), 'signal', 'telemetry', 'metric']);
+    }
+    if (scope.id === 'telemetry') {
+      return includesAny(rowText, ['telemetry', 'signal', 'metric', 'device', 'event']);
+    }
+    if (scope.id === 'user') {
+      return includesAny(rowText, ['user', 'self', 'context', 'session', 'preference']);
+    }
+    return includesAny(rowText, scope.focusTerms || scope.tokens);
+  }
+
+  function growthMatchesScope(entry, scope) {
+    const rowText = joinDetailText([
+      entry.domain,
+      entry.metric,
+      entry.notes,
+      entry.proposal && JSON.stringify(entry.proposal),
+      entry.outcome && JSON.stringify(entry.outcome),
+    ]);
+    if (scope.id === 'growth' || scope.label.includes('growth')) return true;
+    if (scope.id === 'assistant') return Boolean(entry.accepted) || includesAny(rowText, ['assistant', 'handoff', 'recommend']);
+    if (scope.id === 'nudges') return includesAny(rowText, ['nudge', 'reminder', 'prompt', 'follow-up']);
+    if (scope.id === 'telemetry') return includesAny(rowText, ['telemetry', 'signal', 'metric', 'device']);
+    if (scope.id === 'user') return includesAny(rowText, ['feedback', 'user', 'preference', 'learning']);
+    if (scope.id.startsWith('sig:')) return includesAny(rowText, [scope.id.slice(4), 'signal', 'metric']);
+    return includesAny(rowText, scope.focusTerms || scope.tokens);
+  }
+
+  function validationMatchesScope(item, scope) {
+    const rowText = joinDetailText([
+      item.metric_name,
+      item.phase,
+      item.method,
+      item.narrative,
+      item.target_kind,
+      item.target_col,
+      item.dataset_digest,
+      item.wisdom_digest,
+    ]);
+    if (scope.id === 'growth' || scope.id === 'assistant') return true;
+    if (scope.id === 'telemetry') return includesAny(rowText, ['metric', 'telemetry', 'signal', 'validation']);
+    if (scope.id === 'user') return includesAny(rowText, ['user', 'feedback', 'preference', 'validation']);
+    if (scope.id.startsWith('sig:')) return includesAny(rowText, [scope.id.slice(4), 'metric', 'trace']);
+    if (scope.id === 'nudges') return includesAny(rowText, ['nudge', 'recommend', 'prompt']);
+    return includesAny(rowText, scope.focusTerms || scope.tokens);
+  }
+
+  function memoryMatchReason(memory, scope) {
+    const lane = normalizeText(memory && memory.lane);
+    if (scope.lane && lane === scope.lane) return `lane=${scope.lane}`;
+    if (scope.id === 'growth' || scope.label.includes('growth')) return 'growth / learning adjacency';
+    if (scope.id === 'assistant') return 'assistant workflow memory';
+    if (scope.id === 'nudges') return 'nudge or reminder memory';
+    if (scope.id.startsWith('sig:')) return `signal lane ${scope.id.slice(4)}`;
+    if (scope.id === 'telemetry') return 'telemetry / signal / metric memory';
+    if (scope.id === 'user') return 'user/session context memory';
+    return 'scope keyword match';
+  }
+
+  function growthMatchReason(entry, scope) {
+    if (scope.id === 'growth' || scope.label.includes('growth')) return 'growth node';
+    if (scope.id === 'assistant' && entry.accepted) return 'accepted learning signal';
+    if (scope.id === 'assistant') return 'assistant workflow';
+    if (scope.id === 'nudges') return 'reminder-aligned growth';
+    if (scope.id === 'telemetry') return 'telemetry / metric growth';
+    if (scope.id === 'user') return 'feedback-aligned growth';
+    if (scope.id.startsWith('sig:')) return `signal type ${scope.id.slice(4)}`;
+    return 'scope keyword match';
+  }
+
+  function validationMatchReason(item, scope) {
+    if (scope.id === 'growth' || scope.id === 'assistant') return 'broad validation lens';
+    if (scope.id === 'telemetry') return 'metric / telemetry validation';
+    if (scope.id === 'user') return 'user / feedback validation';
+    if (scope.id.startsWith('sig:')) return `signal trace ${scope.id.slice(4)}`;
+    if (scope.id === 'nudges') return 'nudge-related validation';
+    return item.metric_name ? `metric ${item.metric_name}` : 'scope keyword match';
+  }
+
+  function renderTopShifts(topShifts) {
+    const shifts = Array.isArray(topShifts) ? topShifts.slice(0, 3) : [];
+    if (!shifts.length) return '<div class="text-[11px] text-slate-500 mt-1">No feature shifts recorded.</div>';
+    const more = Array.isArray(topShifts) && topShifts.length > shifts.length ? topShifts.length - shifts.length : 0;
+    return `<div class="mt-2 rounded border border-slate-800 bg-slate-950/80 p-2 space-y-2">
+      <div class="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.18em] text-slate-500">
+        <span>Top shifts</span>
+        <span>${shifts.length}${more ? ` + ${more} more` : ''}</span>
+      </div>
+      <div class="space-y-1">${shifts.map((shift) => {
+      const feature = shift && shift.feature ? shift.feature : 'feature';
+      const delta = shift && shift.delta_weight != null ? Number(shift.delta_weight).toFixed(4) : '0.0000';
+      const change = shift && shift.change ? shift.change : 'shifted';
+      const kind = shift && shift.feature_kind ? shift.feature_kind : 'unknown';
+      const method = shift && shift.method ? shift.method : 'n/a';
+      const direction = shift && shift.delta_weight != null && Number(shift.delta_weight) > 0 ? '▲' : '▼';
+      return `<div class="rounded border border-slate-800 bg-slate-950/80 px-2 py-1 text-[11px] text-slate-300">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="font-semibold text-slate-100">${esc(feature)}</div>
+            <div class="text-slate-400">${esc(change)} • ${esc(kind)} • ${esc(method)}</div>
+          </div>
+          <div class="font-mono text-slate-100">${esc(direction)} ${esc(delta)}</div>
+        </div>
+      </div>`;
+    }).join('')}</div></div>`;
+  }
+
+  function renderReasoningSummary(reasoning) {
+    const titleEl = document.getElementById('reasoningTitle');
+    const badgeEl = document.getElementById('reasoningBadge');
+    const bodyEl = document.getElementById('reasoningBody');
+    const shiftsEl = document.getElementById('reasoningShifts');
+    const emptyCtaEl = document.getElementById('reasoningEmptyCta');
+    if (!titleEl || !badgeEl || !bodyEl || !shiftsEl || !emptyCtaEl) return;
+
+    const summary = (reasoning && typeof reasoning === 'object') ? reasoning : {};
+    const empty = !!summary.empty;
+    const title = String(summary.title || 'Causal summary');
+    const narrative = String(summary.narrative || '').trim();
+    const metric = String(summary.metric_name || '').trim();
+    const improvement = summary.improvement_frac == null ? null : Number(summary.improvement_frac);
+    const method = String(summary.method || 'n/a');
+    const traceCount = Number(summary.trace_count || 0);
+
+    titleEl.textContent = title;
+    badgeEl.textContent = empty ? 'empty' : (improvement != null && improvement < 0 ? 'regression' : 'improved');
+    bodyEl.textContent = narrative || (empty ? 'No recent causal narrative available.' : `Latest trace for ${metric || 'the selected metric'} via ${method}.`);
+    shiftsEl.innerHTML = renderTopShifts(Array.isArray(summary.top_shifts) ? summary.top_shifts : []);
+    emptyCtaEl.classList.toggle('hidden', !empty);
+
+    if (!empty && improvement != null) {
+      bodyEl.textContent = `${bodyEl.textContent} (${improvement >= 0 ? '+' : ''}${improvement.toFixed(4)} Δ, ${traceCount} trace${traceCount === 1 ? '' : 's'} total).`;
+    }
+  }
+
+  function renderCompactRows(items, renderRow, emptyText) {
+    if (!Array.isArray(items) || !items.length) {
+      return `<div class="text-xs text-slate-400">${esc(emptyText || 'No items yet.')}</div>`;
+    }
+    return `<div class="space-y-2">${items.map(renderRow).join('')}</div>`;
+  }
+
+  function renderDetailInsights(node, state) {
+    const detail = document.getElementById('nodeDetail');
+    if (!detail) return;
+    if (!node) return;
+
+    const scope = detailScopeForNode(node);
+    const scopeLabel = scope.label || scope.id || 'node';
+    const allMemories = Array.isArray(detailState.memories) ? detailState.memories : [];
+    const allGrowth = Array.isArray(detailState.growth) ? detailState.growth : [];
+    const audit = detailState.audit || {};
+    const validation = audit.validation || {};
+    const local = audit.local || {};
+    const hive = audit.hive || {};
+    const recentLocal = Array.isArray(local.recent) ? local.recent.slice(0, 4) : [];
+    const hiveEvidence = hive.evidence || {};
+    const hiveWisdom = hiveEvidence.wisdom_filter || {};
+    const hiveCuriosity = hiveEvidence.curiosity || {};
+    const allSnapshots = Array.isArray(validation.recent_snapshots) ? validation.recent_snapshots : [];
+    const allTraces = Array.isArray(validation.recent_traces) ? validation.recent_traces : [];
+    const memories = allMemories.filter((entry) => memoryMatchesScope(entry, scope)).slice(0, 5);
+    const growth = allGrowth.filter((entry) => growthMatchesScope(entry, scope)).slice(0, 5);
+    const snapshots = allSnapshots.filter((entry) => validationMatchesScope(entry, scope)).slice(0, 3);
+    const traces = allTraces.filter((entry) => validationMatchesScope(entry, scope)).slice(0, 3);
+
+    detail.innerHTML = `
+      <div class="rounded border border-slate-800 bg-slate-950 p-3 space-y-3">
+        <div class="flex items-center justify-between gap-2 text-[10px] uppercase tracking-[0.2em] text-slate-500">
+          <span>Insight cache</span>
+          <span>${esc(detailState.loadedAt ? fmtTime(detailState.loadedAt) : 'loading')}</span>
+        </div>
+        <div class="rounded border border-slate-800 bg-slate-900 p-2 space-y-1">
+          ${detailTag('node', scopeLabel)}
+          ${detailTag('scope', scope.id || scope.kind || 'node')}
+          ${detailTag('lane', scope.lane || 'any')}
+        </div>
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-2">Memory lanes</div>
+          ${renderCompactRows(memories, (m) => `
+            <div class="rounded border border-slate-800 bg-slate-900 p-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-xs font-semibold text-slate-100">${esc(m.memory_key || 'memory')}</div>
+                <div class="text-[10px] text-slate-400">${esc(m.lane || 'episodic')}</div>
+              </div>
+              <div class="mt-1 text-[11px] text-slate-400">strength=${esc(Number(m.strength || 0).toFixed(2))} • ${esc(fmtTime(m.updated_at))}</div>
+              <div class="mt-1 text-[11px] text-slate-500">tags=${esc((m.tags || []).slice(0, 3).join(', ') || 'none')}</div>
+              <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(memoryMatchReason(m, scope))}</div>
+            </div>
+          `, 'No matching memory rows yet.')}
+        </div>
+
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-2">Growth signals</div>
+          ${renderCompactRows(growth, (g) => `
+            <div class="rounded border border-slate-800 bg-slate-900 p-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-xs font-semibold text-slate-100">${esc(g.domain || 'growth')} • ${esc(g.metric || '')}</div>
+                <div class="text-[10px] text-slate-400">${esc(g.accepted ? 'accepted' : 'pending')}</div>
+              </div>
+              <div class="mt-1 text-[11px] text-slate-400">score=${esc(Number(g.score || 0).toFixed(2))} • ${esc(fmtTime(g.created_at))}</div>
+              <div class="mt-1 text-[11px] text-slate-500">${esc(g.notes || '')}</div>
+              <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(growthMatchReason(g, scope))}</div>
+            </div>
+          `, 'No matching growth rows yet.')}
+        </div>
+
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-2">Validation shadow</div>
+          <div class="grid grid-cols-3 gap-2 text-[11px] text-slate-300">
+            ${detailTag('local', String((local && local.n_entries_scanned) || 0))}
+            ${detailTag('matches', String(snapshots.length + traces.length))}
+            ${detailTag('hive', String((hive && hive.evidence && hive.evidence.wisdom_filter && hive.evidence.wisdom_filter.gated) ? 'gated' : 'open'))}
+            ${detailTag('traces', String(traces.length))}
+          </div>
+          <div class="mt-2 space-y-2">
+            ${renderCompactRows(snapshots, (s) => `
+              <div class="rounded border border-slate-800 bg-slate-900 p-2">
+                <div class="text-xs font-semibold text-slate-100">${esc(s.metric_name || 'snapshot')}</div>
+                <div class="mt-1 text-[11px] text-slate-400">phase=${esc(s.phase || 'n/a')} • value=${esc(Number(s.metric_value || 0).toFixed(4))} • ${esc(fmtTime(s.created_at))}</div>
+                <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(validationMatchReason(s, scope))}</div>
+              </div>
+            `, 'No matching snapshots yet.')}
+            ${renderCompactRows(traces, (t) => `
+              <div class="rounded border border-slate-800 bg-slate-900 p-2">
+                <div class="flex items-start justify-between gap-2">
+                  <div>
+                    <div class="text-xs font-semibold text-slate-100">${esc(t.metric_name || 'trace')}</div>
+                    <div class="mt-1 text-[11px] text-slate-400">method=${esc(t.method || 'n/a')} • Δ=${esc(t.improvement_frac == null ? 'n/a' : Number(t.improvement_frac).toFixed(4))}</div>
+                  </div>
+                  <div class="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-slate-300">${esc(t.improvement_frac != null && Number(t.improvement_frac) < 0 ? 'regression' : 'improved')}</div>
+                </div>
+                <div class="mt-2 rounded border border-slate-800 bg-slate-950/80 px-2 py-2 text-[11px] text-slate-400">${esc(t.narrative || '') || 'No causal narrative available.'}</div>
+                ${renderTopShifts(t.top_shifts)}
+                <div class="mt-1 text-[10px] uppercase tracking-[0.14em] text-slate-600">why: ${esc(validationMatchReason(t, scope))}</div>
+              </div>
+            `, 'No matching traces yet.')}
+          </div>
+        </div>
+
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-2">Recent local learning</div>
+          ${renderCompactRows(recentLocal, (r) => `
+            <div class="rounded border border-slate-800 bg-slate-900 p-2">
+              <div class="flex items-center justify-between gap-2">
+                <div class="text-xs font-semibold text-slate-100">${esc(r.concept || 'learning')}</div>
+                <div class="text-[10px] text-slate-400">${esc(r.action || 'confirm')}</div>
+              </div>
+              <div class="mt-1 text-[11px] text-slate-400">${esc(r.hint_tag || 'untagged')} • ${esc(fmtTime(r.created_at))}</div>
+            </div>
+          `, 'No recent local learning entries.')}
+        </div>
+
+        <div>
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-2">Hive consensus</div>
+          <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+            ${detailTag('whispers', String(hiveWisdom.n_whispers_used || 0))}
+            ${detailTag('devices', String(hiveWisdom.n_devices_used || 0))}
+            ${detailTag('support', String(hiveWisdom.min_support_count || 0))}
+            ${detailTag('feedback', String(hiveCuriosity.n_feedback_used || 0))}
+          </div>
+          <div class="mt-2 space-y-2">
+            ${renderCompactRows(Array.isArray(hiveCuriosity.top_concepts) ? hiveCuriosity.top_concepts.slice(0, 4) : [], (c) => `
+              <div class="rounded border border-slate-800 bg-slate-900 p-2">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="text-xs font-semibold text-slate-100">${esc(c.concept || 'concept')}</div>
+                  <div class="text-[10px] text-slate-400">${esc(c.count ?? 0)}</div>
+                </div>
+              </div>
+            `, 'No consensus concepts yet.')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function refreshSelectedNodeDetail() {
+    if (!selectedNodeId || !graphState.nodes[selectedNodeId]) return;
+    graphNodeDetail(graphState.nodes[selectedNodeId], liveState);
+  }
+
+  async function loadDetailInsights() {
+    try {
+      const [memResp, growthResp, auditResp] = await Promise.allSettled([
+        fetch('/api/nexus/memory/list?limit=8', { credentials: 'same-origin' }),
+        fetch('/api/nexus/growth/recent?limit=8', { credentials: 'same-origin' }),
+        fetch('/api/nexus/knowledge/audit?limit=8', { credentials: 'same-origin' }),
+      ]);
+
+      if (memResp.status === 'fulfilled') {
+        const memData = await memResp.value.json().catch(() => ({}));
+        detailState.memories = Array.isArray(memData.memories) ? memData.memories.slice(0, 8) : detailState.memories;
+      }
+      if (growthResp.status === 'fulfilled') {
+        const growthData = await growthResp.value.json().catch(() => ({}));
+        detailState.growth = Array.isArray(growthData.entries) ? growthData.entries.slice(0, 8) : detailState.growth;
+      }
+      if (auditResp.status === 'fulfilled') {
+        const auditData = await auditResp.value.json().catch(() => ({}));
+        detailState.audit = auditData && typeof auditData === 'object' ? auditData : detailState.audit;
+        renderReasoningSummary(auditData.reasoning || {});
+      }
+      detailState.loadedAt = new Date().toISOString();
+      refreshSelectedNodeDetail();
+    } catch (_) {
+      detailState.loadedAt = null;
+    }
+  }
+
+  async function runSyntheticStressTest() {
+    const status = document.getElementById('stressMeta');
+    const button = document.getElementById('runStressTest');
+    if (button) button.disabled = true;
+    if (button) button.textContent = 'Simulating…';
+    if (status) status.textContent = 'Running synthetic CPU spike through the causal trace path…';
+    try {
+      const response = await fetch('/api/nexus/diagnostics/stress-test', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          node_id: 'edge-node-0',
+          spike_label: 'cpu_temp_spike',
+          baseline_cpu_temp_c: 58,
+          trial_cpu_temp_c: 92,
+          baseline_battery_level: 78,
+          trial_battery_level: 70,
+          baseline_interruptions: 1,
+          trial_interruptions: 6,
+          metric_name: 'thermal_headroom',
+          target_col: 'cpu_temp_c',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (status) status.textContent = data.detail ? String(data.detail) : 'Synthetic stress test failed.';
+        return;
+      }
+      const narrative = data && data.narrative ? String(data.narrative) : '';
+      if (status) status.textContent = `${data.message || 'Synthetic stress test recorded.'}${narrative ? ` ${narrative}` : ''}`;
+      renderReasoningSummary({
+        empty: false,
+        title: data.metric_name || 'Causal trace',
+        narrative: data.narrative || data.message || '',
+        metric_name: data.metric_name || '',
+        improvement_frac: data.improvement_frac,
+        method: 'synthetic_stress_test',
+        top_shifts: Array.isArray(data.top_shifts) ? data.top_shifts : [],
+        trace_count: 1,
+      });
+      await Promise.all([loadHealth(), loadLiveState(), loadDetailInsights()]);
+    } catch (error) {
+      if (status) status.textContent = 'Synthetic stress test failed.';
+    } finally {
+      if (button) button.disabled = false;
+      if (button) button.textContent = 'Synthetic CPU spike';
+    }
+  }
+
+  function graphNodeDetail(node, state) {
+    const detail = document.getElementById('nodeDetail');
+    if (!detail) return;
+    if (!node) {
+      detail.innerHTML = '<div class="text-slate-400">Select a node to inspect its role, weight, and flow state.</div>';
+      return;
+    }
+
+    const counters = (state && state.counters) || {};
+    const vis = (state && state.viscosity) || {};
+    const nodeCount = Array.isArray(state && state.nodes) ? state.nodes.length : 0;
+    detail.innerHTML = `
+      <div class="rounded border border-slate-800 bg-slate-950 p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="text-sm font-semibold text-slate-100">${esc(graphLabelForNode(node))}</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] px-2 py-1 rounded border border-slate-700 text-slate-300">${esc(node.kind || 'node')}</div>
+        </div>
+        <div class="mt-2 space-y-1 text-xs text-slate-300">
+          <div>id=${esc(node.id)}</div>
+          <div>weight=${esc(Number(node.weight || 0).toFixed(2))}</div>
+          <div>flow_state=${esc(vis.prediction_state || 'observe')}</div>
+          <div>viscosity=${esc(Number(vis.score || 0).toFixed(2))}</div>
+          <div>signals=${esc(counters.signals || 0)} • growth=${esc(counters.growth_entries || 0)}</div>
+          <div>network_size=${esc(nodeCount)}</div>
+        </div>
+      </div>
+    `;
+
+    renderDetailInsights(node, state);
+  }
+
+  const graphState = { nodes: {}, edges: [] };
+  let selectedNodeId = null;
+
+  function renderForceGraph(state) {
+    const svg = document.getElementById('forceGraph');
+    if (!svg) return;
+    const width = 960;
+    const height = 340;
+
+    const nodes = Array.isArray(state && state.nodes) ? state.nodes : [];
+    const edges = Array.isArray(state && state.edges) ? state.edges : [];
+
+    const nextNodes = {};
+    nodes.forEach((node) => {
+      const id = String(node.id || '');
+      const prev = graphState.nodes[id];
+      nextNodes[id] = prev ? { ...prev, kind: String(node.kind || prev.kind), label: String(node.label || prev.label), weight: Number(node.weight || prev.weight || 1) } : forceInitNode(node, width, height);
+    });
+    graphState.nodes = nextNodes;
+    graphState.edges = edges.map((e) => ({ ...e, source: String(e.source || ''), target: String(e.target || '') }));
+
+    forceStep(graphState, width, height);
+
+    if (!selectedNodeId || !graphState.nodes[selectedNodeId]) {
+      selectedNodeId = Object.keys(graphState.nodes)[0] || null;
+    }
+    const selectedNode = selectedNodeId ? graphState.nodes[selectedNodeId] : null;
+    if (selectedNode) {
+      const detailRenderKey = `${selectedNode.id}|${state && state.as_of ? state.as_of : 'n/a'}`;
+      if (graphState._detailRenderKey !== detailRenderKey) {
+        graphState._detailRenderKey = detailRenderKey;
+        graphNodeDetail(selectedNode, state);
+      }
+    }
+
+    const nodeList = Object.values(graphState.nodes);
+    const edgeMarkup = graphState.edges.map((e, idx) => {
+      const a = graphState.nodes[e.source];
+      const b = graphState.nodes[e.target];
+      if (!a || !b) return '';
+      const flow = Math.max(0, Number(e.flow || 0));
+      const alpha = Math.min(0.85, 0.18 + flow / 60.0);
+      const strokeWidth = Math.min(6, 1 + flow / 18.0);
+      const dash = flow > 0 ? '' : ' stroke-dasharray="4 4"';
+      const marker = `url(#arrow-${idx % 3})`;
+      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(56,189,248,${alpha})" stroke-width="${strokeWidth.toFixed(1)}" ${dash} marker-end="${marker}" />`;
+    }).join('');
+
+    const nodeMarkup = nodeList.map((n) => {
+      const colors = graphKindClass(n.kind);
+      const radius = Math.min(26, 12 + Number(n.weight || 1) * 1.2);
+      const isSelected = selectedNodeId === n.id;
+      const outer = isSelected ? 6 : 0;
+      return `<g class="cursor-pointer" data-node-id="${esc(n.id)}">
+        <circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${(radius + outer).toFixed(1)}" fill="rgba(15,23,42,0.92)" stroke="${isSelected ? '#facc15' : 'rgba(148,163,184,0.35)'}" stroke-width="${isSelected ? 2.2 : 1.0}" />
+        <circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="${radius.toFixed(1)}" fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="1.5" />
+        <text x="${n.x.toFixed(1)}" y="${(n.y + 4).toFixed(1)}" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="ui-sans-serif, system-ui, sans-serif">${esc(n.label || n.id)}</text>
+        <text x="${n.x.toFixed(1)}" y="${(n.y + radius + 14).toFixed(1)}" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="ui-sans-serif, system-ui, sans-serif">${esc(String(n.kind || 'node'))}</text>
+      </g>`;
+    }).join('');
+
+    svg.innerHTML = `
+      <defs>
+        <marker id="arrow-0" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(125,211,252,0.95)"></path>
+        </marker>
+        <marker id="arrow-1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(56,189,248,0.95)"></path>
+        </marker>
+        <marker id="arrow-2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" fill="rgba(167,139,250,0.95)"></path>
+        </marker>
+      </defs>
+      <rect x="0" y="0" width="960" height="340" rx="16" fill="rgba(2,6,23,1)" />
+      ${edgeMarkup}
+      ${nodeMarkup}
+    `;
+
+    svg.querySelectorAll('[data-node-id]').forEach((el) => {
+      el.addEventListener('click', () => {
+        selectedNodeId = String(el.getAttribute('data-node-id') || '');
+        graphNodeDetail(selectedNodeId ? graphState.nodes[selectedNodeId] : null, state);
+      });
+    });
+  }
+
+  function renderHiveTopology(state) {
+    const nodesEl = document.getElementById('hiveNodes');
+    const edgesEl = document.getElementById('hiveEdges');
+    const summaryNodes = document.getElementById('summaryNodes');
+    const summaryEdges = document.getElementById('summaryEdges');
+    const summaryFlow = document.getElementById('summaryFlow');
+    const summaryNudges = document.getElementById('summaryNudges');
+
+    if (!nodesEl || !edgesEl || !summaryNodes || !summaryEdges || !summaryFlow || !summaryNudges) return;
+
+    const nodes = Array.isArray(state && state.nodes) ? state.nodes : [];
+    const edges = Array.isArray(state && state.edges) ? state.edges : [];
+    const viscosity = state && state.viscosity ? state.viscosity : {};
+    const counters = state && state.counters ? state.counters : {};
+
+    summaryNodes.textContent = String(nodes.length);
+    summaryEdges.textContent = String(edges.length);
+    summaryFlow.textContent = String(viscosity.prediction_state || 'observe');
+    summaryNudges.textContent = String(counters.unseen_nudges || 0);
+
+    nodesEl.innerHTML = nodes.length ? nodes.map((n) => {
+      const weight = Number(n.weight || 0).toFixed(1);
+      return `<div class="rounded border ${nodeKindClass(n.kind)} p-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm font-semibold">${esc(n.label || n.id)}</div>
+          <div class="text-[10px] uppercase tracking-[0.2em] opacity-80">${esc(nodeKindLabel(n.kind))}</div>
+        </div>
+        <div class="mt-2 text-xs opacity-90">id=${esc(n.id)}</div>
+        <div class="mt-1 text-xs opacity-90">weight=${esc(weight)}</div>
+      </div>`;
+    }).join('') : '<div class="text-xs text-slate-400">No nodes visible.</div>';
+
+    edgesEl.innerHTML = edges.length ? edges.map((e) => {
+      return `<div class="rounded border border-slate-800 bg-slate-900 px-3 py-2">
+        <div class="flex items-center justify-between gap-3 text-sm">
+          <span class="text-slate-200">${esc(e.source)} → ${esc(e.target)}</span>
+          <span class="text-slate-400">${esc(e.kind || 'signal')} • flow=${esc(Number(e.flow || 0).toFixed(1))}</span>
+        </div>
+      </div>`;
+    }).join('') : '<div class="text-xs text-slate-400">No edges visible.</div>';
+  }
+
+  async function loadLiveState() {
+    const meta = document.getElementById('liveMeta');
+    try {
+      const r = await fetch('/api/nexus/live/state?window_minutes=30', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        if (meta) meta.textContent = 'Live map unavailable.';
+        return;
+      }
+      liveState = d || {};
+      if (meta) {
+        const c = liveState.counters || {};
+        const vs = liveState.viscosity || {};
+        meta.textContent = `as_of=${liveState.as_of || 'n/a'} • signals=${c.signals || 0} • growth=${c.growth_entries || 0} • unseen_nudges=${c.unseen_nudges || 0} • η=${Number(vs.score || 0).toFixed(2)} (${vs.prediction_state || 'observe'})`;
+      }
+      renderViscosityGauge(liveState.viscosity || {});
+      renderHiveTopology(liveState);
+      renderForceGraph(liveState);
+    } catch (_) {
+      if (meta) meta.textContent = 'Live map unavailable.';
+      renderViscosityGauge({});
+      renderHiveTopology({});
+      renderForceGraph({});
+    }
+  }
+
+  function table(points) {
+    const rows = points.map((p) => {
+      return `<tr class="border-t border-slate-800">
+        <td class="py-1 pr-3 text-xs text-slate-400">${esc(p.date)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(p.n_global_updates)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(p.n_wisdom_whispers)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(p.n_curiosity_concepts)}</td>
+      </tr>`;
+    }).join('');
+
+    return `<table class="min-w-full">
+      <thead>
+        <tr class="text-xs text-slate-400">
+          <th class="text-left py-1 pr-3">day</th>
+          <th class="text-left py-1 pr-3">global_updates</th>
+          <th class="text-left py-1 pr-3">wisdom_whispers</th>
+          <th class="text-left py-1 pr-3">curiosity_concepts</th>
+        </tr>
+      </thead>
+      <tbody>${rows || ''}</tbody>
+    </table>`;
+  }
+
+  function tableSmoothed(points) {
+    const rows = points.map((p) => {
+      return `<tr class="border-t border-slate-800">
+        <td class="py-1 pr-3 text-xs text-slate-400">${esc(p.date)}</td>
+        <td class="py-1 pr-3 text-xs">${esc(Number(p.global_updates_ma).toFixed(3))}</td>
+        <td class="py-1 pr-3 text-xs">${esc(Number(p.wisdom_whispers_ma).toFixed(3))}</td>
+        <td class="py-1 pr-3 text-xs">${esc(Number(p.curiosity_concepts_ma).toFixed(3))}</td>
+      </tr>`;
+    }).join('');
+
+    return `<table class="min-w-full">
+      <thead>
+        <tr class="text-xs text-slate-400">
+          <th class="text-left py-1 pr-3">day</th>
+          <th class="text-left py-1 pr-3">global_updates_ma</th>
+          <th class="text-left py-1 pr-3">wisdom_whispers_ma</th>
+          <th class="text-left py-1 pr-3">curiosity_concepts_ma</th>
+        </tr>
+      </thead>
+      <tbody>${rows || ''}</tbody>
+    </table>`;
+  }
+
+  async function loadHealth() {
+    const meta = document.getElementById('healthMeta');
+    const totalsEl = document.getElementById('totals');
+    const msgsEl = document.getElementById('messages');
+    const curveEl = document.getElementById('curve');
+    const curveSmoothEl = document.getElementById('curveSmoothed');
+    const alertsEl = document.getElementById('alerts');
+    const impactEl = document.getElementById('impact');
+    const trendsEl = document.getElementById('trends');
+
+    meta.textContent = 'Loading…';
+    totalsEl.innerHTML = '';
+    msgsEl.innerHTML = '';
+    curveEl.innerHTML = '';
+    curveSmoothEl.innerHTML = '';
+    alertsEl.innerHTML = '';
+    impactEl.innerHTML = '';
+    trendsEl.innerHTML = '';
+
+    const windowDays = document.getElementById('windowDays').value || '30';
+    const includeRegression = !!document.getElementById('optRegression').checked;
+    const includeSmoothing = !!document.getElementById('optSmoothing').checked;
+    const smoothingWindow = document.getElementById('smoothingWindow').value || '7';
+    const includeBroadcast = !!document.getElementById('optBroadcast').checked;
+
+    try {
+      const qp = new URLSearchParams({
+        window_days: String(windowDays),
+        include_regression: includeRegression ? 'true' : 'false',
+        include_smoothing: includeSmoothing ? 'true' : 'false',
+        smoothing_window: String(smoothingWindow),
+        include_broadcast_impact: includeBroadcast ? 'true' : 'false',
+      });
+      const r = await fetch(`/api/hive/health?${qp.toString()}`, { credentials: 'same-origin' });
+      const data = await r.json();
+      if (!r.ok) {
+        meta.textContent = (data && data.detail) ? String(data.detail) : 'Failed to load hive health.';
+        return;
+      }
+
+      meta.textContent = `As of: ${data.as_of || 'unknown'} • window=${data.window_days || windowDays}d`;
+
+      const totals = (data.totals && typeof data.totals === 'object') ? data.totals : {};
+      const totalsKeys = Object.keys(totals);
+      totalsEl.innerHTML = totalsKeys.length ? totalsKeys.map((k) => kv(k, totals[k])).join('') : '<div class="text-xs text-slate-400">No totals.</div>';
+
+      const msgs = (data.messages_by_kind && typeof data.messages_by_kind === 'object') ? data.messages_by_kind : {};
+      const msgKeys = Object.keys(msgs).sort((a, b) => (msgs[b] || 0) - (msgs[a] || 0));
+      msgsEl.innerHTML = msgKeys.length ? msgKeys.map((k) => kv(k, msgs[k])).join('') : '<div class="text-xs text-slate-400">No messages.</div>';
+
+      const curve = Array.isArray(data.growth_curve) ? data.growth_curve : [];
+      curveEl.innerHTML = curve.length ? table(curve.slice(-90)) : '<div class="text-xs text-slate-400">No updates in window.</div>';
+
+      const smooth = Array.isArray(data.growth_curve_smoothed) ? data.growth_curve_smoothed : [];
+      curveSmoothEl.innerHTML = smooth.length ? `<div class="text-xs text-slate-400 mb-2">Smoothed (${esc(smoothingWindow)}d rolling mean)</div>${tableSmoothed(smooth.slice(-90))}` : '';
+
+      const alerts = Array.isArray(data.regression_alerts) ? data.regression_alerts : [];
+      if (!includeRegression) {
+        alertsEl.innerHTML = '<div class="text-xs text-slate-400">Regression sentinel disabled.</div>';
+      } else if (!alerts.length) {
+        alertsEl.innerHTML = '<div class="text-xs text-slate-400">No regressions detected in window.</div>';
+      } else {
+        alertsEl.innerHTML = alerts.slice(0, 50).map((a) => {
+          const sev = (a.severity === 'critical') ? 'text-rose-300' : 'text-amber-300';
+          const deltaPct = Number(a.delta_pct || 0) * 100.0;
+          return `<div class="flex items-center justify-between gap-3 text-xs">
+            <span class="text-slate-300">${esc(a.metric_name)} • ${esc(a.date)} • baseline=${esc(Number(a.baseline_avg).toFixed(6))} (n=${esc(a.baseline_n)})</span>
+            <span class="${sev}">last=${esc(Number(a.last_avg).toFixed(6))} (n=${esc(a.last_n)}) • Δ=${esc(Number(a.delta).toFixed(6))} (${esc(deltaPct.toFixed(2))}%)</span>
+          </div>`;
+        }).join('');
+      }
+
+      const impact = Array.isArray(data.broadcast_impact) ? data.broadcast_impact : [];
+      if (!includeBroadcast) {
+        impactEl.innerHTML = '<div class="text-xs text-slate-400">Broadcast impact disabled.</div>';
+      } else if (!impact.length) {
+        impactEl.innerHTML = '<div class="text-xs text-slate-400">No broadcast-impact events computed.</div>';
+      } else {
+        impactEl.innerHTML = impact.slice(0, 50).map((e) => {
+          const deltaPct = Number(e.delta_pct || 0) * 100.0;
+          return `<div class="flex items-center justify-between gap-3 text-xs">
+            <span class="text-slate-300">${esc(e.broadcast_date)} • ${esc(e.metric_name)} • pre=${esc(Number(e.pre_avg).toFixed(6))} (n=${esc(e.pre_n)})</span>
+            <span class="text-slate-100">post=${esc(Number(e.post_avg).toFixed(6))} (n=${esc(e.post_n)}) • Δ=${esc(Number(e.delta).toFixed(6))} (${esc(deltaPct.toFixed(2))}%)</span>
+          </div>`;
+        }).join('');
+      }
+
+      const trends = Array.isArray(data.metric_trends) ? data.metric_trends : [];
+      if (!trends.length) {
+        trendsEl.innerHTML = '<div class="text-xs text-slate-400">No metric snapshots found in window.</div>';
+      } else {
+        trendsEl.innerHTML = trends.map((t) => {
+          const points = Array.isArray(t.points) ? t.points : [];
+          const last = points.length ? points[points.length - 1] : null;
+          const head = last ? `last_avg=${Number(last.avg).toFixed(6)} (n=${last.n})` : 'no points';
+          const rows = points.slice(-14).map((p) => `<div class="flex items-center justify-between gap-3 text-xs"><span class="text-slate-400">${esc(p.date)}</span><span>${esc(Number(p.avg).toFixed(6))}</span><span class="text-slate-400">n=${esc(p.n)}</span></div>`).join('');
+          return `<div class="rounded border border-slate-800 bg-slate-900 p-2">
+            <div class="text-xs text-slate-400">${esc(t.metric_name || 'metric')} • ${esc(head)}</div>
+            <div class="mt-2 space-y-1">${rows || '<div class="text-xs text-slate-400">No points.</div>'}</div>
+          </div>`;
+        }).join('');
+      }
+
+    } catch (e) {
+      meta.textContent = 'Failed to load hive health.';
+    }
+  }
+
+  document.getElementById('refreshHealth').onclick = loadHealth;
+  document.getElementById('runStressTest').onclick = runSyntheticStressTest;
+  document.getElementById('windowDays').onchange = loadHealth;
+  document.getElementById('optRegression').onchange = loadHealth;
+  document.getElementById('optSmoothing').onchange = loadHealth;
+  document.getElementById('smoothingWindow').onchange = loadHealth;
+  document.getElementById('optBroadcast').onchange = loadHealth;
+  loadHealth();
+  loadLiveState();
+  loadDetailInsights();
+  setInterval(loadLiveState, 5000);
+  setInterval(loadDetailInsights, 30000);
+  setInterval(() => { renderForceGraph(liveState); }, 150);
+</script>
+{% endblock %}

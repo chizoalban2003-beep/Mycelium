@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ app_name }}</title>
+    <meta name="theme-color" content="#020617" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="{{ app_name }}" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="/static/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/static/icon.svg" />
+    <script>
+      (function applyThemeEarly() {
+        try {
+          const saved = localStorage.getItem('mycelium-theme');
+          if (saved) document.documentElement.dataset.theme = saved;
+        } catch (e) {}
+      })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body { transition: background-color 180ms ease, color 180ms ease; }
+      body[data-theme="midnight"] { --shell-bg: #020617; --shell-fg: #e2e8f0; --shell-glow-a: rgba(34, 211, 238, 0.10); --shell-glow-b: rgba(129, 140, 248, 0.08); color-scheme: dark; }
+      body[data-theme="aurora"] { --shell-bg: #07111f; --shell-fg: #e0f2fe; --shell-glow-a: rgba(16, 185, 129, 0.14); --shell-glow-b: rgba(34, 211, 238, 0.12); color-scheme: dark; }
+      body[data-theme="paper"] { --shell-bg: #f8fafc; --shell-fg: #0f172a; --shell-glow-a: rgba(14, 165, 233, 0.12); --shell-glow-b: rgba(99, 102, 241, 0.10); color-scheme: light; }
+      body { background-color: var(--shell-bg, #020617); color: var(--shell-fg, #e2e8f0); background-image: radial-gradient(circle at 10% 10%, var(--shell-glow-a, rgba(34, 211, 238, 0.10)), transparent 30%), radial-gradient(circle at 85% 15%, var(--shell-glow-b, rgba(129, 140, 248, 0.08)), transparent 35%); }
+      .skip-link { position: absolute; left: 1rem; top: 0.5rem; transform: translateY(-200%); transition: transform 120ms ease; z-index: 60; }
+      .skip-link:focus { transform: translateY(0); }
+      .content-auto { content-visibility: auto; contain-intrinsic-size: 1px 900px; }
+      @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
+    </style>
+  </head>
+  <body data-theme="midnight" class="bg-slate-950 text-slate-100">
+    <a href="#content" class="skip-link rounded bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950">Skip to content</a>
+    <div class="max-w-5xl mx-auto px-4 py-6">
+      <div class="flex items-center justify-between mb-6">
+        <div class="flex items-center gap-4">
+          <div>
+            <a href="/projects" class="text-xl font-semibold tracking-wide">{{ app_name }}</a>
+            <div class="text-[11px] uppercase tracking-[0.25em] text-cyan-300/90">{{ system_motto }}</div>
+            <div class="text-[10px] uppercase tracking-[0.3em] text-slate-400">A transparent human↔AI companion</div>
+          </div>
+          {% if user %}
+            <a href="/device" class="text-sm text-cyan-300 hover:text-cyan-200">Device</a>
+            <a href="/demo" class="text-sm text-cyan-300 hover:text-cyan-200">Demo</a>
+            <a href="/assistant/profile" class="text-sm text-slate-300 hover:text-white">Assistant</a>
+            <a href="/chat" class="text-sm text-slate-300 hover:text-white">Chat</a>
+            <a href="/predict" class="text-sm text-slate-300 hover:text-white">Predict</a>
+            <a href="/curiosity" class="text-sm text-slate-300 hover:text-white">Curiosity</a>
+            <a href="/knowledge" class="text-sm text-slate-300 hover:text-white">Knowledge</a>
+            <a href="/platform" class="text-sm text-slate-300 hover:text-white">Platform</a>
+            <a href="/hive/health" class="text-sm text-slate-300 hover:text-white">Hive Health</a>
+            <span id="identityBadge" class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700"></span>
+            <span id="organismBadge" class="text-xs px-2 py-1 rounded bg-cyan-950 text-cyan-100 border border-cyan-900">η -- · booting</span>
+          {% endif %}
+        </div>
+        {% if user %}
+          <div class="flex items-center gap-2">
+            <button id="themeToggle" type="button" aria-label="Switch theme" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">Theme</button>
+            <button id="notificationsToggle" type="button" aria-label="Open notifications" aria-expanded="false" class="relative rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">
+              🔔
+              <span id="notificationsCount" class="absolute -right-1 -top-1 hidden rounded-full bg-cyan-400 px-1.5 py-0.5 text-[10px] font-semibold text-slate-950"></span>
+            </button>
+            <form action="/logout" method="post">
+              <button class="text-sm text-slate-300 hover:text-white" type="submit">Logout</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if user %}
+      <div id="nudgeBanner" class="hidden mb-6 rounded border border-slate-800 bg-slate-900 p-4" role="status" aria-live="polite">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <div id="nudgeTitle" class="font-semibold text-slate-100"></div>
+            <div id="nudgeMessage" class="text-sm text-slate-300 mt-1"></div>
+            <div id="nudgeActions" class="hidden mt-3"></div>
+            <div id="nudgeHints" class="hidden mt-3"></div>
+            <div id="nudgeHintStatus" class="hidden mt-2 text-xs text-slate-400"></div>
+          </div>
+          <button id="nudgeDismiss" class="text-sm text-slate-300 hover:text-white">Dismiss</button>
+        </div>
+      </div>
+      <div id="notificationsPanel" class="hidden mb-6 rounded border border-slate-800 bg-slate-900 p-4" aria-hidden="true">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Notifications</div>
+            <div class="text-sm text-slate-300">Recent nudges and activity updates</div>
+          </div>
+          <button id="notificationsClose" type="button" class="text-sm text-slate-400 hover:text-white">Close</button>
+        </div>
+        <div id="notificationsList" class="mt-3 space-y-2"></div>
+      </div>
+      {% endif %}
+      <main id="content" tabindex="-1">
+      {% block content %}{% endblock %}
+      </main>
+    </div>
+
+    {% if user %}
+    <script>
+      const themeOrder = ['midnight', 'aurora', 'paper'];
+      const themeTitles = { midnight: 'Midnight', aurora: 'Aurora', paper: 'Paper' };
+
+      function applyTheme(theme) {
+        const nextTheme = themeOrder.includes(theme) ? theme : 'midnight';
+        document.documentElement.dataset.theme = nextTheme;
+        document.body.dataset.theme = nextTheme;
+        try { localStorage.setItem('mycelium-theme', nextTheme); } catch (e) {}
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta) {
+          themeMeta.setAttribute('content', nextTheme === 'paper' ? '#f8fafc' : nextTheme === 'aurora' ? '#07111f' : '#020617');
+        }
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) themeToggle.textContent = `Theme: ${themeTitles[nextTheme] || nextTheme}`;
+      }
+
+      function nextTheme(currentTheme) {
+        const idx = themeOrder.indexOf(currentTheme);
+        return themeOrder[(idx + 1) % themeOrder.length];
+      }
+
+      // Register a minimal service worker so Android can install this as an app.
+      (function registerSW() {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+          }
+        } catch (e) {}
+      })();
+
+      applyTheme(document.documentElement.dataset.theme || 'midnight');
+
+      // Best-effort: request notification permission once.
+      (function maybeAskNotif() {
+        try {
+          if (!('Notification' in window)) return;
+          if (Notification.permission !== 'default') return;
+          // Only prompt on a real user session.
+          Notification.requestPermission().catch(() => {});
+        } catch (e) {}
+      })();
+
+      async function loadIdentityBadge() {
+        const el = document.getElementById('identityBadge');
+        if (!el) return;
+        try {
+          const r = await fetch('/api/nexus/identity/presentation', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          if (!data || !data.display_name) return;
+          el.textContent = `${data.display_name} • ${data.mood}`;
+        } catch (e) {
+          return;
+        }
+      }
+
+      async function loadOrganismBadge() {
+        const el = document.getElementById('organismBadge');
+        if (!el) return;
+        try {
+          const r = await fetch('/api/nexus/live/state?window_minutes=30', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const vis = data && data.viscosity ? data.viscosity : null;
+          const score = vis && vis.score != null ? Number(vis.score) : null;
+          const state = vis && vis.prediction_state ? String(vis.prediction_state) : 'observe';
+          if (score == null || Number.isNaN(score)) return;
+          const label = state === 'flow' ? 'flow' : state === 'gated' ? 'gated' : 'observe';
+          el.textContent = `η ${score.toFixed(2)} · ${label}`;
+          el.classList.remove('bg-cyan-950', 'text-cyan-100', 'border-cyan-900', 'bg-emerald-950', 'text-emerald-100', 'border-emerald-900', 'bg-rose-950', 'text-rose-100', 'border-rose-900');
+          if (state === 'flow') {
+            el.classList.add('bg-emerald-950', 'text-emerald-100', 'border-emerald-900');
+          } else if (state === 'gated') {
+            el.classList.add('bg-rose-950', 'text-rose-100', 'border-rose-900');
+          } else {
+            el.classList.add('bg-cyan-950', 'text-cyan-100', 'border-cyan-900');
+          }
+        } catch (e) {
+          return;
+        }
+      }
+
+      async function loadNudgeBanner() {
+        const banner = document.getElementById('nudgeBanner');
+        const titleEl = document.getElementById('nudgeTitle');
+        const msgEl = document.getElementById('nudgeMessage');
+        const actionsEl = document.getElementById('nudgeActions');
+        const hintsEl = document.getElementById('nudgeHints');
+        const statusEl = document.getElementById('nudgeHintStatus');
+        const dismissBtn = document.getElementById('nudgeDismiss');
+        if (!banner || !titleEl || !msgEl || !actionsEl || !dismissBtn || !hintsEl || !statusEl) return;
+
+        try {
+          const r = await fetch('/api/nexus/nudges/recent?limit=1&unseen_only=true', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const n = (data && data.nudges && data.nudges.length) ? data.nudges[0] : null;
+          if (!n) return;
+
+          // Optional: show a local OS notification (works when the page is open).
+          try {
+            if ('Notification' in window && Notification.permission === 'granted') {
+              const last = localStorage.getItem('lastNotifiedNudgeId');
+              if (String(last || '') !== String(n.id || '')) {
+                new Notification(n.title || 'Nudge', { body: n.message || '' });
+                localStorage.setItem('lastNotifiedNudgeId', String(n.id || ''));
+              }
+            }
+          } catch (e) {}
+
+          titleEl.textContent = n.title || 'Nudge';
+          msgEl.textContent = n.message || '';
+
+          // Render any Hive hints (curiosity tags) with confirm/correct actions.
+          const hints = (n.payload && Array.isArray(n.payload.curiosity_hints)) ? n.payload.curiosity_hints : [];
+          const actions = (n.payload && Array.isArray(n.payload.actions)) ? n.payload.actions : [];
+          actionsEl.innerHTML = '';
+          actionsEl.classList.add('hidden');
+          hintsEl.innerHTML = '';
+          hintsEl.classList.add('hidden');
+          statusEl.textContent = '';
+          statusEl.classList.add('hidden');
+
+          if (actions.length) {
+            const header = document.createElement('div');
+            header.className = 'text-xs text-slate-400';
+            header.textContent = 'Assistant actions:';
+            actionsEl.appendChild(header);
+
+            actions.slice(0, 4).forEach((a) => {
+              const actionId = String((a && a.action_id) || '').slice(0, 64);
+              if (!actionId) return;
+
+              const row = document.createElement('div');
+              row.className = 'mt-2 flex flex-wrap items-center gap-2';
+
+              const label = document.createElement('span');
+              label.className = 'text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700';
+              label.textContent = String((a && a.title) || actionId).slice(0, 72);
+              row.appendChild(label);
+
+              const btnApprove = document.createElement('button');
+              btnApprove.className = 'text-xs px-2 py-1 rounded bg-emerald-900/50 hover:bg-emerald-800/60 border border-emerald-700';
+              btnApprove.textContent = 'Approve';
+
+              const btnReject = document.createElement('button');
+              btnReject.className = 'text-xs px-2 py-1 rounded bg-rose-900/40 hover:bg-rose-800/50 border border-rose-700';
+              btnReject.textContent = 'Reject';
+
+              async function runAction(decision) {
+                btnApprove.disabled = true;
+                btnReject.disabled = true;
+                statusEl.textContent = '';
+                statusEl.classList.add('hidden');
+                try {
+                  const r3 = await fetch('/api/nexus/telemetry/assistant/action', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      nudge_id: n.id,
+                      action_id: actionId,
+                      decision: String(decision || 'approve')
+                    })
+                  });
+                  const d3 = await r3.json().catch(() => ({}));
+                  if (!r3.ok) {
+                    statusEl.textContent = (d3 && d3.detail) ? String(d3.detail) : 'Action failed.';
+                    statusEl.classList.remove('hidden');
+                    return;
+                  }
+                  statusEl.textContent = String((d3 && d3.detail) || 'Action recorded.');
+                  statusEl.classList.remove('hidden');
+                  await loadNudgeBanner();
+                } catch (e) {
+                  statusEl.textContent = 'Action failed.';
+                  statusEl.classList.remove('hidden');
+                } finally {
+                  btnApprove.disabled = false;
+                  btnReject.disabled = false;
+                }
+              }
+
+              btnApprove.onclick = () => runAction('approve');
+              btnReject.onclick = () => runAction('reject');
+              row.appendChild(btnApprove);
+              row.appendChild(btnReject);
+
+              actionsEl.appendChild(row);
+            });
+
+            actionsEl.classList.remove('hidden');
+          }
+
+          if (hints.length) {
+            const header = document.createElement('div');
+            header.className = 'text-xs text-slate-400';
+            header.textContent = 'Hive hints (confirm or correct):';
+            hintsEl.appendChild(header);
+
+            hints.slice(0, 6).forEach((hintTag) => {
+              const row = document.createElement('div');
+              row.className = 'mt-2 flex flex-wrap items-center gap-2';
+
+              const tag = document.createElement('span');
+              tag.className = 'text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700';
+              tag.textContent = String(hintTag || '').slice(0, 64);
+              row.appendChild(tag);
+
+              const input = document.createElement('input');
+              input.type = 'text';
+              input.value = String(hintTag || '').slice(0, 120);
+              input.placeholder = 'Concept (e.g., Rust programming)';
+              input.className = 'text-sm bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100 w-64';
+              row.appendChild(input);
+
+              const shareWrap = document.createElement('label');
+              shareWrap.className = 'text-xs text-slate-400 flex items-center gap-1 select-none';
+              const share = document.createElement('input');
+              share.type = 'checkbox';
+              share.className = 'accent-slate-300';
+              share.checked = false;
+              shareWrap.appendChild(share);
+              const shareTxt = document.createElement('span');
+              shareTxt.textContent = 'Share to Hive';
+              shareWrap.appendChild(shareTxt);
+              row.appendChild(shareWrap);
+
+              async function sendFeedback(action) {
+                statusEl.textContent = '';
+                statusEl.classList.add('hidden');
+
+                const concept = (input.value || '').trim();
+                if (!concept) {
+                  statusEl.textContent = 'Please enter a concept.';
+                  statusEl.classList.remove('hidden');
+                  return;
+                }
+
+                btnConfirm.disabled = true;
+                btnCorrect.disabled = true;
+                try {
+                  const r2 = await fetch('/api/nexus/feedback/ionize', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      project_id: n.project_id || null,
+                      nudge_id: n.id,
+                      hint_tag: String(hintTag || ''),
+                      action: String(action || 'confirm'),
+                      concept_text: concept,
+                      export_to_hive: !!share.checked,
+                    })
+                  });
+                  const data2 = await r2.json().catch(() => ({}));
+                  if (!r2.ok) {
+                    statusEl.textContent = (data2 && data2.detail) ? String(data2.detail) : 'Failed to save feedback.';
+                    statusEl.classList.remove('hidden');
+                    return;
+                  }
+                  if (!!share.checked) {
+                    if (data2.exported_to_hive) {
+                      const anon = data2.export_redacted ? ' (shared • anonymized)' : ' (shared)';
+                      statusEl.textContent = `Saved${anon}.`;
+                    } else {
+                      const reason = String(data2.export_reason || 'not_exported');
+                      if (reason === 'export_disabled_by_policy') {
+                        statusEl.textContent = 'Saved locally. Hive sharing is disabled by parental policy.';
+                      } else if (reason === 'hive_disabled') {
+                        statusEl.textContent = 'Saved locally. Hive is disabled in settings.';
+                      } else if (reason === 'blocked_by_privacy_membrane') {
+                        statusEl.textContent = 'Saved locally. Export blocked by privacy membrane.';
+                      } else {
+                        statusEl.textContent = 'Saved locally. Export failed.';
+                      }
+                    }
+                  } else {
+                    statusEl.textContent = 'Saved locally.';
+                  }
+                  statusEl.classList.remove('hidden');
+                } catch (e) {
+                  statusEl.textContent = 'Failed to save feedback.';
+                  statusEl.classList.remove('hidden');
+                } finally {
+                  btnConfirm.disabled = false;
+                  btnCorrect.disabled = false;
+                }
+              }
+
+              const btnConfirm = document.createElement('button');
+              btnConfirm.className = 'text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700';
+              btnConfirm.textContent = 'Confirm';
+              btnConfirm.onclick = () => sendFeedback('confirm');
+              row.appendChild(btnConfirm);
+
+              const btnCorrect = document.createElement('button');
+              btnCorrect.className = 'text-xs px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700';
+              btnCorrect.textContent = 'Correct';
+              btnCorrect.onclick = () => sendFeedback('correct');
+              row.appendChild(btnCorrect);
+
+              hintsEl.appendChild(row);
+            });
+
+            hintsEl.classList.remove('hidden');
+          }
+
+          banner.classList.remove('hidden');
+
+          dismissBtn.onclick = async () => {
+            try {
+              await fetch('/api/nexus/nudges/ack', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nudge_id: n.id })
+              });
+            } catch (e) {}
+            banner.classList.add('hidden');
+          };
+        } catch (e) {
+          return;
+        }
+      }
+
+      async function loadNotifications() {
+        const panel = document.getElementById('notificationsPanel');
+        const list = document.getElementById('notificationsList');
+        const countEl = document.getElementById('notificationsCount');
+        const toggle = document.getElementById('notificationsToggle');
+        if (!panel || !list || !countEl || !toggle) return;
+        try {
+          const r = await fetch('/api/nexus/nudges/recent?limit=5&unseen_only=false', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const items = Array.isArray(data && data.nudges) ? data.nudges : [];
+          const unread = items.filter((item) => !item.seen_at).length;
+          if (unread > 0) {
+            countEl.textContent = String(unread);
+            countEl.classList.remove('hidden');
+          } else {
+            countEl.classList.add('hidden');
+          }
+
+          list.innerHTML = '';
+          if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'rounded border border-slate-800 bg-slate-950 p-3 text-sm text-slate-500';
+            empty.textContent = 'No recent notifications.';
+            list.appendChild(empty);
+            return;
+          }
+
+          items.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'rounded border border-slate-800 bg-slate-950 p-3';
+            row.innerHTML = `
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="font-medium text-slate-100">${String(item.title || 'Notification')}</div>
+                  <div class="mt-1 text-sm text-slate-300">${String(item.message || '')}</div>
+                  <div class="mt-1 text-xs text-slate-500">${String(item.created_at || '')}</div>
+                </div>
+                <button type="button" class="rounded border border-slate-700 px-2 py-1 text-xs text-slate-300 hover:bg-slate-800">Mark seen</button>
+              </div>`;
+            const btn = row.querySelector('button');
+            btn.addEventListener('click', async () => {
+              try {
+                await fetch('/api/nexus/nudges/ack', {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ nudge_id: item.id })
+                });
+              } catch (e) {}
+              await loadNotifications();
+              await loadNudgeBanner();
+            });
+            list.appendChild(row);
+          });
+        } catch (e) {}
+      }
+
+      const notificationsToggle = document.getElementById('notificationsToggle');
+      const notificationsPanel = document.getElementById('notificationsPanel');
+      const notificationsClose = document.getElementById('notificationsClose');
+      if (notificationsToggle && notificationsPanel) {
+        notificationsToggle.addEventListener('click', async () => {
+          const open = notificationsPanel.classList.toggle('hidden') === false;
+          notificationsPanel.setAttribute('aria-hidden', String(!open));
+          notificationsToggle.setAttribute('aria-expanded', String(open));
+          if (open) await loadNotifications();
+        });
+      }
+      if (notificationsClose && notificationsPanel && notificationsToggle) {
+        notificationsClose.addEventListener('click', () => {
+          notificationsPanel.classList.add('hidden');
+          notificationsPanel.setAttribute('aria-hidden', 'true');
+          notificationsToggle.setAttribute('aria-expanded', 'false');
+        });
+      }
+
+      const themeToggle = document.getElementById('themeToggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          applyTheme(nextTheme(document.documentElement.dataset.theme || 'midnight'));
+        });
+      }
+
+      const runWhenIdle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
+      runWhenIdle(loadIdentityBadge);
+      runWhenIdle(loadOrganismBadge);
+      runWhenIdle(loadNotifications);
+      loadNudgeBanner();
+      // Poll nudges periodically so the assistant feels alive.
+      setInterval(loadNudgeBanner, 20000);
+      setInterval(loadNotifications, 45000);
+    </script>
+    {% endif %}
+  </body>
+</html>

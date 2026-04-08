@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="rounded border border-slate-800 bg-slate-900 p-4">
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <h1 class="text-lg font-semibold">Assistant Chat</h1>
+      <div class="text-sm text-slate-300">Talk in-app, route replies through Telegram, or use the device's built-in voice and share surfaces.</div>
+    </div>
+    <select id="chatChannel" class="text-xs bg-slate-950 border border-slate-700 rounded px-2 py-1 text-slate-100">
+      <option value="app" selected>In-app</option>
+      <option value="telegram">Telegram</option>
+    </select>
+  </div>
+
+  <div class="mt-4 grid gap-3 md:grid-cols-3">
+    <button id="speakLastBtn" type="button" class="rounded-md border border-cyan-800 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-900/40">Speak last reply</button>
+    <button id="shareLastBtn" type="button" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-900">Share last reply</button>
+    <button id="copyLastBtn" type="button" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-900">Copy last reply</button>
+  </div>
+
+  <div id="deviceSurfaceHint" class="mt-3 rounded-md border border-slate-800 bg-slate-950/60 px-3 py-2 text-xs text-slate-400">
+    Available channels depend on the device and browser: notifications, speech synthesis, share sheet, clipboard, Telegram, and any companion automation you explicitly enable.
+  </div>
+
+  <div id="chatLog" class="mt-4 h-96 overflow-y-auto rounded border border-slate-800 bg-slate-950 p-3 space-y-2"></div>
+
+  <form id="chatForm" class="mt-3 flex items-center gap-2">
+    <input id="chatInput" maxlength="5000" placeholder="Ask about focus, telemetry, tasks..." class="flex-1 rounded-md bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+    <button type="submit" class="rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-2 text-sm font-medium">Send</button>
+  </form>
+</div>
+
+<script>
+  const logEl = document.getElementById('chatLog');
+  const formEl = document.getElementById('chatForm');
+  const inputEl = document.getElementById('chatInput');
+  const channelEl = document.getElementById('chatChannel');
+  const speakLastBtn = document.getElementById('speakLastBtn');
+  const shareLastBtn = document.getElementById('shareLastBtn');
+  const copyLastBtn = document.getElementById('copyLastBtn');
+
+  let lastAssistantText = '';
+
+  function esc(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function render(messages) {
+    logEl.innerHTML = (messages || []).map((m) => {
+      const me = (m.role === 'user');
+      const cls = me ? 'bg-indigo-900/40 border-indigo-800 ml-10' : 'bg-slate-900 border-slate-700 mr-10';
+      if (!me && String(m.content || '').trim()) {
+        lastAssistantText = String(m.content || '').trim();
+      }
+      return `<div class="rounded border ${cls} px-3 py-2">
+        <div class="text-xs text-slate-400">${esc(m.role)} • ${esc(m.channel)} • ${esc(m.created_at)}</div>
+        <div class="text-sm text-slate-100 mt-1">${esc(m.content)}</div>
+      </div>`;
+    }).join('');
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  async function copyLastReply() {
+    if (!lastAssistantText) return;
+    try {
+      await navigator.clipboard.writeText(lastAssistantText);
+    } catch (_) {}
+  }
+
+  function speakLastReply() {
+    if (!lastAssistantText || !('speechSynthesis' in window)) return;
+    try {
+      const utterance = new SpeechSynthesisUtterance(lastAssistantText.slice(0, 5000));
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    } catch (_) {}
+  }
+
+  async function shareLastReply() {
+    if (!lastAssistantText) return;
+    const payload = { title: 'Mycelium reply', text: lastAssistantText };
+    try {
+      if (navigator.share) {
+        await navigator.share(payload);
+      } else {
+        await copyLastReply();
+      }
+    } catch (_) {}
+  }
+
+  if (speakLastBtn) speakLastBtn.addEventListener('click', speakLastReply);
+  if (shareLastBtn) shareLastBtn.addEventListener('click', shareLastReply);
+  if (copyLastBtn) copyLastBtn.addEventListener('click', copyLastReply);
+
+  async function loadHistory() {
+    try {
+      const r = await fetch('/api/nexus/chat/history?limit=100&conversation_key=default', { credentials: 'same-origin' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return;
+      render(d.messages || []);
+    } catch (_) {}
+  }
+
+  formEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const message = (inputEl.value || '').trim();
+    if (!message) return;
+    inputEl.value = '';
+    try {
+      const r = await fetch('/api/nexus/chat/send', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message, channel: String(channelEl.value || 'app'), conversation_key: 'default' }),
+      });
+      if (!r.ok) {
+        await loadHistory();
+        return;
+      }
+      await loadHistory();
+    } catch (_) {
+      await loadHistory();
+    }
+  });
+
+  loadHistory();
+  setInterval(loadHistory, 5000);
+</script>
+{% endblock %}

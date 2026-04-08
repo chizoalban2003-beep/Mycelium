@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mycelium}
+      POSTGRES_USER: ${POSTGRES_USER:-mycelium}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mycelium}
+    volumes:
+      - mycelium_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mycelium} -d ${POSTGRES_DB:-mycelium}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      # App
+      APP_NAME: ${APP_NAME:-Mycelium}
+      SECRET_KEY: ${SECRET_KEY:-change-me-please}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}  # set true behind HTTPS
+      DB_AUTO_CREATE_TABLES: ${DB_AUTO_CREATE_TABLES:-false}
+      DB_MIGRATION_MODE: ${DB_MIGRATION_MODE:-migrate}
+
+      # Postgres
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-mycelium}:${POSTGRES_PASSWORD:-mycelium}@db:5432/${POSTGRES_DB:-mycelium}}
+
+      # Hive
+      HIVE_ENABLED: ${HIVE_ENABLED:-true}
+      HIVE_INGEST_TOKEN: ${HIVE_INGEST_TOKEN:-dev-ingest-token}
+      NEXUS_DEVICE_ID: ${NEXUS_DEVICE_ID:-parent-hub}
+
+      # Optional: enable homeostasis daemon
+      NEXUS_HOMEOSTASIS_ENABLED: ${NEXUS_HOMEOSTASIS_ENABLED:-true}
+    healthcheck:
+      test:
+        ["CMD-SHELL", "python -c \"import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  mycelium_pg:

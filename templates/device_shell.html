@@ -1,0 +1,753 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <div class="space-y-5 pb-28 md:pb-0 content-auto">
+  <div class="rounded-2xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-3">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/80 md:text-xs md:tracking-[0.25em]">Transparent Growth OS</div>
+        <h1 class="mt-2 text-xl font-semibold sm:text-2xl">Device shell for {{ app_name }}</h1>
+        <div class="mt-1 text-sm text-cyan-300" id="greeting" aria-live="polite"></div>
+        <div class="mt-2 hidden text-sm text-slate-300 md:block">
+          Assistant: <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
+          <span class="text-slate-500">•</span>
+          Mode: <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
+          <span class="text-slate-500">•</span>
+          Voice: <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
+        </div>
+        <p class="mt-2 hidden max-w-3xl text-sm text-slate-300 md:block">
+          A ready-made device product that learns from user-owned signals, explains what it learned, and keeps the user in control.
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2 text-xs md:mt-4">
+          <span class="rounded-full border border-cyan-800 bg-cyan-950/30 px-3 py-1 text-cyan-100">Grow with Data</span>
+          <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Builder Copilot</span>
+          <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">HIVE</span>
+          <span class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200">Child-Safe</span>
+          <span id="live-clock" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-slate-200"></span>
+        </div>
+      </div>
+      <div class="grid grid-cols-4 gap-2 text-center sm:gap-3">
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">Projects</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="projects">{{ project_count }}</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">Signals</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="signals">{{ signal_count }}</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">Growth</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="growth">{{ growth_count }}</div>
+        </div>
+        <div class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400 sm:text-xs">24h</div>
+          <div class="mt-1 text-xl font-semibold text-cyan-200 sm:text-2xl" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
+        </div>
+      </div>
+      <div class="mt-4 flex justify-end">
+        <div class="flex gap-2">
+          <input type="text" id="quick-search" aria-label="Search projects, signals, or growth" placeholder="Search projects, signals..." class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:border-cyan-500 focus:outline-none">
+          <button data-refresh-snapshot type="button" aria-label="Refresh live snapshot" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">🔄 Refresh</button>
+          <a href="/assistant/profile" aria-label="Open assistant settings" class="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800 transition-colors">⚙ Settings</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid gap-2 sm:grid-cols-3 md:hidden">
+    <div class="rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Identity</div>
+      <div class="mt-1 font-medium text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</div>
+    </div>
+    <div class="rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Mode</div>
+      <div class="mt-1 font-medium text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</div>
+    </div>
+    <div class="rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">Voice</div>
+      <div class="mt-1 font-medium text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</div>
+    </div>
+  </div>
+
+  {% if notice %}
+    <div class="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-100">
+      {{ notice }}
+    </div>
+  {% endif %}
+
+  {% if error %}
+    <div class="mt-4 rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-100">
+      {{ error }}
+    </div>
+  {% endif %}
+
+  <div class="mt-5 rounded-xl border border-slate-800 bg-slate-900 p-4 content-auto">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Quick launcher</div>
+        <div class="text-sm text-slate-300">Tap a surface to jump straight into work, summary, memory, or policy.</div>
+      </div>
+      <div class="hidden text-xs text-slate-500 sm:block">Fast paths</div>
+    </div>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <form action="/device/bootstrap-work-session" method="post" class="rounded-xl border border-emerald-800 bg-emerald-950/20 p-3">
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <input type="hidden" name="duration_minutes" value="45" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-emerald-300/80">⚡ Work</div>
+        <div class="mt-1 text-sm text-slate-200">Start a focused 45-minute session.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-900/50">Launch</button>
+      </form>
+
+      <form action="/device/daily-summary" method="post" class="rounded-xl border border-indigo-800 bg-indigo-950/20 p-3">
+        <input type="hidden" name="window_hours" value="24" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-indigo-300/80">◌ Summary</div>
+        <div class="mt-1 text-sm text-slate-200">Generate the latest accepted-outcomes recap.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-indigo-700 bg-indigo-950/40 px-3 py-2 text-sm font-medium text-indigo-100 hover:bg-indigo-900/50">Launch</button>
+      </form>
+
+      <form action="/device/auto-handoff-launch" method="post" class="rounded-xl border border-fuchsia-800 bg-fuchsia-950/20 p-3">
+        <input type="hidden" name="window_minutes" value="120" />
+        <input type="hidden" name="base_duration_minutes" value="45" />
+        <input type="hidden" name="current_device_id" value="local" />
+        <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-fuchsia-300/80">⟐ Launch</div>
+        <div class="mt-1 text-sm text-slate-200">Analyze the best node for the next session.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-fuchsia-700 bg-fuchsia-950/40 px-3 py-2 text-sm font-medium text-fuchsia-100 hover:bg-fuchsia-900/50">Launch</button>
+      </form>
+
+      <form action="/device/auto-handoff-launch-and-confirm" method="post" class="rounded-xl border border-fuchsia-600 bg-fuchsia-900/20 p-3">
+        <input type="hidden" name="window_minutes" value="120" />
+        <input type="hidden" name="base_duration_minutes" value="45" />
+        <input type="hidden" name="current_device_id" value="local" />
+        <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <div class="text-[10px] uppercase tracking-[0.2em] text-fuchsia-200/80">⇄ Handoff</div>
+        <div class="mt-1 text-sm text-slate-200">Launch and confirm in one step.</div>
+        <button type="submit" class="mt-3 w-full rounded-lg border border-fuchsia-500 bg-fuchsia-900/50 px-3 py-2 text-sm font-medium text-fuchsia-50 hover:bg-fuchsia-800/60">Go</button>
+      </form>
+
+      <a href="/projects" class="rounded-xl border border-cyan-800 bg-cyan-950/20 p-3">
+        <div class="text-[10px] uppercase tracking-[0.2em] text-cyan-300/80">◌ Projects</div>
+        <div class="mt-1 text-sm text-slate-200">Open the builder copilot workspace.</div>
+        <div class="mt-3 rounded-lg border border-cyan-700 bg-cyan-950/40 px-3 py-2 text-center text-sm font-medium text-cyan-100">Open</div>
+      </a>
+    </div>
+
+    <div class="mt-3 grid gap-2 sm:grid-cols-4 lg:grid-cols-5">
+      <a href="/hive/health" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">⟐ Hive Health</a>
+      <a href="/chat" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">✉ Chat</a>
+      <a href="/knowledge" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">▣ Memory</a>
+      <a href="/assistant/profile" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">⚑ Policy</a>
+      <a href="/device" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-2 text-center text-xs font-medium text-slate-100 hover:bg-slate-800">Live Shell</a>
+    </div>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Today</div>
+          <h2 class="mt-1 text-lg font-semibold">Recent activity at a glance</h2>
+        </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button data-refresh-snapshot type="button" class="text-xs text-slate-400 hover:text-cyan-300">🔄 Refresh</button>
+            <div class="text-xs text-slate-400">Live snapshot</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Today’s story</div>
+            <div class="text-sm text-slate-300">{{ today_story.headline }}</div>
+          </div>
+          <a href="/knowledge" class="text-xs text-cyan-300 hover:text-cyan-200">Open memory</a>
+        </div>
+        <div class="mt-3 rounded-lg border border-slate-800 bg-slate-950/80 p-3 text-sm text-slate-200">
+          {{ today_story.summary }}
+        </div>
+        <div class="mt-3 grid gap-3 md:grid-cols-3">
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Signals</div>
+            <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
+            <div class="mt-1 text-sm text-slate-300">Observed in the last {{ snapshot_window_hours }} hours.</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Growth</div>
+            <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_growth_24h_count }}</div>
+            <div class="mt-1 text-sm text-slate-300">Accepted outcomes and improvement signals.</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Next best step</div>
+            <div class="mt-1 text-sm text-slate-200">
+              {{ today_story.next_step }}
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <a href="/device/daily-summary" class="rounded-full border border-cyan-700 bg-cyan-950/30 px-3 py-1 text-xs text-cyan-100 hover:bg-cyan-900/40">Daily summary</a>
+              <a href="/projects" class="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-100 hover:bg-slate-800">Projects</a>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 text-xs text-slate-400">
+          {{ today_story.spotlight }}
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Chart range</div>
+        <div class="flex flex-wrap gap-2" role="tablist" aria-label="Snapshot window">
+          <button type="button" data-window-hours="6" class="snapshot-window rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800">6h</button>
+          <button type="button" data-window-hours="24" class="snapshot-window rounded-full border border-cyan-700 bg-cyan-950/30 px-3 py-1 text-xs text-cyan-100">24h</button>
+          <button type="button" data-window-hours="72" class="snapshot-window rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-200 hover:bg-slate-800">72h</button>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <a href="/knowledge" aria-label="Open recent signals" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📊 Signals</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_signals_24h_count }}</div>
+          <div class="mt-1 text-sm text-slate-300">Last {{ snapshot_window_hours }} hours of observed learning events.</div>
+        </a>
+        <a href="/projects" aria-label="Open recent growth" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">📈 Growth</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_growth_24h_count }}</div>
+          <div class="mt-1 text-sm text-slate-300">Accepted outcomes and progress signals.</div>
+        </a>
+        <a href="/hive/health" aria-label="Open recent nudges" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-[10px] uppercase tracking-[0.2em] text-slate-400">💡 Nudges</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200">{{ recent_nudges_24h_count }}</div>
+          <div class="mt-1 text-sm text-slate-300">Visible prompts and assistant suggestions.</div>
+        </a>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <a href="/knowledge" aria-label="Open recent signals" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest signal</div>
+          {% if recent_signals %}
+            {% set latest_signal = recent_signals[0] %}
+            <div class="mt-2 text-sm font-medium text-slate-100">{{ latest_signal.signal_type }}</div>
+            <div class="mt-1 text-xs text-slate-400">{{ latest_signal.modality }} • {{ latest_signal.created_at }}</div>
+          {% else %}
+            <div class="mt-2 text-sm text-slate-500">No signal yet.</div>
+          {% endif %}
+        </a>
+        <a href="/projects" aria-label="Open recent growth" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest growth</div>
+          {% if recent_growth %}
+            {% set latest_growth = recent_growth[0] %}
+            <div class="mt-2 text-sm font-medium text-slate-100">{{ latest_growth.domain }} · {{ latest_growth.metric }}</div>
+            <div class="mt-1 text-xs text-slate-400">Score {{ '%.3f'|format(latest_growth.score) }} • accepted={{ latest_growth.accepted }}</div>
+          {% else %}
+            <div class="mt-2 text-sm text-slate-500">No growth yet.</div>
+          {% endif %}
+        </a>
+        <a href="/hive/health" aria-label="Open recent nudges" class="rounded-xl border border-slate-800 bg-slate-950 p-4 hover:bg-slate-900 transition-colors block">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Latest nudge</div>
+          {% if recent_nudges %}
+            {% set latest_nudge = recent_nudges[0] %}
+            <div class="mt-2 text-sm font-medium text-slate-100">{{ latest_nudge.title }}</div>
+            <div class="mt-1 text-xs text-slate-400">{{ latest_nudge.message }}</div>
+          {% else %}
+            <div class="mt-2 text-sm text-slate-500">No nudge yet.</div>
+          {% endif %}
+        </a>
+      </div>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Signals trend</span><span>{{ snapshot_window_hours }}h</span>
+          </div>
+          <div class="mt-2 h-16" data-sparkline data-series='{{ signal_trend|tojson }}' data-color="#67e8f9"></div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Growth trend</span><span>{{ snapshot_window_hours }}h</span>
+          </div>
+          <div class="mt-2 h-16" data-sparkline data-series='{{ growth_trend|tojson }}' data-color="#c4b5fd"></div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-slate-400">
+            <span>Nudges trend</span><span>{{ snapshot_window_hours }}h</span>
+          </div>
+          <div class="mt-2 h-16" data-sparkline data-series='{{ nudge_trend|tojson }}' data-color="#f9a8d4"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-slate-800 bg-slate-900 p-4 content-auto">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Status</div>
+        <button id="status-toggle" type="button" aria-controls="status-content" aria-expanded="true" class="text-xs text-slate-400 hover:text-slate-200">▼</button>
+      </div>
+      <div id="status-content">
+        <div class="text-lg font-semibold text-slate-100">Current mode</div>
+        <div class="mt-3 space-y-2 text-sm text-slate-300">
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Assistant</span>
+            <span class="text-slate-100" data-role="assistant-name">{{ assistant_profile.given_name }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Mode</span>
+            <span class="text-slate-100" data-role="assistant-mode">{{ assistant_profile.gender_identity }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Voice</span>
+            <span class="text-slate-100" data-role="assistant-voice">{{ assistant_profile.vocal_preset }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Projects</span>
+            <span class="text-cyan-200">{{ project_count }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 px-3 py-2">
+            <span>Signals</span>
+            <span class="text-cyan-200" data-count="signals">{{ signal_count }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-5 grid gap-5 lg:grid-cols-3">
+    <section class="rounded-xl border border-slate-800 bg-slate-900 p-4 lg:col-span-2 content-auto">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Learning trail</div>
+          <h2 class="mt-1 text-lg font-semibold">What the device learned</h2>
+        </div>
+        <a href="/projects" class="text-sm text-cyan-300 hover:text-cyan-200">Open projects</a>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">🔍 Observed</div>
+          <div class="mt-1 text-sm text-slate-200">Signals, actions, feedback, and state changes from the user's own device.</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">🔧 Normalized</div>
+          <div class="mt-1 text-sm text-slate-200">Every input is flattened into structured rows for prediction and memory.</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">✅ Explained</div>
+          <div class="mt-1 text-sm text-slate-200">The app surfaces why it acted, what changed, and how to revoke it.</div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Live learning trail</div>
+            <div class="text-sm text-slate-300">Fresh signals the device just turned into learning rows.</div>
+          </div>
+          <div class="text-xs text-slate-400" id="stimulus-trail-meta">Loading…</div>
+        </div>
+        <div class="mt-4 space-y-2" id="stimulus-trail-list">
+          <div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">Loading recent stimuli…</div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Mission log</div>
+            <div class="text-sm text-slate-300">Informational only — a compact current-session briefing.</div>
+          </div>
+          <div class="text-xs text-slate-400" id="mission-log-meta">Loading…</div>
+        </div>
+        <div class="mt-4 space-y-2 font-mono text-[12px] leading-5" id="mission-log-list">
+          <div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">Loading mission log…</div>
+        </div>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-cyan-900/50 bg-cyan-950/20 p-4">
+        <div class="text-xs uppercase tracking-[0.2em] text-cyan-300/80">Core flow</div>
+        <ol class="mt-2 space-y-2 text-sm text-slate-200 list-decimal list-inside">
+          <li>Connect the signals you approve.</li>
+          <li>Let the device companion record consented activity.</li>
+          <li>See daily summaries, predictions, and recommendations.</li>
+          <li>Inspect memory and delete or export it anytime.</li>
+        </ol>
+      </div>
+
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Live 24h signals</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="signals_24h">{{ recent_signals_24h_count }}</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Live 24h growth</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="growth_24h">{{ recent_growth_24h_count }}</div>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs text-slate-400">Live nudges</div>
+          <div class="mt-1 text-2xl font-semibold text-cyan-200" data-count="nudges_24h">{{ recent_nudges_24h_count }}</div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid gap-4 md:grid-cols-2">
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-4">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Recent signals</div>
+          <ul class="mt-3 space-y-2 text-sm text-slate-300">
+            {% if recent_signals %}
+              {% for item in recent_signals %}
+                <li class="rounded border border-slate-800 bg-slate-900 px-3 py-2">
+                  <div class="font-medium text-slate-100">{{ item.signal_type }}</div>
+                  <div class="text-xs text-slate-400">{{ item.modality }} • {{ item.created_at }}</div>
+                </li>
+              {% endfor %}
+            {% else %}
+              <li class="text-slate-500">No signals yet. Connect a source to begin learning.</li>
+            {% endif %}
+          </ul>
+        </div>
+
+        <div class="rounded-lg border border-slate-800 bg-slate-950 p-4">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Recent growth</div>
+          <ul class="mt-3 space-y-2 text-sm text-slate-300">
+            {% if recent_growth %}
+              {% for item in recent_growth %}
+                <li class="rounded border border-slate-800 bg-slate-900 px-3 py-2">
+                  <div class="font-medium text-slate-100">{{ item.domain }} · {{ item.metric }}</div>
+                  <div class="text-xs text-slate-400">Score {{ '%.3f'|format(item.score) }} • accepted={{ item.accepted }}</div>
+                </li>
+              {% endfor %}
+            {% else %}
+              <li class="text-slate-500">No growth records yet. The system will learn from approval and outcomes.</li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <aside class="rounded-xl border border-slate-800 bg-slate-900 p-4 space-y-4 content-auto" aria-label="Device status and quick modes">
+      <section>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Modes</div>
+        <div class="mt-2 space-y-2 text-sm">
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="font-medium text-slate-100"><a href="/projects" class="hover:text-cyan-200" aria-label="Open Builder Copilot">Builder Copilot</a></div>
+            <div class="text-slate-400">Focus, momentum, and execution for builders.</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="font-medium text-slate-100"><a href="/hive/health" class="hover:text-cyan-200" aria-label="Open HIVE health">HIVE</a></div>
+            <div class="text-slate-400">Shared intelligence with clear contribution history.</div>
+          </div>
+          <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div class="font-medium text-slate-100"><a href="/assistant/profile" class="hover:text-cyan-200" aria-label="Open assistant profile">Child-Safe</a></div>
+            <div class="text-slate-400">Permissioned autonomy with parent-visible controls.</div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Memory controls</div>
+        <div class="mt-2 rounded-lg border border-slate-800 bg-slate-950 p-3 text-sm text-slate-300">
+          Purge, export, and revoke controls belong next to every learning surface.
+        </div>
+      </section>
+
+      <section>
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Recent nudges</div>
+        <div class="mt-2 space-y-2 text-sm text-slate-300">
+          {% if recent_nudges %}
+            {% for n in recent_nudges %}
+              <div class="rounded-lg border border-slate-800 bg-slate-950 p-3">
+                <div class="font-medium text-slate-100">{{ n.title }}</div>
+                <div class="text-xs text-slate-400">{{ n.message }}</div>
+              </div>
+            {% endfor %}
+          {% else %}
+            <div class="rounded-lg border border-slate-800 bg-slate-950 p-3 text-slate-500">No nudges yet.</div>
+          {% endif %}
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    (function () {
+      const ids = {
+        projects: document.querySelector('[data-count="projects"]'),
+        signals: document.querySelector('[data-count="signals"]'),
+        growth: document.querySelector('[data-count="growth"]'),
+        signals24h: document.querySelector('[data-count="signals_24h"]'),
+        growth24h: document.querySelector('[data-count="growth_24h"]'),
+        nudges24h: document.querySelector('[data-count="nudges_24h"]'),
+        stimulusTrailMeta: document.getElementById('stimulus-trail-meta'),
+        stimulusTrailList: document.getElementById('stimulus-trail-list'),
+        missionLogMeta: document.getElementById('mission-log-meta'),
+        missionLogList: document.getElementById('mission-log-list'),
+        assistantNames: document.querySelectorAll('[data-role="assistant-name"]'),
+        assistantModes: document.querySelectorAll('[data-role="assistant-mode"]'),
+        assistantVoices: document.querySelectorAll('[data-role="assistant-voice"]'),
+        sparklineRoots: document.querySelectorAll('[data-sparkline]'),
+      };
+
+      function formatStamp(value) {
+        if (!value) return 'just now';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value);
+        return date.toLocaleString();
+      }
+
+      function renderStimulusTrail(events) {
+        if (!ids.stimulusTrailList) return;
+        if (!Array.isArray(events) || !events.length) {
+          ids.stimulusTrailList.innerHTML = '<div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">No recent stimuli yet. Interact with the app to build the trail.</div>';
+          if (ids.stimulusTrailMeta) ids.stimulusTrailMeta.textContent = '0 events';
+          return;
+        }
+
+        if (ids.stimulusTrailMeta) {
+          ids.stimulusTrailMeta.textContent = `${events.length} recent events`;
+        }
+
+        ids.stimulusTrailList.innerHTML = '';
+        events.forEach((event) => {
+          const title = event.signal_type || 'stimulus';
+          const source = event.source || 'stimulus';
+          const modality = event.modality || 'auto';
+          const digest = String(event.payload_digest || '').slice(0, 12);
+          const details = [source, modality, event.payload_kind].filter(Boolean).join(' • ');
+
+          const card = document.createElement('div');
+          card.className = 'rounded-lg border border-slate-800 bg-slate-900 px-3 py-2';
+
+          const headingRow = document.createElement('div');
+          headingRow.className = 'flex flex-wrap items-center justify-between gap-2';
+
+          const heading = document.createElement('div');
+          heading.className = 'font-medium text-slate-100';
+          heading.textContent = title;
+
+          const stamp = document.createElement('div');
+          stamp.className = 'text-xs text-slate-500';
+          stamp.textContent = formatStamp(event.created_at);
+
+          headingRow.appendChild(heading);
+          headingRow.appendChild(stamp);
+
+          const detail = document.createElement('div');
+          detail.className = 'mt-1 text-xs text-slate-400';
+          detail.textContent = details;
+
+          const digestLine = document.createElement('div');
+          digestLine.className = 'mt-1 text-xs text-cyan-200/90';
+          digestLine.textContent = `digest ${digest || '—'}`;
+
+          card.appendChild(headingRow);
+          card.appendChild(detail);
+          card.appendChild(digestLine);
+          ids.stimulusTrailList.appendChild(card);
+        });
+      }
+
+      function renderMissionLog(entries) {
+        if (!ids.missionLogList) return;
+        if (!Array.isArray(entries) || !entries.length) {
+          ids.missionLogList.innerHTML = '<div class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-500">No mission log entries yet.</div>';
+          if (ids.missionLogMeta) ids.missionLogMeta.textContent = '0 entries';
+          return;
+        }
+
+        if (ids.missionLogMeta) {
+          ids.missionLogMeta.textContent = `${entries.length} entries`;
+        }
+
+        ids.missionLogList.innerHTML = '';
+        entries.forEach((entry) => {
+          const row = document.createElement('div');
+          row.className = 'rounded-lg border border-slate-800 bg-slate-900 px-3 py-2';
+
+          const top = document.createElement('div');
+          top.className = 'flex flex-wrap items-start justify-between gap-2';
+
+          const left = document.createElement('div');
+          const stamp = document.createElement('div');
+          stamp.className = 'text-[11px] text-slate-500';
+          stamp.textContent = formatStamp(entry.at);
+
+          const title = document.createElement('div');
+          title.className = 'mt-1 text-slate-100';
+          title.textContent = `${entry.mode || '[FLOW]'} (${entry.tier || 'S'}) ${entry.title || 'mission event'}`;
+
+          const detail = document.createElement('div');
+          detail.className = 'mt-1 text-slate-400';
+          detail.textContent = entry.detail || '';
+
+          left.appendChild(stamp);
+          left.appendChild(title);
+          left.appendChild(detail);
+
+          const right = document.createElement('div');
+          right.className = 'shrink-0 text-right text-cyan-200';
+          right.textContent = entry.delta_text || '';
+
+          top.appendChild(left);
+          top.appendChild(right);
+          row.appendChild(top);
+          ids.missionLogList.appendChild(row);
+        });
+      }
+
+      function renderSparkline(root) {
+        if (!root) return;
+        let points = [];
+        try {
+          points = JSON.parse(root.dataset.series || '[]');
+        } catch (e) {
+          points = [];
+        }
+        if (!Array.isArray(points) || !points.length) {
+          root.innerHTML = '<div class="flex h-full items-center justify-center text-xs text-slate-500">No data yet</div>';
+          return;
+        }
+        const width = 320;
+        const height = 64;
+        const max = Math.max(...points, 1);
+        const step = width / Math.max(points.length - 1, 1);
+        const pad = 4;
+        const scaleY = (value) => height - pad - ((height - pad * 2) * value / max);
+        const path = points.map((value, index) => `${index === 0 ? 'M' : 'L'} ${Math.round(index * step)} ${Math.round(scaleY(value))}`).join(' ');
+        const dots = points.map((value, index) => `<circle cx="${Math.round(index * step)}" cy="${Math.round(scaleY(value))}" r="2.5" fill="${root.dataset.color || '#67e8f9'}" />`).join('');
+        root.innerHTML = `
+          <svg viewBox="0 0 ${width} ${height}" class="h-full w-full" role="img" aria-label="Trend chart">
+            <path d="${path}" fill="none" stroke="${root.dataset.color || '#67e8f9'}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+            ${dots}
+          </svg>`;
+      }
+
+      async function refreshSnapshot() {
+        try {
+          const r = await fetch('/device/snapshot', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          const counts = (data && data.counts) || {};
+          if (ids.projects) ids.projects.textContent = String(counts.projects ?? ids.projects.textContent);
+          if (ids.signals) ids.signals.textContent = String(counts.signals ?? ids.signals.textContent);
+          if (ids.growth) ids.growth.textContent = String(counts.growth ?? ids.growth.textContent);
+          if (ids.signals24h) ids.signals24h.textContent = String(counts.signals_24h ?? ids.signals24h.textContent);
+          if (ids.growth24h) ids.growth24h.textContent = String(counts.growth_24h ?? ids.growth24h.textContent);
+          if (ids.nudges24h) ids.nudges24h.textContent = String(counts.nudges_24h ?? ids.nudges24h.textContent);
+          const assistant = (data && data.assistant) || {};
+          if (assistant.given_name) ids.assistantNames.forEach((el) => { el.textContent = assistant.given_name; });
+          if (assistant.gender_identity) ids.assistantModes.forEach((el) => { el.textContent = assistant.gender_identity; });
+          if (assistant.vocal_preset) ids.assistantVoices.forEach((el) => { el.textContent = assistant.vocal_preset; });
+          renderMissionLog((data && data.mission_log) || []);
+        } catch (e) {}
+      }
+
+      async function refreshStimulusTrail() {
+        try {
+          const r = await fetch('/api/nexus/stimulus/recent?limit=5', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          renderStimulusTrail((data && data.events) || []);
+        } catch (e) {
+          if (ids.stimulusTrailMeta) ids.stimulusTrailMeta.textContent = 'Unable to load';
+        }
+      }
+
+      refreshSnapshot();
+      refreshStimulusTrail();
+      setInterval(refreshSnapshot, 30000);
+      setInterval(refreshStimulusTrail, 45000);
+      renderMissionLog({{ mission_log_json|tojson }});
+
+      ids.sparklineRoots.forEach(renderSparkline);
+
+      // Status sidebar toggle
+      const statusToggle = document.getElementById('status-toggle');
+      const statusContent = document.getElementById('status-content');
+      if (statusToggle && statusContent) {
+        statusToggle.addEventListener('click', () => {
+          const isHidden = statusContent.style.display === 'none';
+          statusContent.style.display = isHidden ? 'block' : 'none';
+          statusToggle.textContent = isHidden ? '▼' : '▶';
+          statusToggle.setAttribute('aria-expanded', String(!isHidden));
+        });
+      }
+
+      // Quick search
+      const quickSearch = document.getElementById('quick-search');
+      if (quickSearch) {
+        quickSearch.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const query = quickSearch.value.trim();
+            if (query) {
+              window.location.href = `/projects?q=${encodeURIComponent(query)}`;
+            }
+          }
+        });
+      }
+
+      // Manual refresh
+      const refreshButtons = document.querySelectorAll('[data-refresh-snapshot]');
+      if (refreshButtons.length) {
+        refreshButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            refreshSnapshot();
+            refreshStimulusTrail();
+            renderMissionLog({{ mission_log_json|tojson }});
+            ids.sparklineRoots.forEach(renderSparkline);
+          });
+        });
+      }
+
+      // Live clock
+      const liveClock = document.getElementById('live-clock');
+      if (liveClock) {
+        function updateClock() {
+          const now = new Date();
+          liveClock.textContent = now.toLocaleTimeString();
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+      }
+
+      // Greeting
+      const greeting = document.getElementById('greeting');
+      if (greeting) {
+        const hour = new Date().getHours();
+        let greet = 'Good evening';
+        if (hour < 12) greet = 'Good morning';
+        else if (hour < 18) greet = 'Good afternoon';
+        const primaryName = (ids.assistantNames && ids.assistantNames[0] && ids.assistantNames[0].textContent.trim()) || 'User';
+        greeting.textContent = `${greet}, ${primaryName}`;
+      }
+    })();
+  </script>
+
+  <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 px-3 py-3 shadow-2xl backdrop-blur md:hidden">
+    <div class="mx-auto grid max-w-5xl grid-cols-3 gap-2">
+      <form action="/device/bootstrap-work-session" method="post">
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <input type="hidden" name="duration_minutes" value="45" />
+        <button type="submit" aria-label="Start work session" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-emerald-700 bg-emerald-950/40 px-2 py-2 text-[11px] font-medium text-emerald-100 shadow-sm">
+          <span class="text-base leading-none">⚡</span>
+          <span>Work</span>
+        </button>
+      </form>
+      <form action="/device/daily-summary" method="post">
+        <input type="hidden" name="window_hours" value="24" />
+        <button type="submit" aria-label="Open daily summary" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-indigo-700 bg-indigo-950/40 px-2 py-2 text-[11px] font-medium text-indigo-100 shadow-sm">
+          <span class="text-base leading-none">◌</span>
+          <span>Summary</span>
+        </button>
+      </form>
+      <form action="/device/auto-handoff-launch-and-confirm" method="post">
+        <input type="hidden" name="window_minutes" value="120" />
+        <input type="hidden" name="base_duration_minutes" value="45" />
+        <input type="hidden" name="current_device_id" value="local" />
+        <input type="hidden" name="candidate_device_ids" value="local,laptop" />
+        <input type="hidden" name="focus_app" value="mycelium" />
+        <button type="submit" aria-label="Launch and confirm handoff" class="flex w-full flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500 bg-fuchsia-900/50 px-2 py-2 text-[11px] font-medium text-fuchsia-50 shadow-sm">
+          <span class="text-base leading-none">⇄</span>
+          <span>Handoff</span>
+        </button>
+      </form>
+    </div>
+  </div>
+{% endblock %}
