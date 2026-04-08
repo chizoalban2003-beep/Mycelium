@@ -1049,6 +1049,50 @@ def _vibrational_viscosity_multiplier(
     return float(np.clip(mult, 0.05, 20.0))
 
 
+def _viscosity_squeeze_velocity(
+    velocity: float,
+    *,
+    signal_strength: float,
+    enabled: bool,
+    power: float,
+    gain: float,
+    floor: float,
+    cap: float,
+) -> float:
+    """Apply a power-law squeeze to terminal velocity.
+
+    The squeeze makes strong signals snap more aggressively while keeping weak signals
+    from dominating the migration field.
+    """
+
+    v = float(velocity)
+    if not bool(enabled):
+        return v
+    if not math.isfinite(v):
+        return 0.0
+
+    strength = float(np.clip(abs(float(signal_strength)), 0.0, 1.0))
+    p = float(power)
+    if not math.isfinite(p) or p <= 0.0:
+        p = 1.0
+    p = float(np.clip(p, 0.5, 3.5))
+
+    g = float(gain)
+    if not math.isfinite(g) or g < 0.0:
+        g = 0.0
+    lo = float(floor)
+    hi = float(cap)
+    if not math.isfinite(lo) or lo <= 0.0:
+        lo = 0.25
+    if not math.isfinite(hi) or hi <= lo:
+        hi = max(lo, 4.0)
+
+    magnitude = abs(v)
+    shaped = (magnitude ** p) * (1.0 + g * (strength ** p))
+    shaped = float(np.clip(shaped, lo * magnitude, hi * max(1e-9, magnitude))) if magnitude > 0.0 else 0.0
+    return float(math.copysign(shaped, v))
+
+
 def _safe_float(x: Any) -> float | None:
     try:
         v = float(x)
@@ -2262,6 +2306,11 @@ def run_physics_prediction(
     vibrational_viscosity_period: int = 5,
     vibrational_viscosity_amplitude: float = 0.12,
     vibrational_viscosity_waveform: Literal["sine", "square"] = "square",
+    viscosity_squeeze_enabled: bool = False,
+    viscosity_squeeze_power: float = 1.35,
+    viscosity_squeeze_gain: float = 0.50,
+    viscosity_squeeze_floor: float = 0.20,
+    viscosity_squeeze_cap: float = 4.0,
     # Target-induced viscosity scaling (buffer shift experiment): adapt viscosity based on
     # how far the model is from the target (uses normalized residual magnitude).
     target_induced_viscosity_enabled: bool = False,
@@ -2896,6 +2945,15 @@ def run_physics_prediction(
         if charge < 0:
             charge *= neg_mult
         terminal_velocity = plane_mobility * (charge * density * bond_factor) / (viscosity * inertia)
+        terminal_velocity = _viscosity_squeeze_velocity(
+            terminal_velocity,
+            signal_strength=strength,
+            enabled=bool(viscosity_squeeze_enabled),
+            power=float(viscosity_squeeze_power),
+            gain=float(viscosity_squeeze_gain),
+            floor=float(viscosity_squeeze_floor),
+            cap=float(viscosity_squeeze_cap),
+        )
 
         if terminal_velocity > 1e-10:
             direction: Literal["pulled", "repelled", "neutral"] = "pulled"
@@ -3235,9 +3293,18 @@ def run_physics_prediction(
                             phase=2.0 * math.pi * float(x_pos),
                         ),
                     )
-                v = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                v_raw = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                v = _viscosity_squeeze_velocity(
+                    v_raw,
+                    signal_strength=abs(float(charge)),
+                    enabled=bool(viscosity_squeeze_enabled),
+                    power=float(viscosity_squeeze_power),
+                    gain=float(viscosity_squeeze_gain),
+                    floor=float(viscosity_squeeze_floor),
+                    cap=float(viscosity_squeeze_cap),
+                )
 
-                denom += abs(v)
+                denom += abs(v_raw)
                 amp = float(pcr_amp_by_feature.get(col, 1.0))
                 a[i_w] = float(amp * v)
 
@@ -3379,9 +3446,18 @@ def run_physics_prediction(
                                 phase=2.0 * math.pi * float(x_pos),
                             ),
                         )
-                    v = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                    v_raw = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                    v = _viscosity_squeeze_velocity(
+                        v_raw,
+                        signal_strength=abs(float(charge)),
+                        enabled=bool(viscosity_squeeze_enabled),
+                        power=float(viscosity_squeeze_power),
+                        gain=float(viscosity_squeeze_gain),
+                        floor=float(viscosity_squeeze_floor),
+                        cap=float(viscosity_squeeze_cap),
+                    )
 
-                    denom += abs(v)
+                    denom += abs(v_raw)
                     amp = float(pcr_amp_by_feature.get(col, 1.0))
                     zone_a[i_c] = float(amp * v)
 
@@ -3511,9 +3587,18 @@ def run_physics_prediction(
                                     phase=2.0 * math.pi * float(x_pos),
                                 ),
                             )
-                        v = q * field / eta_dynamic
+                        v_raw = q * field / eta_dynamic
+                        v = _viscosity_squeeze_velocity(
+                            v_raw,
+                            signal_strength=abs(float(charge)),
+                            enabled=bool(viscosity_squeeze_enabled),
+                            power=float(viscosity_squeeze_power),
+                            gain=float(viscosity_squeeze_gain),
+                            floor=float(viscosity_squeeze_floor),
+                            cap=float(viscosity_squeeze_cap),
+                        )
 
-                        denom += abs(v)
+                        denom += abs(v_raw)
                         amp = float(pcr_amp_by_feature.get(col, 1.0))
                         waste_a[i_c] = float(amp * v)
 
@@ -3867,9 +3952,18 @@ def run_physics_prediction(
                             phase=2.0 * math.pi * float(x_pos),
                         ),
                     )
-                v = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                v_raw = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                v = _viscosity_squeeze_velocity(
+                    v_raw,
+                    signal_strength=abs(float(charge)),
+                    enabled=bool(viscosity_squeeze_enabled),
+                    power=float(viscosity_squeeze_power),
+                    gain=float(viscosity_squeeze_gain),
+                    floor=float(viscosity_squeeze_floor),
+                    cap=float(viscosity_squeeze_cap),
+                )
 
-                denom += abs(v)
+                denom += abs(v_raw)
                 amp = float(pcr_amp_by_feature.get(col, 1.0))
                 class_score += (amp * v) * z
 
@@ -4057,9 +4151,18 @@ def run_physics_prediction(
                                 phase=2.0 * math.pi * float(x_pos),
                             ),
                         )
-                    v = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                    v_raw = (q * field + thermal_term) / (eta_dynamic + inhibition)
+                    v = _viscosity_squeeze_velocity(
+                        v_raw,
+                        signal_strength=abs(float(charge)),
+                        enabled=bool(viscosity_squeeze_enabled),
+                        power=float(viscosity_squeeze_power),
+                        gain=float(viscosity_squeeze_gain),
+                        floor=float(viscosity_squeeze_floor),
+                        cap=float(viscosity_squeeze_cap),
+                    )
 
-                    denom += abs(v)
+                    denom += abs(v_raw)
                     amp = float(pcr_amp_by_feature.get(col, 1.0))
                     class_score += (amp * v) * z
 
@@ -4181,9 +4284,18 @@ def run_physics_prediction(
                                     phase=2.0 * math.pi * float(x_pos),
                                 ),
                             )
-                        v = (q * field) / eta_dynamic
+                        v_raw = (q * field) / eta_dynamic
+                        v = _viscosity_squeeze_velocity(
+                            v_raw,
+                            signal_strength=abs(float(charge)),
+                            enabled=bool(viscosity_squeeze_enabled),
+                            power=float(viscosity_squeeze_power),
+                            gain=float(viscosity_squeeze_gain),
+                            floor=float(viscosity_squeeze_floor),
+                            cap=float(viscosity_squeeze_cap),
+                        )
 
-                        denom += abs(v)
+                        denom += abs(v_raw)
                         amp = float(pcr_amp_by_feature.get(col, 1.0))
                         class_score += (amp * v) * z
 

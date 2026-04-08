@@ -37,6 +37,9 @@ from mycelium_app.physics_predictor import (
 )
 
 
+ENB2012_DATA_PATH = Path("/mnt/chromeos/archive/archive.zip/ENB2012_data.csv")
+
+
 def _frame_from_sklearn_dataset(loader: Any, *, target_name: str = "target") -> pd.DataFrame:
     bundle = loader(as_frame=True)
     frame = bundle.frame.copy()
@@ -47,6 +50,99 @@ def _frame_from_sklearn_dataset(loader: Any, *, target_name: str = "target") -> 
 
 def _safe_rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(math.sqrt(mean_squared_error(y_true, y_pred)))
+
+
+def _load_enb2012_frame() -> pd.DataFrame:
+    if not ENB2012_DATA_PATH.exists():
+        raise FileNotFoundError(f"ENB2012 dataset not found at {ENB2012_DATA_PATH}")
+    frame = pd.read_csv(ENB2012_DATA_PATH)
+    expected = {"X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8", "Y1", "Y2"}
+    missing = expected.difference(frame.columns)
+    if missing:
+        raise ValueError(f"ENB2012 dataset is missing expected columns: {sorted(missing)}")
+    return frame
+
+
+def _ecosystem_vitals(result) -> dict[str, Any]:
+    viscosities = [float(m.viscosity) for m in result.migration_map if m.viscosity is not None]
+    velocities = [abs(float(m.terminal_velocity)) for m in result.migration_map if m.terminal_velocity is not None]
+    complexes = [m.complex_id for m in result.migration_map if m.complex_id is not None]
+    active_complexes = len(set(int(c) for c in complexes if c is not None))
+    return {
+        "mean_viscosity": None if not viscosities else float(np.mean(viscosities)),
+        "mean_terminal_velocity": None if not velocities else float(np.mean(velocities)),
+        "active_complexes": int(active_complexes),
+        "mean_band_sharpness": result.metrics.gel_band_sharpness,
+        "mean_smearing": result.metrics.gel_smearing,
+    }
+
+
+def _evaluate_regressor_with_plane(
+    name: str,
+    frame: pd.DataFrame,
+    target_col: str,
+    *,
+    plane: PhysicsPlane,
+    squeeze_enabled: bool = False,
+    random_seed: int = 42,
+) -> dict[str, Any]:
+    y = frame[target_col].to_numpy(dtype=float)
+    X = frame.drop(columns=[target_col])
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=random_seed)
+
+    physics_df = pd.concat([X, pd.Series(y, name=target_col)], axis=1)
+    runtime_state = PredictorRuntimeState(metadata={"benchmark": name, "target": target_col, "plane": plane.value})
+    physics_result = run_physics_prediction(
+        physics_df,
+        target_col=target_col,
+        plane=plane,
+        runtime_state=runtime_state,
+        train_fraction=0.75,
+        random_seed=random_seed,
+        n_cycles=8,
+        max_preview_rows=0,
+        enable_isotopes=True,
+        viscosity_squeeze_enabled=bool(squeeze_enabled),
+        return_predictions=True,
+    )
+
+    rf = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("model", RandomForestRegressor(n_estimators=300, random_state=random_seed, n_jobs=-1)),
+        ]
+    )
+    et = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("model", ExtraTreesRegressor(n_estimators=300, random_state=random_seed, n_jobs=-1)),
+        ]
+    )
+    rf.fit(X_train, y_train)
+    et.fit(X_train, y_train)
+    rf_pred = rf.predict(X_test)
+    et_pred = et.predict(X_test)
+
+    physics_mae = float(physics_result.metrics.mae or 0.0)
+    physics_rmse = float(physics_result.metrics.rmse or 0.0)
+
+    return {
+        "task": "regression",
+        "benchmark": "building_energy",
+        "dataset": name,
+        "target": target_col,
+        "plane": plane.value,
+        "viscosity_squeeze_enabled": bool(squeeze_enabled),
+        "physics_mae": physics_mae,
+        "physics_rmse": physics_rmse,
+        "random_forest_mae": float(mean_absolute_error(y_test, rf_pred)),
+        "random_forest_rmse": _safe_rmse(y_test, rf_pred),
+        "extra_trees_mae": float(mean_absolute_error(y_test, et_pred)),
+        "extra_trees_rmse": _safe_rmse(y_test, et_pred),
+        "physics_metrics": asdict(physics_result.metrics),
+        "ecosystem_vitals": _ecosystem_vitals(physics_result),
+        "runtime_state": serialize_predictor_state(runtime_state),
+    }
 
 
 def _evaluate_classifier(name: str, frame: pd.DataFrame, target_col: str) -> dict[str, Any]:
@@ -189,6 +285,70 @@ def _evaluate_regressor(name: str, frame: pd.DataFrame, target_col: str) -> dict
     }
 
 
+def run_energy_efficiency_sweep() -> dict[str, Any]:
+    frame = _load_enb2012_frame()
+    targets = ["Y1", "Y2"]
+    planes = [PhysicsPlane.solid, PhysicsPlane.liquid, PhysicsPlane.gas]
+    variants = [
+        {"name": "baseline", "squeeze_enabled": False},
+        {"name": "squeeze", "squeeze_enabled": True},
+    ]
+
+    target_reports: list[dict[str, Any]] = []
+    for target_col in targets:
+        plane_rows: list[dict[str, Any]] = []
+        for variant in variants:
+            for plane in planes:
+                plane_rows.append(
+                    _evaluate_regressor_with_plane(
+                        "enb2012",
+                        frame,
+                        target_col,
+                        plane=plane,
+                        squeeze_enabled=bool(variant["squeeze_enabled"]),
+                        random_seed=42,
+                    )
+                )
+
+        best_row = min(plane_rows, key=lambda row: float(row["physics_rmse"]))
+        target_reports.append(
+            {
+                "target": target_col,
+                "planes": plane_rows,
+                "best_plane": best_row["plane"],
+                "best_variant": "squeeze" if bool(best_row.get("viscosity_squeeze_enabled")) else "baseline",
+                "best_physics_rmse": float(best_row["physics_rmse"]),
+                "best_physics_mae": float(best_row["physics_mae"]),
+            }
+        )
+
+    combined_rows = []
+    for report in target_reports:
+        for row in report["planes"]:
+            combined_rows.append(
+                {
+                    "target": report["target"],
+                    "plane": row["plane"],
+                    "variant": "squeeze" if bool(row.get("viscosity_squeeze_enabled")) else "baseline",
+                    "physics_rmse": float(row["physics_rmse"]),
+                    "physics_mae": float(row["physics_mae"]),
+                    "mean_viscosity": row["ecosystem_vitals"]["mean_viscosity"],
+                    "active_complexes": row["ecosystem_vitals"]["active_complexes"],
+                    "mean_terminal_velocity": row["ecosystem_vitals"]["mean_terminal_velocity"],
+                }
+            )
+
+    aggregate: dict[str, Any] = {
+        "benchmark": "building_energy",
+        "dataset": "ENB2012_data.csv",
+        "path": str(ENB2012_DATA_PATH),
+        "variants": [variant["name"] for variant in variants],
+        "targets": target_reports,
+        "plane_summary": combined_rows,
+    }
+    return aggregate
+
+
 def _evaluate_unsupervised() -> dict[str, Any]:
     blob_X, blob_y = make_blobs(n_samples=600, centers=4, cluster_std=1.35, random_state=42)
     moon_X, moon_y = make_moons(n_samples=600, noise=0.07, random_state=42)
@@ -231,6 +391,7 @@ def main() -> None:
             _evaluate_classifier("breast_cancer", _frame_from_sklearn_dataset(load_breast_cancer), "target"),
             _evaluate_classifier("wine", _frame_from_sklearn_dataset(load_wine), "target"),
         ],
+        "building_energy": run_energy_efficiency_sweep(),
         "regression": [
             _evaluate_regressor("diabetes", _frame_from_sklearn_dataset(load_diabetes), "target"),
         ],

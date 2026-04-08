@@ -194,6 +194,15 @@ The script reports:
 - unsupervised clustering quality on no-target synthetic datasets
 - runtime-state serialization / reload smoke test
 
+The benchmark suite also includes a permanent ENB2012 / Energy Efficiency sweep that:
+
+- evaluates Heating Load (`Y1`) and Cooling Load (`Y2`) separately
+- sweeps `PhysicsPlane.solid`, `PhysicsPlane.liquid`, and `PhysicsPlane.gas`
+- compares baseline physics runs against the `Viscosity Squeeze` variant
+- records ecosystem vitals such as mean viscosity, terminal velocity, and active complexes
+
+This makes ENB2012 a repeatable wind tunnel for checking whether future physics changes help on structured building-energy tabular data.
+
 ## Suggested Visual Legend
 
 If you want to reuse the diagram as documentation, this legend matches the visual panels:
@@ -209,4 +218,5 @@ If you want to reuse the diagram as documentation, this legend matches the visua
 - The engine is designed to be explainable, not just predictive.
 - Diagnostics are surfaced in `PredictionResult.diagnostics` for debugging and visualization.
 - Runtime state helpers support serialization, pruning, homeostatic gain updates, and abstention-aware reruns.
+- The ENB2012 benchmark is tracked as a permanent regression/plane-sweep fixture.
 - The repository currently includes a small CrewAI starter script for demo runs and narrative summaries.
