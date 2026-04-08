@@ -34,6 +34,7 @@ from mycelium_app.routes.live import router as live_router
 from mycelium_app.routes.memory import router as memory_router
 from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.nudges import router as nudges_router
+from mycelium_app.routes.ecosystem import router as ecosystem_router
 from mycelium_app.routes.predict import router as predict_router
 from mycelium_app.routes.sedimentation import router as sedimentation_router
 from mycelium_app.routes.projects import router as projects_router
@@ -324,6 +325,59 @@ async def _telemetry_assistant_daemon() -> None:
         await asyncio.sleep(float(tick_s))
 
 
+async def _signal_collector_daemon() -> None:
+    """Background daemon that collects OS-level signals (the nervous system)."""
+    from mycelium_app.signal_collector import CollectorState
+    from mycelium_app.learning_daemon import run_signal_collection_tick
+
+    await asyncio.sleep(3.0)
+    state = CollectorState()
+    tick_s = max(10, min(int(getattr(settings, "ecosystem_collector_tick_seconds", 30)), 300))
+
+    while True:
+        try:
+            # Find first active user for signal collection on this device.
+            with Session(engine) as session:
+                from mycelium_app.homeostasis import list_recent_user_ids
+                user_ids = list_recent_user_ids(session, window_hours=24)
+                if user_ids:
+                    run_signal_collection_tick(
+                        state,
+                        user_id=int(user_ids[0]),
+                        device_id=str(settings.nexus_device_id or "local"),
+                    )
+        except Exception:
+            pass
+        await asyncio.sleep(float(tick_s))
+
+
+async def _learning_daemon() -> None:
+    """Background daemon that runs periodic learning cycles (the heartbeat)."""
+    from mycelium_app.learning_daemon import run_learning_tick
+
+    await asyncio.sleep(10.0)
+    tick_s = max(60, min(int(getattr(settings, "ecosystem_learning_tick_seconds", 300)), 3600))
+
+    while True:
+        try:
+            with Session(engine) as session:
+                from mycelium_app.homeostasis import list_recent_user_ids
+                user_ids = list_recent_user_ids(session, window_hours=24)
+                for uid in user_ids[:10]:
+                    try:
+                        run_learning_tick(
+                            user_id=int(uid),
+                            device_id=str(settings.nexus_device_id or "local"),
+                            window_hours=6,
+                            bucket_minutes=30,
+                        )
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        await asyncio.sleep(float(tick_s))
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     create_db_and_tables()
@@ -336,6 +390,11 @@ async def on_startup() -> None:
         asyncio.create_task(_telemetry_assistant_daemon())
     if bool(getattr(settings, "notifications_bridge_enabled", False)):
         asyncio.create_task(_messaging_bridge_daemon())
+    # Ecosystem daemons (the nervous system + heartbeat)
+    if bool(getattr(settings, "ecosystem_collector_enabled", False)):
+        asyncio.create_task(_signal_collector_daemon())
+    if bool(getattr(settings, "ecosystem_learning_enabled", False)):
+        asyncio.create_task(_learning_daemon())
 
 
 @app.get("/health")
@@ -384,6 +443,7 @@ app.include_router(stimulus_router)
 app.include_router(telemetry_router)
 app.include_router(tasks_router)
 app.include_router(reflection_router)
+app.include_router(ecosystem_router)
 app.include_router(predict_router)
 app.include_router(sedimentation_router)
 app.include_router(projects_router)

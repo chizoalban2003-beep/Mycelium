@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-4">
+
+  <!-- Narrative hero -->
+  <div id="narrativeHero" class="rounded-xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-6">
+    <div class="flex items-center gap-3 mb-2">
+      <div id="stageBadge" class="text-xs uppercase tracking-[0.25em] px-2 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-900"></div>
+      <div id="voiceTone" class="text-xs text-slate-500"></div>
+    </div>
+    <h1 id="narrativeHeadline" class="text-2xl font-bold">Loading ecosystem…</h1>
+    <p id="narrativeBody" class="text-sm text-slate-300 mt-2 max-w-3xl"></p>
+    <div id="narrativeInsight" class="mt-3 text-sm text-cyan-200/80 italic"></div>
+    <div id="narrativeNext" class="mt-2 text-xs text-slate-400"></div>
+  </div>
+
+  <!-- Controls -->
+  <div class="flex gap-3">
+    <button id="btnCollect" class="rounded bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600">
+      Collect Signals
+    </button>
+    <button id="btnLearn" class="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+      Run Learning Cycle
+    </button>
+    <button id="btnRefresh" class="rounded border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">
+      Refresh State
+    </button>
+    <span id="statusMsg" class="text-sm text-slate-400 self-center ml-2"></span>
+  </div>
+
+  <!-- Growth stage + ecosystem shape -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="rounded border border-slate-800 bg-slate-900 p-4">
+      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Growth Stage</div>
+      <div id="growthStage" class="text-2xl font-bold mt-1">—</div>
+      <div id="unlockedCaps" class="text-xs text-slate-400 mt-1"></div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-900 p-4">
+      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Signals</div>
+      <div id="signalCount" class="text-2xl font-bold mt-1">0</div>
+      <div class="text-xs text-slate-400 mt-1">in window</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-900 p-4">
+      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Ecosystem Shape</div>
+      <div id="ecoShape" class="text-2xl font-bold mt-1">—</div>
+      <div class="text-xs text-slate-400 mt-1">rows × features</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-900 p-4">
+      <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Hours Active</div>
+      <div id="hoursActive" class="text-2xl font-bold mt-1">0</div>
+      <div class="text-xs text-slate-400 mt-1">observed</div>
+    </div>
+  </div>
+
+  <!-- Sedimentation layers -->
+  <div id="sedSection" class="hidden">
+    <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80 mb-3">Ecosystem Layers</div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="rounded border border-emerald-900/60 bg-emerald-950/20 p-4">
+        <div class="text-xs uppercase tracking-[0.25em] text-emerald-300/80">Bedrock Floor</div>
+        <div id="sedBedrock" class="text-xl font-bold mt-1">0</div>
+        <div id="sedBedrockFeats" class="text-xs text-slate-300 mt-1"></div>
+      </div>
+      <div class="rounded border border-cyan-900/60 bg-cyan-950/20 p-4">
+        <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80">Suspension Layer</div>
+        <div id="sedSuspension" class="text-xl font-bold mt-1">0</div>
+      </div>
+      <div class="rounded border border-rose-900/60 bg-rose-950/20 p-4">
+        <div class="text-xs uppercase tracking-[0.25em] text-rose-300/80">Turbulent Surface</div>
+        <div id="sedTurbulent" class="text-xl font-bold mt-1">0</div>
+        <div id="sedTurbulentFeats" class="text-xs text-slate-300 mt-1"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top apps -->
+  <div id="appsSection" class="hidden rounded border border-slate-800 bg-slate-900 p-5">
+    <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80 mb-3">Top Applications</div>
+    <div id="appBars"></div>
+  </div>
+
+  <!-- Learning result -->
+  <div id="learnResult" class="hidden rounded border border-slate-800 bg-slate-900 p-5">
+    <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80 mb-3">Latest Learning Cycle</div>
+    <pre id="learnOutput" class="text-xs text-slate-300 whitespace-pre-wrap"></pre>
+  </div>
+
+  <!-- Signal types breakdown -->
+  <div id="signalTypesSection" class="hidden rounded border border-slate-800 bg-slate-900 p-5">
+    <div class="text-xs uppercase tracking-[0.25em] text-cyan-300/80 mb-3">Signal Types</div>
+    <div id="signalTypeBars"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const API = '/api/ecosystem';
+
+  async function fetchState() {
+    document.getElementById('statusMsg').textContent = 'Loading…';
+    try {
+      const r = await fetch(API + '/state?window_hours=24', { credentials: 'same-origin' });
+      const data = await r.json();
+      if (!data.ok) { document.getElementById('statusMsg').textContent = 'Error'; return; }
+      renderState(data);
+      document.getElementById('statusMsg').textContent = '';
+    } catch (e) {
+      document.getElementById('statusMsg').textContent = 'Failed: ' + e.message;
+    }
+  }
+
+  function renderState(data) {
+    const n = data.narrative || {};
+    document.getElementById('stageBadge').textContent = (data.stage || 'infant').toUpperCase();
+    document.getElementById('voiceTone').textContent = n.voice_tone || '';
+    document.getElementById('narrativeHeadline').textContent = n.headline || 'No data yet';
+    document.getElementById('narrativeBody').textContent = n.body || '';
+    document.getElementById('narrativeInsight').textContent = n.insight || '';
+    document.getElementById('narrativeNext').textContent = n.next_step ? '→ ' + n.next_step : '';
+
+    const stageColors = { infant: 'bg-slate-800 text-slate-300 border-slate-700', toddler: 'bg-cyan-950 text-cyan-300 border-cyan-900', adolescent: 'bg-emerald-950 text-emerald-300 border-emerald-900' };
+    const badge = document.getElementById('stageBadge');
+    badge.className = 'text-xs uppercase tracking-[0.25em] px-2 py-1 rounded border ' + (stageColors[data.stage] || stageColors.infant);
+
+    document.getElementById('growthStage').textContent = data.stage || '—';
+    document.getElementById('unlockedCaps').textContent = (data.unlocked || []).join(', ') || 'none yet';
+
+    const s = data.summary || {};
+    document.getElementById('signalCount').textContent = s.n_signals || 0;
+    document.getElementById('hoursActive').textContent = (s.hours_active || 0).toFixed(1);
+
+    const shape = data.ecosystem_shape || {};
+    document.getElementById('ecoShape').textContent = shape.rows && shape.columns ? shape.rows + ' × ' + shape.columns : '—';
+
+    // Sedimentation
+    const sed = data.sedimentation;
+    const sedSection = document.getElementById('sedSection');
+    if (sed && sed.layers) {
+      sedSection.classList.remove('hidden');
+      document.getElementById('sedBedrock').textContent = sed.layers.bedrock || 0;
+      document.getElementById('sedSuspension').textContent = sed.layers.suspension || 0;
+      document.getElementById('sedTurbulent').textContent = sed.layers.turbulent || 0;
+      document.getElementById('sedBedrockFeats').textContent = (sed.top_bedrock || []).slice(0, 5).join(', ');
+      document.getElementById('sedTurbulentFeats').textContent = (sed.top_turbulent || []).slice(0, 5).join(', ');
+    } else {
+      sedSection.classList.add('hidden');
+    }
+
+    // Top apps
+    const apps = s.top_apps || {};
+    const appKeys = Object.keys(apps);
+    const appSection = document.getElementById('appsSection');
+    if (appKeys.length) {
+      appSection.classList.remove('hidden');
+      const container = document.getElementById('appBars');
+      container.innerHTML = '';
+      const maxVal = Math.max(...Object.values(apps), 1);
+      appKeys.slice(0, 10).forEach(app => {
+        const pct = Math.min(100, (apps[app] / maxVal) * 100);
+        container.innerHTML += `<div class="flex items-center gap-2 mb-1">
+          <div class="text-xs text-slate-400 w-28 text-right truncate">${app}</div>
+          <div class="flex-1 h-3 rounded-full bg-slate-800"><div class="h-full rounded-full bg-cyan-600" style="width:${pct}%"></div></div>
+          <div class="text-xs text-slate-500 w-8">${apps[app]}</div>
+        </div>`;
+      });
+    } else {
+      appSection.classList.add('hidden');
+    }
+
+    // Signal types
+    const sigTypes = s.signal_types || {};
+    const sigKeys = Object.keys(sigTypes);
+    const sigSection = document.getElementById('signalTypesSection');
+    if (sigKeys.length) {
+      sigSection.classList.remove('hidden');
+      const container = document.getElementById('signalTypeBars');
+      container.innerHTML = '';
+      const maxSig = Math.max(...Object.values(sigTypes), 1);
+      sigKeys.slice(0, 10).forEach(t => {
+        const pct = Math.min(100, (sigTypes[t] / maxSig) * 100);
+        container.innerHTML += `<div class="flex items-center gap-2 mb-1">
+          <div class="text-xs text-slate-400 w-32 text-right truncate">${t}</div>
+          <div class="flex-1 h-3 rounded-full bg-slate-800"><div class="h-full rounded-full bg-indigo-600" style="width:${pct}%"></div></div>
+          <div class="text-xs text-slate-500 w-8">${sigTypes[t]}</div>
+        </div>`;
+      });
+    } else {
+      sigSection.classList.add('hidden');
+    }
+  }
+
+  document.getElementById('btnCollect').addEventListener('click', async () => {
+    document.getElementById('statusMsg').textContent = 'Collecting signals…';
+    try {
+      const r = await fetch(API + '/collect', { method: 'POST', credentials: 'same-origin' });
+      const d = await r.json();
+      document.getElementById('statusMsg').textContent = `Collected ${d.signals_collected} signals (tick #${d.tick})`;
+      setTimeout(fetchState, 500);
+    } catch (e) { document.getElementById('statusMsg').textContent = 'Error: ' + e.message; }
+  });
+
+  document.getElementById('btnLearn').addEventListener('click', async () => {
+    document.getElementById('statusMsg').textContent = 'Running learning cycle…';
+    const learnSection = document.getElementById('learnResult');
+    try {
+      const r = await fetch(API + '/learn', { method: 'POST', credentials: 'same-origin' });
+      const d = await r.json();
+      document.getElementById('statusMsg').textContent = d.ok ? 'Learning complete' : 'Learning failed';
+      learnSection.classList.remove('hidden');
+      document.getElementById('learnOutput').textContent = JSON.stringify(d, null, 2);
+      setTimeout(fetchState, 500);
+    } catch (e) {
+      document.getElementById('statusMsg').textContent = 'Error: ' + e.message;
+    }
+  });
+
+  document.getElementById('btnRefresh').addEventListener('click', fetchState);
+
+  fetchState();
+})();
+</script>
+{% endblock %}

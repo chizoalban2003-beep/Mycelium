@@ -155,6 +155,14 @@ class Settings(BaseSettings):
     nexus_active_curiosity_nudge_enabled: bool = True
     nexus_active_curiosity_nudge_throttle_minutes: int = 120
 
+    # Ecosystem (living agent) settings.
+    ecosystem_collector_enabled: bool = False
+    ecosystem_collector_tick_seconds: int = 30
+    ecosystem_learning_enabled: bool = False
+    ecosystem_learning_tick_seconds: int = 300
+    ecosystem_learning_window_hours: int = 6
+    ecosystem_learning_bucket_minutes: int = 30
+
     @field_validator("app_name", mode="before")
     @classmethod
     def normalize_legacy_app_name(cls, value: object) -> str:

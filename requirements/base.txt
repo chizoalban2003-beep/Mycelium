@@ -16,5 +16,8 @@ pandas>=2.2,<3
 scipy>=1.12,<2
 feature-engine>=1.7,<2
 
+# OS signal collection
+psutil>=5.9,<7
+
 # Optional extras (not required to run the app):
 # - sklearn benchmarks: `pip install -r requirements/benchmarks.txt`
