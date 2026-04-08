@@ -24,6 +24,7 @@ This is the practical checklist for turning the repo into a production deploymen
 - [ ] Follow [docs/railway_production_env.md](docs/railway_production_env.md) for the exact Railway variable set
 - [ ] Follow [docs/railway_deploy_runbook.md](docs/railway_deploy_runbook.md) during the Railway setup
 - [ ] Use [docs/railway_launch_pack.md](docs/railway_launch_pack.md) as the primary Railway launch packet
+- [ ] If you want the fastest path, use [docs/railway_today_deploy.md](docs/railway_today_deploy.md)
 - [ ] Set `SECRET_KEY` to a long random production value
 - [ ] Set `DATABASE_URL` to Railway Postgres
 - [ ] Set `COOKIE_SECURE=true`

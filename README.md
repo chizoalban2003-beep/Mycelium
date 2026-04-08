@@ -15,6 +15,14 @@ The repo still includes the project-tree workspace foundation, but the product s
 - Consent-gated device actions and gradual autonomy
 - Hive sharing only after trust is earned
 
+## AI philosophy
+
+- AI should be visible, not hidden.
+- AI should be consent-first and user-controlled.
+- AI should explain what it learned and why it acted.
+- AI should grow autonomy gradually, only after trust is earned.
+- The local device should stay the primary brain, with Hive as an amplifier.
+
 This repo currently ships an MVP platform:
 
 - User auth (register/login)
@@ -32,6 +40,7 @@ This repo currently ships an MVP platform:
 - The Railway production env guide is [docs/railway_production_env.md](docs/railway_production_env.md).
 - The Railway deploy runbook is [docs/railway_deploy_runbook.md](docs/railway_deploy_runbook.md).
 - The Railway launch pack is [docs/railway_launch_pack.md](docs/railway_launch_pack.md).
+- The fastest deploy-today guide is [docs/railway_today_deploy.md](docs/railway_today_deploy.md).
 - For Railway production, use `requirements/prod.txt`, Postgres, `COOKIE_SECURE=true`, and `DB_MIGRATION_MODE=migrate`.
 - Before launch, run `STRICT_PRODUCTION=true python scripts/db_migration_preflight.py` to catch placeholder secrets and insecure defaults.
 - After deploy, run `BASE_URL=https://<your-app> ./.venv/bin/python scripts/health_smoketest.py` to verify `/health` and `/docs`.

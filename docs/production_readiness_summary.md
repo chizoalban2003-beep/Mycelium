@@ -27,6 +27,7 @@ Mycelium is already **deployable pilot-ready**, but not yet fully hardened for a
    - Use [docs/railway_production_env.md](docs/railway_production_env.md) for the exact Railway variable set
    - Use [docs/railway_deploy_runbook.md](docs/railway_deploy_runbook.md) for the step-by-step Railway rollout
    - Use [docs/railway_launch_pack.md](docs/railway_launch_pack.md) as the single launch packet
+   - Use [docs/railway_today_deploy.md](docs/railway_today_deploy.md) for the fastest launch path
 
 3. Observability
    - Add uptime checks for `/health` and main write paths

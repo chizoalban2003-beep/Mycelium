@@ -2,6 +2,8 @@
 
 This is the single copy/paste packet for launching Mycelium on Railway.
 
+If you want the fastest version of this plan, use [docs/railway_today_deploy.md](docs/railway_today_deploy.md).
+
 ## 1) Set environment variables
 
 Use [docs/railway_production_env.md](docs/railway_production_env.md) for the full set.
