@@ -1,117 +1,82 @@
-# Mycelium Release Launch Checklist
+# Mycelium Go-Live Checklist
 
-This checklist is the practical next step for turning the repo into a production-ready release.
+This is the practical checklist for turning the repo into a production deployment.
 
-## What the app is today
+## Ready now
 
-Mycelium is a consent-first AI web platform with:
+- [x] Consent-first web app surface exists
+- [x] Hosted backend path is documented for Railway/Postgres
+- [x] Container restart policies are set for API and Postgres
+- [x] `/health` endpoint exists
+- [x] Container healthcheck is configured in `docker-compose.yml`
+- [x] Strict production preflight exists: `scripts/db_migration_preflight.py`
+- [x] Uptime smoke test exists: `scripts/health_smoketest.py`
+- [x] Backup helper exists: `scripts/backup_db.sh`
+- [x] Restore helper exists: `scripts/restore_db.sh`
+- [x] Local child-agent install path exists
+- [x] Android TWA packaging path exists
 
-- user login and registration
-- project and tree/workspace management
-- Nexus ingestion for text, feedback, and structured signals
-- a visible learning trail and knowledge audit UI
-- a reasoning card that surfaces `improvement_frac` from synthetic validation traces
-- policy controls, including a kill-switch for device actions and diagnostics
-- Telegram and email recovery channels when configured
+## Go-live checks
 
-## Production path
+### Production config
 
-### Railway
+- [ ] Copy `.env.production.example` into Railway environment variables
+- [ ] Follow [docs/railway_production_env.md](docs/railway_production_env.md) for the exact Railway variable set
+- [ ] Follow [docs/railway_deploy_runbook.md](docs/railway_deploy_runbook.md) during the Railway setup
+- [ ] Use [docs/railway_launch_pack.md](docs/railway_launch_pack.md) as the primary Railway launch packet
+- [ ] Set `SECRET_KEY` to a long random production value
+- [ ] Set `DATABASE_URL` to Railway Postgres
+- [ ] Set `COOKIE_SECURE=true`
+- [ ] Set `DB_MIGRATION_MODE=migrate`
+- [ ] Keep `DB_AUTO_CREATE_TABLES=false`
+- [ ] Set `CORS_ALLOW_ORIGINS_CSV` to the public app origin
 
-Use Railway for the hosted backend and web UI.
+### Preflight
 
-Required production settings:
+- [ ] Run `STRICT_PRODUCTION=true python scripts/db_migration_preflight.py`
+- [ ] Confirm the preflight exits cleanly
+- [ ] Verify no placeholder secrets remain in deployment settings
+- [ ] Run `BASE_URL=https://<your-app> TOKEN=<api-token> ./.venv/bin/python scripts/deploy_readiness_check.sh`
 
-- `DATABASE_URL` pointing to Railway Postgres
-- `SECRET_KEY` set to a long random value
-- `COOKIE_SECURE=true`
-- `DB_MIGRATION_MODE=migrate`
-- `DB_AUTO_CREATE_TABLES=false`
-- `CORS_ALLOW_ORIGINS_CSV` set to your public app origin
+### Deployment smoke test
 
-Suggested validation:
+- [ ] Deploy the container
+- [ ] Confirm `/health` responds
+- [ ] Confirm `/docs` is reachable
+- [ ] Run `BASE_URL=https://<your-app> ./.venv/bin/python scripts/health_smoketest.py`
+- [ ] Create a test user
+- [ ] Verify login works
+- [ ] Verify project creation works
+- [ ] Verify Nexus audit endpoints respond
 
-1. Deploy the container.
-2. Confirm `/health` responds.
-3. Confirm `/docs` is reachable.
-4. Register a test user.
-5. Verify login, project creation, and Nexus audit endpoints.
+### Backup and recovery
 
-### Downloadable Android app
+- [ ] Back up Postgres
+- [ ] Restore into a fresh environment
+- [ ] Confirm the restore matches expected data
 
-If you want a downloadable app, use the hosted web app as a Trusted Web Activity (TWA).
+### Android TWA
 
-Use [docs/android_twa_packaging.md](docs/android_twa_packaging.md) for the build path.
-
-That gives you:
-
-- a real APK for sideloading or testing
-- an AAB for Google Play submission
-- full-screen Android launch while keeping the web app as the source of truth
-
-### Asset generation
-
-Generate launcher icons from the built-in SVG motif:
-
-```bash
-python scripts/generate_twa_icons.py --out-dir static/twa-icons
-```
-
-Production icon targets:
-
-- `static/twa-icons/mycelium-192.png`
-- `static/twa-icons/mycelium-192-maskable.png`
-- `static/twa-icons/mycelium-512.png`
-- `static/twa-icons/mycelium-512-maskable.png`
-
-### Keystore
-
-If you do not already have a release keystore, create one before Play upload:
-
-```bash
-keytool -genkeypair -v -keystore mycelium-release.jks -alias mycelium -keyalg RSA -keysize 2048 -validity 10000
-```
-
-Keep the keystore private and back it up offline.
-
-### One-shot build helper
-
-Run the release helper after the one-time Bubblewrap project scaffold exists:
-
-```bash
-bash scripts/release_twa_build.sh
-```
-
-If the `twa/` project directory has not been created yet, first run:
-
-```bash
-bubblewrap init --manifest https://<your-railway-domain>/static/manifest.webmanifest
-```
-
-## Launch checklist
-
-- [ ] Set production env vars
-- [ ] Use Postgres in production
-- [ ] Deploy to Railway and confirm health/docs
-- [ ] Create a test user and verify auth
-- [ ] Verify `improvement_frac` appears in the reasoning card flow
-- [ ] Verify kill-switch blocks the synthetic stress-test route
+- [ ] Generate launcher icons and maskable variants
 - [ ] Confirm asset links for Android TWA
-- [ ] Generate PNG launcher icons and maskable variants
-- [ ] Set versionName/versionCode in the TWA scaffold
+- [ ] Set `versionName` and `versionCode`
 - [ ] Generate or confirm the release keystore
-- [ ] Create the Bubblewrap project directory once
+- [ ] Create the Bubblewrap project directory
 - [ ] Build APK/AAB with Bubblewrap
 - [ ] Test install on one Android device
-- [ ] Submit to Play Store when branding, privacy policy, and screenshots are ready
+
+### Release
+
+- [ ] Confirm branding, privacy policy, and screenshots
+- [ ] Submit to Play Store when the build is verified
+
+## Remaining hardening
+
+- [ ] Add observability/alerting beyond basic smoke tests
+- [ ] Run a short soak test on the API and child-agent loop
+- [ ] Finalize secret rotation procedures
+- [ ] Review HTTPS/session-cookie behavior in the hosted environment
 
 ## Current status
 
-This repo is already in a good alpha shape for:
-
-- hosted web deployment
-- consent-gated app actions
-- synthetic validation and reasoning summaries
-- a TWA-based Android packaging path
-
-The remaining work for a public release is mostly ops and packaging, not core app reconstruction.
+This repo is now in a **pilot-ready** state for deployment, with the main production gates and recovery paths in place. The remaining work is mostly launch operations, observability, and packaging.

@@ -27,10 +27,15 @@ This repo currently ships an MVP platform:
 - Railway gives you a public HTTPS app, but it is not the app-download channel.
 - If you want a downloadable Android build, package the hosted web app as a Trusted Web Activity (TWA) and publish the generated APK/AAB to Google Play.
 - The Android packaging path is documented in [docs/android_twa_packaging.md](docs/android_twa_packaging.md).
-- The release checklist is documented in [docs/release_launch_checklist.md](docs/release_launch_checklist.md).
+- The go-live checklist is documented in [docs/release_launch_checklist.md](docs/release_launch_checklist.md).
+- The production env template is [`.env.production.example`](.env.production.example).
+- The Railway production env guide is [docs/railway_production_env.md](docs/railway_production_env.md).
+- The Railway deploy runbook is [docs/railway_deploy_runbook.md](docs/railway_deploy_runbook.md).
+- The Railway launch pack is [docs/railway_launch_pack.md](docs/railway_launch_pack.md).
 - For Railway production, use `requirements/prod.txt`, Postgres, `COOKIE_SECURE=true`, and `DB_MIGRATION_MODE=migrate`.
 - Before launch, run `STRICT_PRODUCTION=true python scripts/db_migration_preflight.py` to catch placeholder secrets and insecure defaults.
 - After deploy, run `BASE_URL=https://<your-app> ./.venv/bin/python scripts/health_smoketest.py` to verify `/health` and `/docs`.
+- For a single end-to-end gate, run `BASE_URL=https://<your-app> TOKEN=<api-token> ./.venv/bin/python scripts/deploy_readiness_check.sh`.
 
 ## Quickstart (Linux)
 

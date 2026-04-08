@@ -23,6 +23,10 @@ Mycelium is already **deployable pilot-ready**, but not yet fully hardened for a
    - Store tokens, SMTP secrets, and webhook secrets in the platform secret store
    - Document rotation and revocation for external credentials
    - Run `STRICT_PRODUCTION=true python scripts/db_migration_preflight.py` before release
+   - Start from [`.env.production.example`](../.env.production.example)
+   - Use [docs/railway_production_env.md](docs/railway_production_env.md) for the exact Railway variable set
+   - Use [docs/railway_deploy_runbook.md](docs/railway_deploy_runbook.md) for the step-by-step Railway rollout
+   - Use [docs/railway_launch_pack.md](docs/railway_launch_pack.md) as the single launch packet
 
 3. Observability
    - Add uptime checks for `/health` and main write paths
@@ -30,6 +34,7 @@ Mycelium is already **deployable pilot-ready**, but not yet fully hardened for a
    - Confirm log retention and incident triage steps
    - Use `scripts/health_smoketest.py` after deploy to confirm `/health` and `/docs`
    - Compose now restarts both API and Postgres automatically
+   - Use `scripts/deploy_readiness_check.sh` for a single deploy gate
 
 4. Recovery and backup
    - Back up Postgres regularly
