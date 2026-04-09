@@ -338,6 +338,24 @@ def run_learning_tick(
             except Exception as e:
                 result["actions"].append(f"auto_tune_error: {type(e).__name__}")
 
+        # 4c. Record time series data point
+        try:
+            from mycelium_app.trend_analysis import record_ecosystem_tick
+            mae_val = None
+            if result.get("prediction") and result["prediction"].get("mae") is not None:
+                mae_val = float(result["prediction"]["mae"])
+            record_ecosystem_tick(
+                session,
+                user_id=user_id,
+                field_state=ff_state if 'ff_state' in dir() else None,
+                sedimentation=result.get("sedimentation"),
+                n_signals=df.shape[0] if not df.empty else 0,
+                mae=mae_val,
+            )
+            result["actions"].append("timeseries_recorded")
+        except Exception as e:
+            result["actions"].append(f"timeseries_error: {type(e).__name__}")
+
         # 5. Generate narrative
         try:
             summary = build_ecosystem_summary(

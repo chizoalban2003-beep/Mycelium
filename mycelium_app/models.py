@@ -565,3 +565,32 @@ class ForceFieldSnapshot(SQLModel, table=True):
     attention_entropy: float = Field(default=0.0)
     dominant_force: str = Field(default="")
     field_json: str = "{}"
+
+
+class EcosystemTimeSeries(SQLModel, table=True):
+    """Compact time series of ecosystem state — one row per learning cycle.
+
+    ~720 rows/day at 2-min intervals. Enables trend analysis, weekly
+    comparisons, and long-term growth tracking.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+
+    total_energy: float = Field(default=0.0)
+    coherence: float = Field(default=0.0)
+    n_particles: int = Field(default=0)
+    n_bonds: int = Field(default=0)
+    attention_entropy: float = Field(default=0.0)
+    dominant_force: str = Field(default="")
+    agent_stage: str = Field(default="infant")
+    bedrock_count: int = Field(default=0)
+    suspension_count: int = Field(default=0)
+    turbulent_count: int = Field(default=0)
+    n_signals_window: int = Field(default=0)
+    mae: Optional[float] = Field(default=None)
+    force_g: float = Field(default=0.3)
+    force_em: float = Field(default=0.5)
+    force_strong: float = Field(default=0.8)
+    force_weak: float = Field(default=0.02)

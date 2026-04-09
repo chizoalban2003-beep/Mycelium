@@ -463,6 +463,121 @@ def predict_next(
     return {"ok": True, **result}
 
 
+@router.get("/health")
+def ecosystem_health(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Observability: reports daemon status, DB stats, and system health."""
+    from datetime import datetime as dt, timedelta as td
+    from mycelium_app.models import SignalLedgerEvent as SLE, ForceFieldSnapshot, GrowthLedgerEntry, NexusNudge
+    from mycelium_app.auto_tune import load_tuned_constants
+    from mycelium_app.trend_analysis import compute_trends
+
+    uid = int(current_user.id or 0)
+    now = dt.utcnow()
+
+    # Last signal
+    last_signal = session.exec(
+        select(SLE).where(SLE.created_by_user_id == uid).order_by(SLE.created_at.desc()).limit(1)
+    ).first()
+
+    # Last field snapshot
+    last_snapshot = session.exec(
+        select(ForceFieldSnapshot).where(ForceFieldSnapshot.user_id == uid).order_by(ForceFieldSnapshot.created_at.desc()).limit(1)
+    ).first()
+
+    # Last growth entry
+    last_growth = session.exec(
+        select(GrowthLedgerEntry).where(GrowthLedgerEntry.created_by_user_id == uid).order_by(GrowthLedgerEntry.created_at.desc()).limit(1)
+    ).first()
+
+    # Counts
+    signal_count = len(session.exec(select(SLE).where(SLE.created_by_user_id == uid)).all())
+    nudge_count = len(session.exec(select(NexusNudge).where(NexusNudge.created_by_user_id == uid)).all())
+
+    # Tuned constants
+    tc = load_tuned_constants(user_id=uid)
+
+    # Trends (brief)
+    try:
+        trends = compute_trends(session, user_id=uid, window_hours=24)
+        trend_summary = trends.get("trends", {}).get("coherence", {}).get("direction", "unknown")
+    except Exception:
+        trend_summary = "unavailable"
+
+    def _age(ts):
+        if not ts: return None
+        delta = now - ts
+        return f"{int(delta.total_seconds())}s ago"
+
+    return {
+        "ok": True,
+        "user_id": uid,
+        "daemons": {
+            "last_signal_collection": _age(last_signal.created_at if last_signal else None),
+            "last_force_field": _age(last_snapshot.created_at if last_snapshot else None),
+            "last_growth_entry": _age(last_growth.created_at if last_growth else None),
+        },
+        "counts": {
+            "total_signals": signal_count,
+            "total_nudges": nudge_count,
+        },
+        "auto_tune": {
+            "generation": tc.generation if tc else 0,
+            "last_mae": round(tc.last_mae, 6) if tc and tc.last_mae else None,
+            "constants": {"G": round(tc.G, 4), "K_E": round(tc.K_E, 4), "K_S": round(tc.K_S, 4), "K_W": round(tc.K_W, 4)} if tc else None,
+        },
+        "coherence_trend": trend_summary,
+    }
+
+
+@router.get("/trends")
+def get_trends(
+    window_hours: int = 168,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Get ecosystem trend analysis over time."""
+    from mycelium_app.trend_analysis import compute_trends
+    return compute_trends(session, user_id=int(current_user.id or 0), window_hours=window_hours)
+
+
+@router.get("/fast-predict")
+def fast_predict(
+    current_signal: str = "",
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Fast path prediction from force field bonds (<10ms)."""
+    from mycelium_app.fast_predict import predict_from_bonds, classify_session_type
+    from mycelium_app.force_field import compute_force_field
+    import json as _json
+    from datetime import datetime as dt, timedelta as td
+
+    uid = int(current_user.id or 0)
+    since = dt.utcnow() - td(hours=6)
+    from mycelium_app.models import SignalLedgerEvent as SLE
+    rows = session.exec(select(SLE).where(SLE.created_by_user_id == uid, SLE.created_at >= since)).all()
+
+    signals = []
+    recent_apps = []
+    for r in rows:
+        try: payload = _json.loads(r.payload_json or "{}")
+        except: payload = {}
+        surface = payload.get("surface") or payload.get("stimulus") or payload
+        app = str(surface.get("app_name", r.signal_type or ""))
+        signals.append({"signal_type": str(r.signal_type or ""), "app_name": app, "created_at": r.created_at.isoformat() if r.created_at else "", "payload": surface})
+        if r.signal_type in ("app_focus", "app_open"):
+            recent_apps.append(app.lower())
+
+    ff = compute_force_field(signals, window_hours=6, n_iterations=10)
+    prediction = predict_from_bonds(ff, current_signal or (recent_apps[-1] if recent_apps else ""))
+    session_type = classify_session_type(ff, recent_apps[-5:] if recent_apps else [])
+
+    return {"ok": True, "prediction": prediction, "session": session_type}
+
+
 @router.post("/notify-test")
 def test_desktop_notification(
     current_user: User = Depends(get_current_user),

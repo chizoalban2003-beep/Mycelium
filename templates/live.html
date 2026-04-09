@@ -422,21 +422,30 @@ function applyData(d){
     window._update2DNodes(d.sedimentation.features);
   }
 
-  // Buildings from sedimentation features, enriched with force field data
-  const sed=d.sedimentation;
+  // PRIMARY: Render from force field particles (true physics positions)
   const ffParticles=(d.force_field&&d.force_field.particles)||[];
-  if(sed&&sed.features&&sed.features.length){
+  const sed=d.sedimentation;
+  if(ffParticles.length>0){
     clearBuildings();
-    sed.features.forEach((f,i)=>{
-      // Merge force field data into feature
-      const ffp=ffParticles.find(p=>p.name===f.raw_feature||p.name===f.feature);
-      if(ffp){
-        f.forces=ffp.forces; f.momentum=ffp.momentum;
-        f.medium=ffp.medium; f.energy=ffp.energy;
-        f.stationarity=ffp.stationarity;
+    ffParticles.forEach((p,i)=>{
+      const f={
+        feature: p.label||p.name, raw_feature: p.name,
+        density: p.mass*10, layer: p.layer,
+        forces: p.forces, momentum: p.momentum,
+        medium: p.medium, energy: p.energy,
+        velocity: p.velocity,
+      };
+      createBuilding(f, i, ffParticles.length);
+      // Override position with actual force field coordinates
+      if(use3D && buildings.length>0){
+        const b=buildings[buildings.length-1];
+        b.group.position.set(p.x*2, p.y*2, p.z*2);
       }
-      createBuilding(f, i, sed.features.length);
     });
+  } else if(sed&&sed.features&&sed.features.length){
+    // FALLBACK: sedimentation features if no force field
+    clearBuildings();
+    sed.features.forEach((f,i)=>createBuilding(f, i, sed.features.length));
   }
 
   // Signal toasts
