@@ -308,6 +308,36 @@ def run_learning_tick(
             except Exception as e:
                 result["actions"].append(f"prediction_error: {type(e).__name__}")
 
+        # 4b. Auto-tune force constants (adolescent+ or after prediction)
+        if target_col and df.shape[0] >= 6:
+            try:
+                from mycelium_app.auto_tune import (
+                    auto_tune_constants, save_tuned_constants,
+                    load_tuned_constants, TunedConstants,
+                )
+
+                tc = load_tuned_constants(user_id=user_id)
+                if tc is None:
+                    tc = TunedConstants()
+
+                # Only tune if we have enough signals
+                if 'ff_signals' in dir() and ff_signals and len(ff_signals) >= 10:
+                    tc = auto_tune_constants(
+                        df, ff_signals, target_col, tc,
+                        window_hours=window_hours,
+                    )
+                    save_tuned_constants(tc, user_id=user_id)
+
+                    result["auto_tune"] = {
+                        "generation": tc.generation,
+                        "constants": {"G": round(tc.G, 4), "K_E": round(tc.K_E, 4),
+                                      "K_S": round(tc.K_S, 4), "K_W": round(tc.K_W, 4)},
+                        "last_mae": round(tc.last_mae, 6) if tc.last_mae else None,
+                    }
+                    result["actions"].append("auto_tune_complete")
+            except Exception as e:
+                result["actions"].append(f"auto_tune_error: {type(e).__name__}")
+
         # 5. Generate narrative
         try:
             summary = build_ecosystem_summary(

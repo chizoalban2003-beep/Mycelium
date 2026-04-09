@@ -463,6 +463,31 @@ def predict_next(
     return {"ok": True, **result}
 
 
+@router.get("/tune")
+def get_tuned_constants(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Get the current auto-tuned force constants."""
+    from mycelium_app.auto_tune import load_tuned_constants, TunedConstants
+    from mycelium_app.force_field import _G, _K_E, _K_S, _K_W
+
+    tc = load_tuned_constants(user_id=int(current_user.id or 0))
+    if tc is None:
+        return {
+            "ok": True, "tuned": False,
+            "constants": {"G": _G, "K_E": _K_E, "K_S": _K_S, "K_W": _K_W},
+            "generation": 0, "last_mae": None,
+        }
+    return {
+        "ok": True, "tuned": True,
+        "constants": {"G": round(tc.G, 6), "K_E": round(tc.K_E, 6),
+                      "K_S": round(tc.K_S, 6), "K_W": round(tc.K_W, 6)},
+        "generation": tc.generation,
+        "last_mae": round(tc.last_mae, 6) if tc.last_mae else None,
+    }
+
+
 @router.get("/patterns")
 def get_patterns(
     window_hours: int = 48,
