@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     hybrid_predictor_governor_min_confidence: float = 0.90
 
     # Android TWA verification (served at /.well-known/assetlinks.json).
-    android_app_package_name: str = ""
+    android_app_package_name: str = "com.myco.companion"
     android_app_sha256_cert_fingerprints_csv: str = ""
     hive_wisdom_consensus_fraction: float = 0.50
 

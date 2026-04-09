@@ -1,7 +1,7 @@
 {
   "name": "Myco",
   "shortName": "Myco",
-  "packageId": "com.mycelium.nexus.alpha",
+  "packageId": "com.myco.companion",
   "versionName": "1.0.0-alpha",
   "versionCode": 10000,
   "manifestUrl": "https://<your-railway-domain>/static/manifest.webmanifest",

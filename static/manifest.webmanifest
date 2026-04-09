@@ -1,7 +1,7 @@
 {
   "name": "Myco",
   "short_name": "Myco",
-  "description": "Your digital companion that grows with you.",
+  "description": "Your digital companion that grows with you. Grow with Data.",
   "id": "/device",
   "start_url": "/projects",
   "scope": "/",
