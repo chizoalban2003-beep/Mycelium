@@ -197,7 +197,7 @@ def login_action(
         )
     except Exception:
         pass
-    response = RedirectResponse(url="/projects", status_code=302)
+    response = RedirectResponse(url="/live", status_code=302)
     response.set_cookie(
         key=settings.cookie_name,
         value=token,
@@ -262,7 +262,7 @@ def register_action(
         pass
 
     token = create_access_token(subject=str(user.id))
-    response = RedirectResponse(url="/projects", status_code=302)
+    response = RedirectResponse(url="/live", status_code=302)
     response.set_cookie(
         key=settings.cookie_name,
         value=token,

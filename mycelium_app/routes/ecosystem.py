@@ -11,7 +11,9 @@ from mycelium_app.ecosystem_bridge import build_ecosystem_dataframe, build_ecosy
 from mycelium_app.growth import compute_growth_stage
 from mycelium_app.learning_daemon import run_learning_tick, run_signal_collection_tick
 from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
+from mycelium_app.jarvis import chat as jarvis_chat
 from mycelium_app.models import User
+from mycelium_app.pattern_engine import analyze_patterns, generate_proactive_suggestions
 from mycelium_app.narrative import generate_ecosystem_narrative
 from mycelium_app.sedimentation import run_sedimentation
 from mycelium_app.signal_collector import CollectorState
@@ -266,3 +268,96 @@ def _humanize_graph(graph: dict) -> dict:
         node["label"] = humanize_feature(node.get("id", ""))
         node["layer_label"] = humanize_layer(node.get("layer", ""))
     return graph
+
+
+@router.get("/patterns")
+def get_patterns(
+    window_hours: int = 48,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Get detected behavioral patterns and proactive suggestions."""
+    from mycelium_app.growth import compute_growth_stage
+
+    user_id = int(current_user.id or 0)
+    stage, _, _ = compute_growth_stage(session, user_id=user_id, project_id=None)
+
+    result = analyze_patterns(session, user_id=user_id, window_hours=window_hours)
+    suggestions = generate_proactive_suggestions(result.get("patterns", []), stage=stage)
+    result["suggestions"] = suggestions
+    return result
+
+
+from fastapi import Body
+
+@router.post("/chat")
+def ecosystem_chat(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """JARVIS-like chat — talk to your companion with full context."""
+    from mycelium_app.growth import compute_growth_stage
+    from mycelium_app.self_reflection import compute_self_reflection
+    from mycelium_app.assistant_profile import get_assistant_profile_effective
+
+    user_id = int(current_user.id or 0)
+    message = str(payload.get("message", "")).strip()
+    if not message:
+        return {"ok": False, "reply": "I didn't catch that. Try again?"}
+
+    history = payload.get("history", [])
+    if not isinstance(history, list):
+        history = []
+
+    # Gather context
+    stage, _, _ = compute_growth_stage(session, user_id=user_id, project_id=None)
+    profile = get_assistant_profile_effective(session, user_id=user_id, project_id=None)
+    agent_name = str(profile.get("given_name", "Myco"))
+    gender = str(profile.get("gender_identity", "neutral"))
+
+    mood = "curious"
+    try:
+        reflection = compute_self_reflection(session, user_id=user_id)
+        mood = str(getattr(reflection, "mood", "curious"))
+    except Exception:
+        pass
+
+    # Live ecosystem state
+    summary = build_ecosystem_summary(session, user_id=user_id, window_hours=6)
+    eco_state = {"summary": humanize_apps_dict(summary.get("top_apps", {})) if summary.get("top_apps") else {}}
+    eco_state["summary"] = {"n_signals": summary.get("n_signals", 0), "top_apps": humanize_apps_dict(summary.get("top_apps", {})), "cpu_mean": summary.get("cpu_mean"), "battery_mean": summary.get("battery_mean")}
+
+    # Sedimentation
+    df = build_ecosystem_dataframe(session, user_id=user_id, window_hours=6, bucket_minutes=15)
+    if not df.empty and df.shape[1] >= 3:
+        try:
+            sed = run_sedimentation(df, flocculation_threshold=0.7)
+            eco_state["sedimentation"] = {
+                "layers_raw": {k: v["count"] for k, v in sed.layer_summary.items()},
+                "features": [{"feature": humanize_feature(f.feature)} for f in sed.features[:10]],
+            }
+        except Exception:
+            pass
+
+    # Patterns
+    pat_result = analyze_patterns(session, user_id=user_id, window_hours=24)
+    suggestions = generate_proactive_suggestions(pat_result.get("patterns", []), stage=stage)
+    pat_result["suggestions"] = suggestions
+
+    reply = jarvis_chat(
+        message,
+        ecosystem=eco_state,
+        patterns=pat_result,
+        stage=stage,
+        mood=mood,
+        agent_name=agent_name,
+        gender=gender,
+        conversation_history=history,
+    )
+
+    return {
+        "ok": True,
+        "reply": reply,
+        "agent": {"name": agent_name, "stage": stage, "mood": mood, "gender": gender},
+    }

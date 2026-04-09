@@ -156,10 +156,10 @@ class Settings(BaseSettings):
     nexus_active_curiosity_nudge_throttle_minutes: int = 120
 
     # Ecosystem (living agent) settings.
-    ecosystem_collector_enabled: bool = False
-    ecosystem_collector_tick_seconds: int = 30
-    ecosystem_learning_enabled: bool = False
-    ecosystem_learning_tick_seconds: int = 300
+    ecosystem_collector_enabled: bool = True
+    ecosystem_collector_tick_seconds: int = 15
+    ecosystem_learning_enabled: bool = True
+    ecosystem_learning_tick_seconds: int = 120
     ecosystem_learning_window_hours: int = 6
     ecosystem_learning_bucket_minutes: int = 30
 

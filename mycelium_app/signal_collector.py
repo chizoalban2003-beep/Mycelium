@@ -43,6 +43,11 @@ class CollectorState:
     last_disk_write_bytes: int = 0
     boot_signal_emitted: bool = False
     tick_count: int = 0
+    # Window focus tracking
+    last_focused_app: str = ""
+    focus_start_time: float = 0.0
+    app_session_durations: dict[str, float] = field(default_factory=dict)
+    app_transition_history: list[str] = field(default_factory=list)
 
 
 def _psutil_available() -> bool:
@@ -256,6 +261,94 @@ def collect_disk_io(state: CollectorState) -> list[dict[str, Any]]:
     }]
 
 
+def collect_window_focus(state: CollectorState) -> list[dict[str, Any]]:
+    """Track which window/app has focus and measure session durations."""
+    signals: list[dict[str, Any]] = []
+    now = time.time()
+    current_app = ""
+
+    # Try platform-specific window focus detection
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["xdotool", "getactivewindow", "getwindowname"],
+            capture_output=True, text=True, timeout=2,
+            env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+        )
+        if result.returncode == 0:
+            window_title = result.stdout.strip()[:128]
+            # Extract app name from window title heuristics
+            title_lower = window_title.lower()
+            if "chrome" in title_lower or "chromium" in title_lower:
+                current_app = "chrome"
+            elif "firefox" in title_lower:
+                current_app = "firefox"
+            elif "code" in title_lower or "cursor" in title_lower:
+                current_app = "code"
+            elif "terminal" in title_lower or "tmux" in title_lower:
+                current_app = "terminal"
+            elif "slack" in title_lower:
+                current_app = "slack"
+            elif "discord" in title_lower:
+                current_app = "discord"
+            elif "files" in title_lower or "thunar" in title_lower or "nautilus" in title_lower:
+                current_app = "files"
+            elif window_title:
+                # Use first word as app name
+                parts = window_title.split()
+                current_app = parts[-1].lower()[:32] if parts else ""
+    except Exception:
+        pass
+
+    if not current_app:
+        return signals
+
+    # Track focus change
+    if current_app != state.last_focused_app and state.last_focused_app:
+        # Previous app lost focus — record session duration
+        session_seconds = now - state.focus_start_time if state.focus_start_time > 0 else 0
+        if session_seconds > 2:
+            state.app_session_durations[state.last_focused_app] = (
+                state.app_session_durations.get(state.last_focused_app, 0) + session_seconds
+            )
+            signals.append({
+                "signal_type": "app_session_end",
+                "source": "os",
+                "modality": "app_lifecycle",
+                "stimulus": {
+                    "app_name": state.last_focused_app,
+                    "session_seconds": round(session_seconds, 1),
+                    "total_seconds_today": round(
+                        state.app_session_durations.get(state.last_focused_app, 0), 1
+                    ),
+                },
+            })
+
+        # New app gained focus
+        signals.append({
+            "signal_type": "app_focus",
+            "source": "os",
+            "modality": "app_lifecycle",
+            "stimulus": {
+                "app_name": current_app,
+                "previous_app": state.last_focused_app,
+            },
+        })
+
+        # Track transition sequence (keep last 20)
+        state.app_transition_history.append(f"{state.last_focused_app}->{current_app}")
+        if len(state.app_transition_history) > 20:
+            state.app_transition_history = state.app_transition_history[-20:]
+
+        state.focus_start_time = now
+
+    elif not state.last_focused_app:
+        state.focus_start_time = now
+
+    state.last_focused_app = current_app
+    return signals
+
+
 def collect_all_signals(state: CollectorState) -> list[dict[str, Any]]:
     """Run all collectors and return a combined signal list."""
     state.tick_count += 1
@@ -268,6 +361,7 @@ def collect_all_signals(state: CollectorState) -> list[dict[str, Any]]:
     signals.extend(collect_process_snapshot(state))
     signals.extend(collect_network_flow(state))
     signals.extend(collect_disk_io(state))
+    signals.extend(collect_window_focus(state))
 
     for s in signals:
         s.setdefault("occurred_at", datetime.utcnow().isoformat())
