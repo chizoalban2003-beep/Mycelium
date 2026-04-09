@@ -395,6 +395,29 @@ async def on_startup() -> None:
         asyncio.create_task(_signal_collector_daemon())
     if bool(getattr(settings, "ecosystem_learning_enabled", False)):
         asyncio.create_task(_learning_daemon())
+    # Desktop notification daemon
+    asyncio.create_task(_desktop_notify_daemon())
+
+
+async def _desktop_notify_daemon() -> None:
+    """Background daemon that dispatches unseen nudges as desktop notifications."""
+    await asyncio.sleep(15.0)
+    tick_s = 30
+
+    while True:
+        try:
+            from mycelium_app.desktop_notify import dispatch_pending_notifications
+            with Session(engine) as session:
+                from mycelium_app.homeostasis import list_recent_user_ids
+                user_ids = list_recent_user_ids(session, window_hours=24)
+                for uid in user_ids[:10]:
+                    try:
+                        dispatch_pending_notifications(session, user_id=int(uid))
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        await asyncio.sleep(float(tick_s))
 
 
 @app.get("/health")

@@ -463,6 +463,28 @@ def predict_next(
     return {"ok": True, **result}
 
 
+@router.post("/notify-test")
+def test_desktop_notification(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Send a test desktop notification."""
+    from mycelium_app.desktop_notify import send_desktop_notification
+    ok = send_desktop_notification("Myco", "Your digital companion is alive and watching. 🌱")
+    return {"ok": True, "sent": ok, "note": "Check your desktop for the notification"}
+
+
+@router.post("/weekly-digest")
+def send_weekly_digest(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Generate and deliver the weekly ecosystem digest."""
+    from mycelium_app.weekly_digest import generate_and_deliver_digest
+    result = generate_and_deliver_digest(session, user_id=int(current_user.id or 0))
+    return result
+
+
 @router.get("/tune")
 def get_tuned_constants(
     current_user: User = Depends(get_current_user),
