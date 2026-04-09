@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
@@ -20,6 +20,7 @@ from mycelium_app.settings import settings
 router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
 
 _shared_collector_state = CollectorState()
+_last_sedimentation_cache: dict[int, dict] = {}  # user_id → last result
 
 
 @router.post("/collect")
@@ -142,4 +143,105 @@ def ecosystem_dataframe(
         "columns": df.shape[1],
         "column_names": list(df.columns),
         "data": df.to_dict(orient="records"),
+    }
+
+
+@router.get("/live")
+def live_ecosystem(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Real-time ecosystem snapshot optimized for the live canvas.
+
+    Returns current signals, sedimentation layers, agent state, and
+    graph data in a single payload for efficient polling.
+    """
+    from mycelium_app.force_graph import build_sedimentation_graph
+    from mycelium_app.self_reflection import compute_self_reflection
+    from mycelium_app.assistant_profile import get_assistant_profile_effective
+
+    user_id = int(current_user.id or 0)
+
+    # Growth stage
+    stage, unlocked, _ = compute_growth_stage(session, user_id=user_id, project_id=None)
+
+    # Recent signals (last 5 minutes for live view)
+    from datetime import datetime, timedelta
+    since = datetime.utcnow() - timedelta(minutes=5)
+    from mycelium_app.models import SignalLedgerEvent as SLE
+    recent = session.exec(
+        select(SLE)
+        .where(SLE.created_by_user_id == user_id, SLE.created_at >= since)
+        .order_by(SLE.created_at.desc())
+        .limit(20)
+    ).all()
+
+    live_signals = []
+    for r in recent:
+        live_signals.append({
+            "type": str(r.signal_type or ""),
+            "device": str(r.device_id or ""),
+            "at": r.created_at.isoformat() if r.created_at else "",
+        })
+
+    # Ecosystem summary
+    summary = build_ecosystem_summary(session, user_id=user_id, window_hours=1)
+
+    # Sedimentation + graph (use cached or recompute)
+    graph_data = None
+    sed_layers = None
+    sed_features = None
+    df = build_ecosystem_dataframe(session, user_id=user_id, window_hours=6, bucket_minutes=15)
+    if not df.empty and df.shape[1] >= 3:
+        try:
+            sed = run_sedimentation(df, flocculation_threshold=0.7)
+            graph_data = build_sedimentation_graph(sed)
+            sed_layers = {k: v["count"] for k, v in sed.layer_summary.items()}
+            sed_features = [
+                {
+                    "feature": f.feature, "depth": f.depth, "layer": f.layer,
+                    "density": f.density, "velocity": f.settling_velocity,
+                    "complex_id": f.complex_id,
+                }
+                for f in sed.features[:30]
+            ]
+        except Exception:
+            pass
+
+    # Agent state (reflection + profile)
+    agent_state = {"mood": "curious", "identity_hash": "", "display_name": "Myco"}
+    try:
+        reflection = compute_self_reflection(session, user_id=user_id)
+        agent_state["mood"] = str(getattr(reflection, "mood", "curious"))
+        agent_state["identity_hash"] = str(getattr(reflection, "identity_hash", ""))
+    except Exception:
+        pass
+
+    profile = get_assistant_profile_effective(session, user_id=user_id, project_id=None)
+    agent_state["given_name"] = str(profile.get("given_name", "Myco"))
+    agent_state["gender"] = str(profile.get("gender_identity", "neutral"))
+
+    # Narrative
+    from mycelium_app.narrative import generate_ecosystem_narrative
+    narrative = generate_ecosystem_narrative(
+        stage=stage, summary=summary,
+        sedimentation={"layers": sed_layers, "top_bedrock": [], "n_complexes": 0} if sed_layers else None,
+    )
+
+    return {
+        "ok": True,
+        "ts": datetime.utcnow().isoformat(),
+        "stage": stage,
+        "unlocked": unlocked,
+        "agent": agent_state,
+        "narrative": narrative,
+        "summary": {
+            "n_signals": summary.get("n_signals", 0),
+            "top_apps": summary.get("top_apps", {}),
+            "cpu_mean": summary.get("cpu_mean"),
+            "battery_mean": summary.get("battery_mean"),
+        },
+        "live_signals": live_signals,
+        "sedimentation": {"layers": sed_layers, "features": sed_features} if sed_layers else None,
+        "graph": graph_data,
     }
