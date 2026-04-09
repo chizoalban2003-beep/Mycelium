@@ -31,6 +31,7 @@ class User(SQLModel, table=True):
     hashed_password: str
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    gender: str = Field(default="")  # neutral|female|male|nonbinary|custom — mirrors to companion
 
 
 class PasswordResetToken(SQLModel, table=True):

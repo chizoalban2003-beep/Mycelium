@@ -16,6 +16,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     full_name: str = ""
+    gender: str = ""
 
 
 class UserPublic(BaseModel):

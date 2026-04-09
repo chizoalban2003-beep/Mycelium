@@ -216,10 +216,15 @@ def register_action(
     email: str = Form(...),
     password: str = Form(...),
     full_name: str = Form(""),
+    gender: str = Form(""),
 ):
     email_value = str(email or "").strip().lower()
     password_value = str(password or "")
     name_value = str(full_name or "").strip()
+    gender_value = str(gender or "").strip().lower()
+    allowed_genders = {"neutral", "female", "male", "nonbinary", "custom"}
+    if gender_value not in allowed_genders:
+        gender_value = ""
 
     if not email_value:
         return RedirectResponse(url="/login?error=Email+is+required", status_code=302)
@@ -232,7 +237,7 @@ def register_action(
 
     from mycelium_app.security import hash_password
 
-    user = User(email=email_value, full_name=name_value, hashed_password=hash_password(password_value))
+    user = User(email=email_value, full_name=name_value, hashed_password=hash_password(password_value), gender=gender_value)
     session.add(user)
     session.commit()
     session.refresh(user)

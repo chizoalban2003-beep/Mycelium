@@ -173,10 +173,14 @@ def register(payload: UserCreate, session: Session = Depends(get_session)):
     email = str(payload.email or "").strip().lower()
     full_name = str(payload.full_name or "").strip()
     password = str(payload.password or "")
+    gender_value = str(getattr(payload, "gender", "") or "").strip().lower()
+    allowed_genders = {"neutral", "female", "male", "nonbinary", "custom"}
+    if gender_value not in allowed_genders:
+        gender_value = ""
     existing = session.exec(select(User).where(User.email == email)).first()
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    user = User(email=email, full_name=full_name, hashed_password=hash_password(password))
+    user = User(email=email, full_name=full_name, hashed_password=hash_password(password), gender=gender_value)
     session.add(user)
     session.commit()
     session.refresh(user)

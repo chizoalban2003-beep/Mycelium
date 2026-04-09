@@ -4,7 +4,7 @@ from datetime import datetime
 
 from sqlmodel import Session, select
 
-from mycelium_app.models import AssistantAvatarProfile, AssistantProfile
+from mycelium_app.models import AssistantAvatarProfile, AssistantProfile, User
 
 
 def _normalize_name(v: str | None) -> str:
@@ -70,6 +70,14 @@ def get_assistant_profile(session: Session, *, user_id: int, project_id: int | N
     ).first()
 
 
+def _resolve_gender_from_user(session: Session, *, user_id: int) -> str:
+    """If the user has set their gender, mirror it to the companion."""
+    user = session.get(User, int(user_id))
+    if user and str(getattr(user, "gender", "") or "").strip():
+        return _normalize_gender(user.gender)
+    return "neutral"
+
+
 def get_assistant_profile_effective(session: Session, *, user_id: int, project_id: int | None = None) -> dict[str, object]:
     row = get_assistant_profile(session, user_id=user_id, project_id=project_id)
     avatar_row = _get_avatar_row(session, user_id=user_id, project_id=project_id)
@@ -77,11 +85,14 @@ def get_assistant_profile_effective(session: Session, *, user_id: int, project_i
     if avatar_row is not None:
         avatar_url = _normalize_avatar_url(avatar_row.assistant_avatar_url)
 
+    # Mirror user gender when no explicit companion gender has been set
+    mirrored_gender = _resolve_gender_from_user(session, user_id=user_id)
+
     if row is None:
         return {
             "project_id": project_id,
             "given_name": "Synapse",
-            "gender_identity": "neutral",
+            "gender_identity": mirrored_gender,
             "vocal_preset": "alloy",
             "assistant_avatar_url": avatar_url,
             "created_at": datetime.utcnow(),
@@ -89,10 +100,14 @@ def get_assistant_profile_effective(session: Session, *, user_id: int, project_i
             "is_default": True,
         }
 
+    effective_gender = _normalize_gender(row.gender_identity)
+    if effective_gender == "neutral" and mirrored_gender != "neutral":
+        effective_gender = mirrored_gender
+
     return {
         "project_id": row.project_id,
         "given_name": _normalize_name(row.given_name),
-        "gender_identity": _normalize_gender(row.gender_identity),
+        "gender_identity": effective_gender,
         "vocal_preset": _normalize_voice(row.vocal_preset),
         "assistant_avatar_url": avatar_url,
         "created_at": row.created_at,

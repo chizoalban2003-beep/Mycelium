@@ -25,8 +25,21 @@ except ImportError:
     _HAS_URLLIB = False
 
 
-def _stage_voice(stage: str) -> dict[str, str]:
+def _gender_pronouns(gender: str) -> dict[str, str]:
+    """Return pronouns based on companion gender."""
+    g = str(gender or "").strip().lower()
+    if g == "female":
+        return {"subject": "she", "object": "her", "possessive": "her", "self": "herself"}
+    elif g == "male":
+        return {"subject": "he", "object": "him", "possessive": "his", "self": "himself"}
+    elif g == "nonbinary":
+        return {"subject": "they", "object": "them", "possessive": "their", "self": "themself"}
+    return {"subject": "I", "object": "me", "possessive": "my", "self": "myself"}
+
+
+def _stage_voice(stage: str, gender: str = "") -> dict[str, str]:
     """Return tone parameters for each growth stage."""
+    pronouns = _gender_pronouns(gender)
     voices = {
         "infant": {
             "pronoun": "I",
@@ -47,7 +60,10 @@ def _stage_voice(stage: str) -> dict[str, str]:
             "confidence": "high",
         },
     }
-    return voices.get(stage, voices["infant"])
+    voice = voices.get(stage, voices["infant"])
+    voice["pronouns"] = pronouns  # type: ignore[assignment]
+    voice["gender"] = gender or "neutral"
+    return voice
 
 
 def generate_ecosystem_narrative(

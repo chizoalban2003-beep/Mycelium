@@ -66,6 +66,16 @@
             <label class="block text-sm text-slate-300">Password</label>
             <input name="password" type="password" autocomplete="new-password" required minlength="6" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2" />
           </div>
+          <div>
+            <label class="block text-sm text-slate-300">Your gender <span class="text-xs text-slate-500">(your companion will mirror you)</span></label>
+            <select name="gender" class="mt-1 w-full rounded-md bg-slate-950 border border-slate-800 px-3 py-2 text-sm text-slate-100">
+              <option value="">Prefer not to say</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="nonbinary">Non-binary</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
           <button type="submit" class="w-full rounded-md bg-cyan-700 hover:bg-cyan-600 px-3 py-2 font-medium">Begin growth</button>
         </form>
       </div>
