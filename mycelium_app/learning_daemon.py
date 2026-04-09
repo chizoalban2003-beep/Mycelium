@@ -139,6 +139,82 @@ def run_learning_tick(
         except Exception as e:
             result["actions"].append(f"sedimentation_error: {type(e).__name__}")
 
+        # 3b. Compute force field (continuous time evolution)
+        try:
+            from mycelium_app.force_field import (
+                compute_force_field, save_field_snapshot, load_previous_field,
+                serialize_force_field,
+            )
+
+            # Load previous field for momentum continuity
+            prev_field = load_previous_field(user_id=user_id)
+
+            # Build signal list from recent events
+            from mycelium_app.models import SignalLedgerEvent as SLE
+            from sqlmodel import select as sel
+            since_ff = datetime.utcnow() - timedelta(hours=window_hours)
+            sig_rows = session.exec(
+                sel(SLE)
+                .where(SLE.created_by_user_id == user_id, SLE.created_at >= since_ff)
+                .order_by(SLE.created_at)
+            ).all()
+
+            ff_signals = []
+            for r in sig_rows:
+                try:
+                    payload = json.loads(r.payload_json or "{}")
+                except Exception:
+                    payload = {}
+                surface = payload.get("surface") or payload.get("stimulus") or payload
+                ff_signals.append({
+                    "signal_type": str(r.signal_type or ""),
+                    "app_name": str(surface.get("app_name", r.signal_type or "")),
+                    "created_at": r.created_at.isoformat() if r.created_at else "",
+                    "session_seconds": surface.get("session_seconds", 0),
+                    "payload": surface,
+                })
+
+            if ff_signals:
+                ff_state = compute_force_field(ff_signals, window_hours=window_hours)
+
+                # Apply previous momentum if available
+                if prev_field and prev_field.get("particles"):
+                    prev_particles = {p["name"]: p for p in prev_field["particles"]}
+                    for p in ff_state.particles:
+                        prev = prev_particles.get(p.name)
+                        if prev:
+                            p.vx = p.vx * 0.5 + float(prev.get("vx", 0)) * 0.5
+                            p.vy_vel = p.vy_vel * 0.5 + float(prev.get("vy", 0)) * 0.5
+                            p.vz = p.vz * 0.5 + float(prev.get("vz", 0)) * 0.5
+
+                # Save snapshot for next cycle's continuity
+                save_field_snapshot(ff_state, user_id=user_id)
+
+                result["force_field"] = {
+                    "n_particles": len(ff_state.particles),
+                    "n_bonds": ff_state.n_bonds,
+                    "total_energy": ff_state.total_energy,
+                    "agent_stage": ff_state.agent.stage,
+                    "agent_coherence": ff_state.agent.coherence,
+                    "agent_crystallized": ff_state.agent.crystallized,
+                    "dominant_force": max(
+                        ff_state.forces_applied,
+                        key=ff_state.forces_applied.get,
+                        default="",
+                    ) if ff_state.forces_applied else "",
+                }
+                result["actions"].append("force_field_computed")
+
+                # Use force field agent stage if more advanced than growth stage
+                ff_stage = ff_state.agent.stage
+                stage_rank = {"infant": 0, "toddler": 1, "adolescent": 2, "adult": 3}
+                if stage_rank.get(ff_stage, 0) > stage_rank.get(stage, 0):
+                    stage = ff_stage
+                    result["stage"] = stage
+
+        except Exception as e:
+            result["actions"].append(f"force_field_error: {type(e).__name__}: {e}")
+
         # 4. Supervised prediction (toddler+ only)
         if stage in ("toddler", "adolescent") and df.shape[0] >= 6:
             try:

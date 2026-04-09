@@ -110,17 +110,24 @@ def compute_fingerprint(
         except Exception:
             pass
 
-    # --- Stationarity (variance ratio of first vs second half) ---
+    # --- Stationarity (mean + variance shift between first and second half) ---
     if n >= 6:
         try:
             mid = n // 2
+            mean1 = float(np.mean(arr[:mid]))
+            mean2 = float(np.mean(arr[mid:]))
             var1 = float(np.var(arr[:mid]))
             var2 = float(np.var(arr[mid:]))
-            if var1 + var2 > 1e-12:
-                ratio = abs(var1 - var2) / (var1 + var2)
-                fp["stationarity"] = round(1.0 - ratio, 6)
-            else:
-                fp["stationarity"] = 1.0
+            total_var = float(np.var(arr))
+
+            # Variance shift
+            var_shift = abs(var1 - var2) / (var1 + var2 + 1e-12)
+            # Mean shift relative to overall spread
+            mean_shift = abs(mean1 - mean2) / (math.sqrt(total_var) + 1e-12) if total_var > 1e-12 else abs(mean1 - mean2)
+            mean_shift = min(1.0, mean_shift / 3.0)
+
+            combined_shift = max(var_shift, mean_shift)
+            fp["stationarity"] = round(max(0.0, 1.0 - combined_shift), 6)
         except Exception:
             fp["stationarity"] = 0.5
 
@@ -137,18 +144,19 @@ def compute_fingerprint(
         fp["effect_size"] = round(abs(fp["mean"]) / fp["std"], 6)
 
     # --- Medium classification ---
-    norm_p = fp["normality_p"]
-    if norm_p is not None:
-        if norm_p > 0.05:
-            fp["medium"] = "fluid"
-        elif norm_p > 0.001:
-            fp["medium"] = "crystalline"
-        else:
-            fp["medium"] = "gaseous"
-    elif fp["std"] < 1e-6:
+    if fp["std"] < 1e-6:
         fp["medium"] = "frozen"
     else:
-        fp["medium"] = "unknown"
+        norm_p = fp["normality_p"]
+        if norm_p is not None:
+            if norm_p > 0.05:
+                fp["medium"] = "fluid"
+            elif norm_p > 0.001:
+                fp["medium"] = "crystalline"
+            else:
+                fp["medium"] = "gaseous"
+        else:
+            fp["medium"] = "unknown"
 
     return fp
 

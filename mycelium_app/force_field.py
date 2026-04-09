@@ -365,6 +365,7 @@ def compute_force_field(
     window_hours: float = 24.0,
     n_iterations: int = 30,
     damping: float = 0.85,
+    previous_field: dict[str, Any] | None = None,
 ) -> ForceFieldState:
     """Compute the complete force field state from raw signal data.
 
@@ -411,19 +412,27 @@ def compute_force_field(
         bucket = int(age_hours * 4)  # 15-minute buckets
         time_buckets[bucket].append(name)
 
-        # Collect numeric values for fingerprinting
+        # Collect numeric values for fingerprinting — dig into nested payloads
         numeric_val = None
-        payload = sig.get("payload", {})
-        if isinstance(payload, dict):
-            for key in ("cpu_percent", "memory_percent", "battery_percent",
-                        "bytes_sent_delta", "bytes_recv_delta", "session_seconds"):
-                v = payload.get(key)
+        _numeric_keys = (
+            "cpu_percent", "memory_percent", "battery_percent", "disk_percent",
+            "bytes_sent_delta", "bytes_recv_delta", "read_bytes_delta", "write_bytes_delta",
+            "session_seconds", "total_seconds_today", "total_processes", "unique_processes",
+            "n_opened", "n_closed", "instance_count",
+        )
+        for source in (sig, sig.get("payload", {}), sig.get("stimulus", {})):
+            if not isinstance(source, dict):
+                continue
+            for key in _numeric_keys:
+                v = source.get(key)
                 if v is not None:
                     try:
                         numeric_val = float(v)
+                        break
                     except Exception:
                         pass
-                    break
+            if numeric_val is not None:
+                break
 
         if name in particle_map:
             p = particle_map[name]
@@ -525,8 +534,18 @@ def compute_force_field(
                 p.bond_strengths[partner_name] = corr
                 n_bonds += 1
 
-    # --- Load previous field state for momentum continuity ---
-    # (requires user_id passed via kwargs if available)
+    # --- Seed from previous field state for time evolution ---
+    if previous_field and previous_field.get("particles"):
+        prev_map = {p["name"]: p for p in previous_field["particles"]}
+        for p in particles:
+            prev = prev_map.get(p.name)
+            if prev:
+                p.x = float(prev.get("x", p.x))
+                p.y = float(prev.get("y", p.y))
+                p.z = float(prev.get("z", p.z))
+                p.vx = float(prev.get("vx", 0))
+                p.vy_vel = float(prev.get("vy", 0))
+                p.vz = float(prev.get("vz", 0))
 
     # --- Force relaxation iterations ---
     force_totals: dict[str, float] = {"gravity": 0.0, "electromagnetic": 0.0, "strong_nuclear": 0.0, "weak_nuclear": 0.0}

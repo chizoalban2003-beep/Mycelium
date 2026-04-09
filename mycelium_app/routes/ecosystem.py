@@ -290,6 +290,7 @@ def _build_live_force_field(session, user_id: int) -> dict | None:
                 "app_name": str(surface.get("app_name", r.signal_type or "")),
                 "created_at": r.created_at.isoformat() if r.created_at else "",
                 "session_seconds": surface.get("session_seconds", 0),
+                "payload": surface,
             })
 
         ff = compute_force_field(signals, window_hours=6, n_iterations=20)
