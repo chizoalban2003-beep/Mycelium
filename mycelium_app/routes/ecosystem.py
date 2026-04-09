@@ -259,7 +259,43 @@ def live_ecosystem(
         } if sed_layers else None,
         "graph": _humanize_graph(graph_data) if graph_data else None,
         "force_field": _build_live_force_field(session, user_id),
+        "crystals": _build_crystals(session, user_id),
     }
+
+
+def _build_crystals(session, user_id: int) -> dict | None:
+    """Build crystallized signal complexes from force field."""
+    try:
+        from mycelium_app.crystallization import crystallize, serialize_crystallization
+        from mycelium_app.force_field import compute_force_field
+        import json as _json
+        from datetime import datetime as dt, timedelta as td
+
+        since = dt.utcnow() - td(hours=6)
+        from mycelium_app.models import SignalLedgerEvent as SLE
+        rows = session.exec(
+            select(SLE).where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
+        ).all()
+        if not rows:
+            return None
+
+        signals = []
+        for r in rows:
+            try: payload = _json.loads(r.payload_json or "{}")
+            except: payload = {}
+            surface = payload.get("surface") or payload.get("stimulus") or payload
+            signals.append({
+                "signal_type": str(r.signal_type or ""),
+                "app_name": str(surface.get("app_name", r.signal_type or "")),
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "payload": surface,
+            })
+
+        ff = compute_force_field(signals, window_hours=6, n_iterations=15)
+        result = crystallize(ff)
+        return serialize_crystallization(result)
+    except Exception:
+        return None
 
 
 def _build_live_force_field(session, user_id: int) -> dict | None:
@@ -576,6 +612,18 @@ def fast_predict(
     session_type = classify_session_type(ff, recent_apps[-5:] if recent_apps else [])
 
     return {"ok": True, "prediction": prediction, "session": session_type}
+
+
+@router.get("/crystals")
+def get_crystals(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Get all crystallized signal complexes (agent population)."""
+    result = _build_crystals(session, int(current_user.id or 0))
+    if not result:
+        return {"ok": True, "crystals": [], "ecosystem_maturity": "nascent"}
+    return {"ok": True, **result}
 
 
 @router.get("/hive-readiness")
