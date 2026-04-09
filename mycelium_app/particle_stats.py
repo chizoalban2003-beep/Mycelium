@@ -80,7 +80,7 @@ def compute_fingerprint(
     fp["std"] = round(float(np.std(arr, ddof=1)), 6) if n > 1 else 0.0
 
     # --- Normality (Shapiro-Wilk) ---
-    if _HAS_SCIPY and 3 <= n <= 5000:
+    if _HAS_SCIPY and 3 <= n <= 5000 and fp["std"] > 1e-6:
         try:
             stat, p = sp_stats.shapiro(arr[:5000])
             fp["normality_stat"] = round(float(stat), 6)
@@ -132,7 +132,7 @@ def compute_fingerprint(
             fp["stationarity"] = 0.5
 
     # --- Skewness and Kurtosis ---
-    if _HAS_SCIPY and n > 3:
+    if _HAS_SCIPY and n > 3 and fp["std"] > 1e-6:
         try:
             fp["skewness"] = round(float(sp_stats.skew(arr)), 6)
             fp["kurtosis"] = round(float(sp_stats.kurtosis(arr)), 6)

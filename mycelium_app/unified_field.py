@@ -108,10 +108,11 @@ def detect_anomalies(
     """
     anomalies: list[dict[str, Any]] = []
 
-    if not previous_snapshot or not previous_snapshot.get("particles"):
+    if not previous_snapshot:
         return anomalies
 
-    prev_map = {p["name"]: p for p in previous_snapshot["particles"]}
+    prev_particles = previous_snapshot.get("particles") or []
+    prev_map = {p["name"]: p for p in prev_particles}
 
     for p in current.particles:
         prev = prev_map.get(p.name)
@@ -140,7 +141,7 @@ def detect_anomalies(
 
     # Check for disappeared particles
     current_names = {p.name for p in current.particles}
-    for prev_name in prev_map:
+    for prev_name in list(prev_map.keys()):
         if prev_name not in current_names:
             anomalies.append({
                 "type": "particle_gone",
