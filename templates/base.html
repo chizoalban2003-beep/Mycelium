@@ -44,14 +44,21 @@
           </div>
           {% if user %}
             <a href="/live" class="text-sm text-emerald-300 hover:text-emerald-200 font-semibold">Live</a>
+            <a href="/chat" class="text-sm text-slate-300 hover:text-white">Chat</a>
             <a href="/device" class="text-sm text-slate-300 hover:text-white">Device</a>
             <a href="/ecosystem" class="text-sm text-slate-300 hover:text-white">Ecosystem</a>
-            <a href="/predict" class="text-sm text-slate-300 hover:text-white">Predict</a>
-            <a href="/sedimentation" class="text-sm text-slate-300 hover:text-white">Sediment</a>
-            <a href="/chat" class="text-sm text-slate-300 hover:text-white">Chat</a>
-            <a href="/curiosity" class="text-sm text-slate-300 hover:text-white">Curiosity</a>
-            <a href="/knowledge" class="text-sm text-slate-300 hover:text-white">Knowledge</a>
-            <a href="/hive/health" class="text-sm text-slate-300 hover:text-white">Hive</a>
+            <details class="inline relative">
+              <summary class="text-sm text-slate-400 hover:text-white cursor-pointer list-none">More ▾</summary>
+              <div class="absolute left-0 top-6 z-50 rounded-lg border border-slate-800 bg-slate-900 p-2 space-y-1 min-w-[140px] shadow-xl">
+                <a href="/predict" class="block text-sm text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800">Predict</a>
+                <a href="/sedimentation" class="block text-sm text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800">Sediment</a>
+                <a href="/curiosity" class="block text-sm text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800">Curiosity</a>
+                <a href="/knowledge" class="block text-sm text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800">Knowledge</a>
+                <a href="/hive/health" class="block text-sm text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800">Hive</a>
+                <a href="/assistant/profile" class="block text-sm text-slate-300 hover:text-white px-2 py-1 rounded hover:bg-slate-800">Profile</a>
+                <a href="/cinema" class="block text-sm text-cyan-300 hover:text-cyan-200 px-2 py-1 rounded hover:bg-slate-800">Cinema ✨</a>
+              </div>
+            </details>
             <span id="identityBadge" class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700"></span>
             <span id="organismBadge" class="text-xs px-2 py-1 rounded bg-cyan-950 text-cyan-100 border border-cyan-900">η -- · booting</span>
           {% endif %}

@@ -9,7 +9,7 @@ from mycelium_app.models import AssistantAvatarProfile, AssistantProfile, User
 
 def _normalize_name(v: str | None) -> str:
     s = str(v or "").strip()
-    return s[:64] if s else "Synapse"
+    return s[:64] if s else "Myco"
 
 
 def _normalize_gender(v: str | None) -> str:
@@ -91,7 +91,7 @@ def get_assistant_profile_effective(session: Session, *, user_id: int, project_i
     if row is None:
         return {
             "project_id": project_id,
-            "given_name": "Synapse",
+            "given_name": "Myco",
             "gender_identity": mirrored_gender,
             "vocal_preset": "alloy",
             "assistant_avatar_url": avatar_url,

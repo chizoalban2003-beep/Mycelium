@@ -55,32 +55,7 @@ templates.env.globals["system_motto"] = settings.system_motto
 router = APIRouter(include_in_schema=False)
 
 
-def _r2_from_actual_pred(actual: list[object] | None, predicted: list[object] | None) -> float | None:
-    if not actual or not predicted:
-        return None
-    pairs: list[tuple[float, float]] = []
-    for a, b in zip(actual, predicted, strict=False):
-        if a is None or b is None:
-            continue
-        try:
-            af = float(a)
-            bf = float(b)
-        except Exception:
-            continue
-        if math.isfinite(af) and math.isfinite(bf):
-            pairs.append((af, bf))
-
-    if len(pairs) < 2:
-        return None
-
-    y_true = [p[0] for p in pairs]
-    y_pred = [p[1] for p in pairs]
-    y_bar = sum(y_true) / float(len(y_true))
-    ss_res = sum((a - b) ** 2 for a, b in zip(y_true, y_pred, strict=False))
-    ss_tot = sum((a - y_bar) ** 2 for a in y_true)
-    if ss_tot <= 0.0:
-        return 0.0
-    return 1.0 - (ss_res / ss_tot)
+from mycelium_app.math_utils import r2_from_actual_pred as _r2_from_actual_pred
 
 
 def _get_web_user(request: Request, session: Session) -> User | None:
@@ -1116,7 +1091,7 @@ def assistant_profile_page(
 def assistant_profile_save_action(
     request: Request,
     session: Session = Depends(get_session),
-    given_name: str = Form("Synapse"),
+    given_name: str = Form("Myco"),
     gender_identity: str = Form("neutral"),
     vocal_preset: str = Form("alloy"),
     assistant_avatar_url: str = Form(""),
@@ -1129,7 +1104,7 @@ def assistant_profile_save_action(
         session,
         user_id=int(current_user.id or 0),
         project_id=None,
-        given_name=str(given_name or "Synapse"),
+        given_name=str(given_name or "Myco"),
         gender_identity=str(gender_identity or "neutral"),
         vocal_preset=str(vocal_preset or "alloy"),
         assistant_avatar_url=str(assistant_avatar_url or ""),

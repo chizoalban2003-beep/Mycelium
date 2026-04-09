@@ -174,7 +174,7 @@ def maybe_queue_telemetry_assistant_nudge(
         title = "Assistant proposal"
 
     ap = get_assistant_profile_effective(session, user_id=int(user_id), project_id=project_id)
-    given_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
+    given_name = str(ap.get("given_name", "Myco")).strip() or "Myco"
     vocal_preset = str(ap.get("vocal_preset", "alloy")).strip().lower() or "alloy"
     gender_identity = str(ap.get("gender_identity", "neutral")).strip().lower() or "neutral"
     assistant_avatar_url = str(ap.get("assistant_avatar_url", "")).strip()

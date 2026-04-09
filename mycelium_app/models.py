@@ -143,7 +143,7 @@ class AssistantProfile(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
-    given_name: str = Field(default="Synapse", index=True)
+    given_name: str = Field(default="Myco", index=True)
     gender_identity: str = Field(default="neutral", index=True)
     vocal_preset: str = Field(default="alloy", index=True)
 

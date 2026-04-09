@@ -43,7 +43,7 @@ def get_config(
     return AssistantProfilePublic(
         ok=True,
         project_id=p.get("project_id"),
-        given_name=str(p.get("given_name", "Synapse")),
+        given_name=str(p.get("given_name", "Myco")),
         gender_identity=str(p.get("gender_identity", "neutral")),
         vocal_preset=str(p.get("vocal_preset", "alloy")),
         assistant_avatar_url=str(p.get("assistant_avatar_url", "")),
@@ -94,7 +94,7 @@ def configure_assistant(
     return AssistantProfilePublic(
         ok=True,
         project_id=row.project_id,
-        given_name=str(row.given_name or "Synapse"),
+        given_name=str(row.given_name or "Myco"),
         gender_identity=str(row.gender_identity or "neutral"),
         vocal_preset=str(row.vocal_preset or "alloy"),
         assistant_avatar_url=str(p.get("assistant_avatar_url", "")),

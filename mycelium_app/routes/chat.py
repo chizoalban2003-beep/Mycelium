@@ -534,7 +534,7 @@ def send_chat(
         pass
 
     ap = get_assistant_profile_effective(session, user_id=user_id, project_id=payload.project_id)
-    assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
+    assistant_name = str(ap.get("given_name", "Myco")).strip() or "Myco"
 
     # Deterministic lightweight assistant response (tool-free skeleton).
     lower = msg.lower()
@@ -730,7 +730,7 @@ async def telegram_webhook(
     session.flush()
 
     ap = get_assistant_profile_effective(session, user_id=int(user_id), project_id=None)
-    assistant_name = str(ap.get("given_name", "Synapse")).strip() or "Synapse"
+    assistant_name = str(ap.get("given_name", "Myco")).strip() or "Myco"
     mapped_user = session.exec(select(User).where(User.id == int(user_id))).first()
 
     def _send_telegram_reply(

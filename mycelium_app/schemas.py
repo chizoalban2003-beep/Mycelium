@@ -745,7 +745,7 @@ class IdentityPresentationResponse(BaseModel):
 class AssistantProfilePublic(BaseModel):
     ok: bool = True
     project_id: int | None = None
-    given_name: str = "Synapse"
+    given_name: str = "Myco"
     gender_identity: str = "neutral"
     vocal_preset: str = "alloy"
     assistant_avatar_url: str = ""
@@ -756,7 +756,7 @@ class AssistantProfilePublic(BaseModel):
 
 class AssistantProfileUpdateRequest(BaseModel):
     project_id: int | None = None
-    given_name: str = "Synapse"
+    given_name: str = "Myco"
     gender_identity: str = "neutral"
     vocal_preset: str = "alloy"
     assistant_avatar_url: str = ""
