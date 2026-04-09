@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Myco — Grow with Data</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+canvas{display:block}
+#overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+.text-overlay{position:absolute;left:50%;transform:translateX(-50%);text-align:center;opacity:0;transition:opacity 0.8s ease}
+.text-overlay h1{font-size:clamp(28px,5vw,56px);font-weight:700;letter-spacing:0.08em;background:linear-gradient(135deg,#22d3ee,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.text-overlay h2{font-size:clamp(14px,2.5vw,24px);font-weight:400;color:#94a3b8;letter-spacing:0.15em;margin-top:8px}
+.text-overlay p{font-size:clamp(12px,1.8vw,18px);color:#64748b;letter-spacing:0.1em;margin-top:4px}
+#t1{top:8%}
+#t2{top:12%}
+#t3{bottom:15%}
+#t4{top:50%;transform:translate(-50%,-50%)}
+#t5{bottom:8%}
+</style>
+</head>
+<body>
+<div id="overlay">
+  <div class="text-overlay" id="t1"><h2>MYCO</h2><p>GROW WITH DATA</p></div>
+  <div class="text-overlay" id="t2"><h2>SIGNALS DETECTED</h2></div>
+  <div class="text-overlay" id="t3"><h2>ECOSYSTEM FORMING</h2></div>
+  <div class="text-overlay" id="t4"><h1>AGENT ONLINE</h1><h2>YOUR DIGITAL COMPANION</h2></div>
+  <div class="text-overlay" id="t5"><h1>MYCO</h1><h2>GROW WITH DATA</h2><p>Your digital companion that grows with you</p></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+const W=window.innerWidth, H=window.innerHeight;
+
+// --- Renderer ---
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setSize(W,H);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.2;
+document.body.appendChild(renderer.domElement);
+
+// --- Scene ---
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x010409);
+scene.fog=new THREE.FogExp2(0x010409,0.004);
+
+const camera=new THREE.PerspectiveCamera(60,W/H,0.1,500);
+camera.position.set(0,30,60);
+camera.lookAt(0,0,0);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x1e293b,0.3));
+const keyLight=new THREE.DirectionalLight(0x22d3ee,0.5);
+keyLight.position.set(20,40,30);
+scene.add(keyLight);
+
+// Bloom glow simulation via additive sprites
+const glowTex=(function(){
+  const c=document.createElement('canvas');c.width=64;c.height=64;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(32,32,0,32,32,32);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(0.3,'rgba(255,255,255,0.3)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g;x.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+})();
+
+// --- SCENE 1: 500 Particles with properties ---
+const N=500;
+const particles=[];
+const pPositions=new Float32Array(N*3);
+const pColors=new Float32Array(N*3);
+const pSizes=new Float32Array(N);
+
+// Strata colors
+const STRATA={
+  bedrock:{color:new THREE.Color(0x059669), yMin:-22, yMax:-14},
+  active:{color:new THREE.Color(0x0891b2), yMin:-14, yMax:-6},
+  changing:{color:new THREE.Color(0xe11d48), yMin:-6, yMax:2},
+};
+
+for(let i=0;i<N;i++){
+  const weight=0.3+Math.random()*0.7;                    // 0.3–1.0
+  const variance=Math.random();                            // 0–1
+  const recency=0.2+Math.random()*0.8;                   // 0.2–1.0 (recent=high)
+  const fallSpeed=0.5*weight*recency/(1+variance*0.1);   // custom gravity
+
+  // Start positions: spread across top
+  const x=(Math.random()-0.5)*80;
+  const y=35+Math.random()*20;
+  const z=(Math.random()-0.5)*80;
+
+  // Target stratum based on weight
+  let stratum, targetY;
+  if(weight>0.7){
+    stratum='bedrock';
+    targetY=STRATA.bedrock.yMin+(Math.random()*(STRATA.bedrock.yMax-STRATA.bedrock.yMin));
+  }else if(weight>0.4){
+    stratum='active';
+    targetY=STRATA.active.yMin+(Math.random()*(STRATA.active.yMax-STRATA.active.yMin));
+  }else{
+    stratum='changing';
+    targetY=STRATA.changing.yMin+(Math.random()*(STRATA.changing.yMax-STRATA.changing.yMin));
+  }
+
+  const c=STRATA[stratum].color;
+  pPositions[i*3]=x;
+  pPositions[i*3+1]=y;
+  pPositions[i*3+2]=z;
+  pColors[i*3]=c.r;
+  pColors[i*3+1]=c.g;
+  pColors[i*3+2]=c.b;
+  pSizes[i]=1.5+weight*3;
+
+  particles.push({
+    idx:i, weight, variance, recency, fallSpeed,
+    x, y, z,
+    targetY, targetX:(Math.random()-0.5)*40, targetZ:(Math.random()-0.5)*40,
+    stratum, settled:false, settleTime:0,
+    vy:0, phase:Math.random()*Math.PI*2,
+  });
+}
+
+const pGeo=new THREE.BufferGeometry();
+pGeo.setAttribute('position',new THREE.BufferAttribute(pPositions,3));
+pGeo.setAttribute('color',new THREE.BufferAttribute(pColors,3));
+pGeo.setAttribute('size',new THREE.BufferAttribute(pSizes,1));
+
+const pMat=new THREE.PointsMaterial({
+  size:2, vertexColors:true, transparent:true, opacity:0.8,
+  blending:THREE.AdditiveBlending, depthWrite:false,
+  sizeAttenuation:true,
+});
+const pointCloud=new THREE.Points(pGeo,pMat);
+scene.add(pointCloud);
+
+// Strata planes (appear during settling)
+const strataPlanes=[];
+[
+  {y:-22, color:0x059669, label:'FOUNDATION'},
+  {y:-14, color:0x0891b2, label:'ACTIVE'},
+  {y:-6, color:0xe11d48, label:'CHANGING'},
+].forEach(s=>{
+  const geo=new THREE.PlaneGeometry(90,90);
+  const mat=new THREE.MeshBasicMaterial({color:s.color,transparent:true,opacity:0,side:THREE.DoubleSide});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.rotation.x=-Math.PI/2;
+  mesh.position.y=s.y;
+  scene.add(mesh);
+  strataPlanes.push({mesh,mat,targetOpacity:0.08});
+});
+
+// --- SCENE 4: Agent mesh (spawns from connected nodes) ---
+const agentGroup=new THREE.Group();
+agentGroup.visible=false;
+
+// Body
+const bodyGeo=new THREE.CapsuleGeometry(1.8,4,16,32);
+const bodyMat=new THREE.MeshPhongMaterial({color:0x0f172a,emissive:0x22d3ee,emissiveIntensity:0.4,transparent:true,opacity:0});
+const body=new THREE.Mesh(bodyGeo,bodyMat);
+agentGroup.add(body);
+
+// Head
+const headGeo=new THREE.SphereGeometry(1.5,24,24);
+const headMat=new THREE.MeshPhongMaterial({color:0x0f172a,emissive:0x22d3ee,emissiveIntensity:0.5,transparent:true,opacity:0});
+const head=new THREE.Mesh(headGeo,headMat);
+head.position.y=4.5;
+agentGroup.add(head);
+
+// Eyes
+const eyeGeo=new THREE.SphereGeometry(0.3,12,12);
+const eyeMat=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:0});
+const lEye=new THREE.Mesh(eyeGeo,eyeMat);lEye.position.set(-0.55,4.8,1.3);agentGroup.add(lEye);
+const rEye=new THREE.Mesh(eyeGeo,eyeMat);rEye.position.set(0.55,4.8,1.3);agentGroup.add(rEye);
+
+// Aura (bloom glow)
+const auraGeo=new THREE.SphereGeometry(5,24,24);
+const auraMat=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:0,blending:THREE.AdditiveBlending});
+const aura=new THREE.Mesh(auraGeo,auraMat);
+agentGroup.add(aura);
+
+// Connection lines from strata to agent
+const connectionLines=[];
+
+agentGroup.position.set(0,-18,0);
+agentGroup.scale.set(0.01,0.01,0.01);
+scene.add(agentGroup);
+
+// --- SCENE 5: External signal spheres ---
+const signalSpheres=[];
+function spawnSignal(){
+  const geo=new THREE.SphereGeometry(0.8,12,12);
+  const mat=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:0.9,blending:THREE.AdditiveBlending});
+  const mesh=new THREE.Mesh(geo,mat);
+  const angle=Math.random()*Math.PI*2;
+  const dist=50+Math.random()*20;
+  mesh.position.set(Math.cos(angle)*dist, -10+Math.random()*20, Math.sin(angle)*dist);
+  scene.add(mesh);
+
+  // Trail
+  const trailGeo=new THREE.SphereGeometry(1.5,8,8);
+  const trailMat=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:0.15,blending:THREE.AdditiveBlending});
+  const trail=new THREE.Mesh(trailGeo,trailMat);
+  trail.position.copy(mesh.position);
+  scene.add(trail);
+
+  signalSpheres.push({mesh,mat,trail,trailMat,speed:1.5+Math.random(),hit:false,age:0});
+}
+
+// Wave rings on impact
+const waveRings=[];
+function spawnWave(pos){
+  const geo=new THREE.RingGeometry(0.5,1,32);
+  const mat=new THREE.MeshBasicMaterial({color:0x22d3ee,transparent:true,opacity:0.6,side:THREE.DoubleSide,blending:THREE.AdditiveBlending});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.copy(pos);
+  mesh.rotation.x=-Math.PI/2;
+  scene.add(mesh);
+  waveRings.push({mesh,mat,scale:1,age:0});
+}
+
+// --- Text overlay timing ---
+const textTimings=[
+  {el:'t1', showAt:0, hideAt:3},
+  {el:'t2', showAt:3, hideAt:6},
+  {el:'t3', showAt:8, hideAt:13},
+  {el:'t4', showAt:14, hideAt:19},
+  {el:'t5', showAt:20, hideAt:26},
+];
+
+// --- Animation timeline ---
+let startTime=null;
+let agentScale=0.01;
+let agentSpawned=false;
+let bedrockDensity=0;
+const DURATION=25;
+
+function animate(timestamp){
+  if(!startTime) startTime=timestamp;
+  const elapsed=(timestamp-startTime)/1000;
+  const t=elapsed;
+
+  if(t>DURATION+2) { renderer.render(scene,camera); return; }
+  requestAnimationFrame(animate);
+
+  // --- Text overlays ---
+  textTimings.forEach(tt=>{
+    const el=document.getElementById(tt.el);
+    if(t>=tt.showAt && t<tt.hideAt) el.style.opacity='1';
+    else el.style.opacity='0';
+  });
+
+  // --- SCENE 1-2: Particles spawn and fall (0–8s) ---
+  let settledBedrock=0, settledTotal=0;
+  particles.forEach(p=>{
+    const i3=p.idx*3;
+
+    if(t<8){
+      // Gravity: fall toward target stratum
+      if(!p.settled){
+        const spawnDelay=p.idx*0.006; // stagger spawns
+        if(t>spawnDelay){
+          p.vy+=p.fallSpeed*0.015;
+          p.y-=p.vy;
+
+          // Lateral drift toward cluster position
+          p.x+=(p.targetX-p.x)*0.005;
+          p.z+=(p.targetZ-p.z)*0.005;
+
+          // Settle when reaching target
+          if(p.y<=p.targetY){
+            p.y=p.targetY;
+            p.settled=true;
+            p.settleTime=t;
+            p.vy=0;
+          }
+        }
+      }else{
+        // Gentle bob after settling
+        p.y=p.targetY+Math.sin(t*2+p.phase)*0.15;
+      }
+    }else{
+      // After settling: gentle ambient motion
+      p.y=p.targetY+Math.sin(t*1.5+p.phase)*0.2;
+      p.x=p.targetX+Math.sin(t*0.8+p.phase*2)*0.5;
+      p.z=p.targetZ+Math.cos(t*0.7+p.phase*3)*0.5;
+    }
+
+    pPositions[i3]=p.x;
+    pPositions[i3+1]=p.y;
+    pPositions[i3+2]=p.z;
+
+    if(p.settled){
+      settledTotal++;
+      if(p.stratum==='bedrock') settledBedrock++;
+    }
+  });
+  pGeo.attributes.position.needsUpdate=true;
+
+  // Strata planes fade in (6–10s)
+  if(t>6){
+    strataPlanes.forEach(sp=>{
+      sp.mat.opacity=Math.min(sp.targetOpacity, (t-6)*0.02);
+    });
+  }
+
+  // Bedrock density calculation
+  const totalBedrock=particles.filter(p=>p.stratum==='bedrock').length;
+  bedrockDensity=totalBedrock>0?settledBedrock/totalBedrock:0;
+
+  // --- SCENE 4: Agent spawns when density > 0.8 (around 10s) ---
+  if(bedrockDensity>0.8 && !agentSpawned && t>9){
+    agentSpawned=true;
+    agentGroup.visible=true;
+
+    // Create connection lines from bedrock particles to agent
+    const bedrockParticles=particles.filter(p=>p.stratum==='bedrock').slice(0,20);
+    bedrockParticles.forEach(p=>{
+      const points=[
+        new THREE.Vector3(p.targetX, p.targetY, p.targetZ),
+        new THREE.Vector3(0,-18,0),
+      ];
+      const geo=new THREE.BufferGeometry().setFromPoints(points);
+      const mat=new THREE.LineBasicMaterial({color:0x22d3ee,transparent:true,opacity:0,blending:THREE.AdditiveBlending});
+      const line=new THREE.Line(geo,mat);
+      scene.add(line);
+      connectionLines.push({line,mat,maxOpacity:0.2+Math.random()*0.2});
+    });
+  }
+
+  // Agent scale-up animation (10–14s)
+  if(agentSpawned){
+    const agentT=Math.max(0,t-10);
+    const targetScale=Math.min(1.0, agentT*0.25);
+    agentScale+=(targetScale-agentScale)*0.05;
+    agentGroup.scale.set(agentScale,agentScale,agentScale);
+
+    // Fade in meshes
+    const fadeIn=Math.min(1,agentT*0.3);
+    bodyMat.opacity=fadeIn*0.92;
+    headMat.opacity=fadeIn*0.95;
+    eyeMat.opacity=fadeIn;
+    auraMat.opacity=Math.sin(t*3)*0.06+0.08;
+
+    // Bob
+    agentGroup.position.y=-18+Math.sin(t*2)*0.3;
+    agentGroup.rotation.y+=0.008;
+
+    // Connection lines fade in
+    connectionLines.forEach((cl,i)=>{
+      cl.mat.opacity=Math.min(cl.maxOpacity, agentT*0.1);
+    });
+  }
+
+  // --- SCENE 5: External signals (14–22s) ---
+  if(t>13 && t<22){
+    if(Math.random()<0.12) spawnSignal(); // ~7 signals/sec
+  }
+
+  signalSpheres.forEach(s=>{
+    if(s.hit) return;
+    s.age+=0.016;
+
+    // Move toward agent
+    const dir=new THREE.Vector3(0,-18,0).sub(s.mesh.position).normalize();
+    s.mesh.position.add(dir.multiplyScalar(s.speed));
+    s.trail.position.lerp(s.mesh.position,0.3);
+    s.trailMat.opacity*=0.97;
+
+    // Check collision with agent area
+    if(s.mesh.position.distanceTo(new THREE.Vector3(0,-18,0))<6){
+      s.hit=true;
+      s.mat.opacity=0;
+      s.trailMat.opacity=0;
+
+      // Wave on impact
+      spawnWave(s.mesh.position);
+
+      // Agent grows
+      if(agentSpawned){
+        agentScale=Math.min(2.0, agentScale+0.05);
+
+        // Flash eyes brighter
+        eyeMat.emissiveIntensity=2.0;
+        setTimeout(()=>{eyeMat.emissiveIntensity=1.0},100);
+      }
+    }
+
+    // Fade old signals
+    if(s.age>5){
+      s.mat.opacity*=0.95;
+      s.trailMat.opacity*=0.95;
+    }
+  });
+
+  // Wave rings expand
+  waveRings.forEach(w=>{
+    w.age+=0.016;
+    w.scale+=0.8;
+    w.mesh.scale.set(w.scale,w.scale,1);
+    w.mat.opacity=Math.max(0,0.6-w.age*0.8);
+  });
+
+  // --- SCENE 6: Zoom to agent (20–25s) ---
+  if(t>19){
+    const zoomT=Math.min(1,(t-19)/4);
+    const ease=1-Math.pow(1-zoomT,3); // ease out cubic
+    camera.position.x=THREE.MathUtils.lerp(camera.position.x, 0, ease*0.03);
+    camera.position.y=THREE.MathUtils.lerp(camera.position.y, -14, ease*0.03);
+    camera.position.z=THREE.MathUtils.lerp(camera.position.z, 18, ease*0.03);
+
+    // Intensify glow
+    auraMat.opacity=0.1+zoomT*0.12+Math.sin(t*4)*0.04;
+    bodyMat.emissiveIntensity=0.4+zoomT*0.6;
+    headMat.emissiveIntensity=0.5+zoomT*0.5;
+
+    // Agent aura color shift to golden
+    const finalColor=new THREE.Color(0x22d3ee).lerp(new THREE.Color(0xfbbf24),zoomT*0.3);
+    auraMat.color.copy(finalColor);
+  }
+
+  // Camera default orbit (0–19s)
+  if(t<19){
+    const orbitSpeed=0.15;
+    const orbitRadius=60-t*0.8;
+    const orbitY=30-t*1.2;
+    camera.position.x=Math.sin(t*orbitSpeed)*Math.max(20,orbitRadius);
+    camera.position.y=Math.max(5,orbitY);
+    camera.position.z=Math.cos(t*orbitSpeed)*Math.max(20,orbitRadius);
+    camera.lookAt(0,-10,0);
+  }else{
+    camera.lookAt(0,-16,0);
+  }
+
+  renderer.render(scene,camera);
+}
+
+requestAnimationFrame(animate);
+
+// Resize
+window.addEventListener('resize',()=>{
+  const w=window.innerWidth,h=window.innerHeight;
+  camera.aspect=w/h;camera.updateProjectionMatrix();
+  renderer.setSize(w,h);
+});
+})();
+</script>
+</body>
+</html>

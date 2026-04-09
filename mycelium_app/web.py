@@ -806,6 +806,11 @@ def ecosystem_page(
     )
 
 
+@router.get("/cinema", response_class=HTMLResponse)
+def cinema_page(request: Request):
+    return templates.TemplateResponse("cinema.html", {"request": request, "app_name": settings.app_name})
+
+
 @router.get("/live", response_class=HTMLResponse)
 def live_page(
     request: Request,
