@@ -43,7 +43,44 @@ def create_db_and_tables() -> None:
     if not auto_create:
         if mode != "migrate":
             return
-    SQLModel.metadata.create_all(engine)
+
+    # create_all is safe: creates missing tables without dropping existing ones
+    try:
+        SQLModel.metadata.create_all(engine)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+
+    # Add missing columns to existing tables (SQLite ALTER TABLE)
+    if str(settings.database_url).startswith("sqlite"):
+        _migrate_sqlite_columns(engine)
+
+
+def _migrate_sqlite_columns(eng) -> None:
+    """Add missing columns to existing SQLite tables. Safe to run repeatedly."""
+    import sqlite3
+    url = str(settings.database_url).replace("sqlite:///", "")
+    try:
+        conn = sqlite3.connect(url)
+        cursor = conn.cursor()
+
+        # Check existing columns and add missing ones
+        migrations = [
+            ("user", "gender", "TEXT DEFAULT ''"),
+        ]
+        for table, column, col_type in migrations:
+            try:
+                cursor.execute(f"SELECT {column} FROM {table} LIMIT 1")
+            except sqlite3.OperationalError:
+                try:
+                    cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                except Exception:
+                    pass
+
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 def get_session():

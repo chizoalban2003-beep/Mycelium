@@ -260,7 +260,55 @@ def live_ecosystem(
         "graph": _humanize_graph(graph_data) if graph_data else None,
         "force_field": _build_live_force_field(session, user_id),
         "crystals": _build_crystals(session, user_id),
+        "soul": _build_soul(session, user_id),
     }
+
+
+def _build_soul(session, user_id: int) -> dict | None:
+    """Compose the digital soul from crystal neural network."""
+    try:
+        from mycelium_app.crystallization import crystallize
+        from mycelium_app.digital_soul import compose_digital_soul, serialize_soul
+        from mycelium_app.force_field import compute_force_field
+        from mycelium_app.assistant_profile import get_assistant_profile_effective
+        import json as _json
+        from datetime import datetime as dt, timedelta as td
+
+        since = dt.utcnow() - td(hours=6)
+        from mycelium_app.models import SignalLedgerEvent as SLE
+        rows = session.exec(
+            select(SLE).where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
+        ).all()
+        if not rows:
+            return None
+
+        signals = []
+        recent_apps = []
+        for r in rows:
+            try: payload = _json.loads(r.payload_json or "{}")
+            except: payload = {}
+            surface = payload.get("surface") or payload.get("stimulus") or payload
+            app = str(surface.get("app_name", r.signal_type or ""))
+            signals.append({
+                "signal_type": str(r.signal_type or ""), "app_name": app,
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "payload": surface,
+            })
+            if r.signal_type in ("app_focus", "app_open"):
+                recent_apps.append(app.lower())
+
+        ff = compute_force_field(signals, window_hours=6, n_iterations=15)
+        crystals = crystallize(ff)
+        profile = get_assistant_profile_effective(session, user_id=user_id, project_id=None)
+
+        soul = compose_digital_soul(
+            crystals,
+            agent_name=str(profile.get("given_name", "Myco")),
+            active_signals=recent_apps[-20:],
+        )
+        return serialize_soul(soul)
+    except Exception:
+        return None
 
 
 def _build_crystals(session, user_id: int) -> dict | None:
@@ -612,6 +660,18 @@ def fast_predict(
     session_type = classify_session_type(ff, recent_apps[-5:] if recent_apps else [])
 
     return {"ok": True, "prediction": prediction, "session": session_type}
+
+
+@router.get("/soul")
+def get_soul(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Get the digital soul state — the emergent consciousness."""
+    result = _build_soul(session, int(current_user.id or 0))
+    if not result:
+        return {"ok": True, "soul": None, "maturity": "nascent"}
+    return {"ok": True, "soul": result}
 
 
 @router.get("/crystals")
