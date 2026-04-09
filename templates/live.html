@@ -512,13 +512,43 @@ chatForm.onsubmit=async(e)=>{
     const d=await r.json();
     const reply=d.reply||"I'm thinking...";
     addMsg(agentName, reply, true);
+    speak(reply);
     chatHistory.push({role:'assistant',content:reply});
   }catch(e){
     addMsg(agentName, "Connection lost. I'll be right back.", true);
   }
 };
 
-addMsg(agentName, "Hello! I'm your digital companion. I live in your device's ecosystem and learn from your signals. Ask me anything — about your apps, routines, focus, or just say hi! 🌱", true);
+// --- Voice (browser speechSynthesis) ---
+let voiceEnabled = true;
+function speak(text) {
+  if (!voiceEnabled || !('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text.replace(/[🌱🌿🌳🌲⚡]/g, ''));
+  utt.rate = 0.95;
+  utt.pitch = 1.05;
+  utt.volume = 0.8;
+  // Prefer a natural voice
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Samantha'));
+  if (preferred) utt.voice = preferred;
+  window.speechSynthesis.speak(utt);
+}
+
+// Voice toggle in HUD
+const voiceBtn = document.createElement('button');
+voiceBtn.className = 'hud-pill text-slate-400 hover:text-cyan-300 cursor-pointer';
+voiceBtn.textContent = '🔊 Voice';
+voiceBtn.onclick = () => {
+  voiceEnabled = !voiceEnabled;
+  voiceBtn.textContent = voiceEnabled ? '🔊 Voice' : '🔇 Mute';
+  if (!voiceEnabled) window.speechSynthesis.cancel();
+};
+document.querySelector('#hud .ml-auto').prepend(voiceBtn);
+
+const greeting = "Hello! I'm your digital companion. I live in your device's ecosystem and learn from your signals. Ask me anything!";
+addMsg(agentName, greeting + " 🌱", true);
+speak(greeting);
 
 })();
 </script>
