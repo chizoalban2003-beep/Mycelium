@@ -234,15 +234,24 @@ def run_learning_tick(
                         break
 
                 if target_col:
-                    pred = run_physics_prediction(
-                        df,
-                        target_col=target_col,
-                        plane=PhysicsPlane.liquid,
-                        train_fraction=0.7,
-                        random_seed=42,
-                        n_cycles=15,
-                        top_k_weights=min(20, df.shape[1] - 1),
-                    )
+                    # Use unified field to derive predictor kwargs
+                    pred_kwargs = {
+                        "target_col": target_col,
+                        "train_fraction": 0.7,
+                        "random_seed": 42,
+                        "top_k_weights": min(20, df.shape[1] - 1),
+                        "plane": PhysicsPlane.liquid,
+                        "n_cycles": 15,
+                    }
+                    try:
+                        from mycelium_app.unified_field import field_to_predictor_kwargs
+                        if 'ff_state' in dir() and ff_state:
+                            pred_kwargs = field_to_predictor_kwargs(ff_state, base_kwargs=pred_kwargs)
+                            result["actions"].append("unified_field_applied")
+                    except Exception:
+                        pass
+
+                    pred = run_physics_prediction(df, **pred_kwargs)
 
                     if pred and pred.metrics:
                         r2 = None

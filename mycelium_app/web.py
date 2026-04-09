@@ -192,11 +192,13 @@ def register_action(
     password: str = Form(...),
     full_name: str = Form(""),
     gender: str = Form(""),
+    companion_name: str = Form(""),
 ):
     email_value = str(email or "").strip().lower()
     password_value = str(password or "")
     name_value = str(full_name or "").strip()
     gender_value = str(gender or "").strip().lower()
+    companion_name_value = str(companion_name or "").strip()[:32]
     allowed_genders = {"neutral", "female", "male", "nonbinary", "custom"}
     if gender_value not in allowed_genders:
         gender_value = ""
@@ -236,8 +238,23 @@ def register_action(
     except Exception:
         pass
 
+    # Set companion name if provided
+    if companion_name_value:
+        try:
+            from mycelium_app.assistant_profile import set_assistant_profile
+            set_assistant_profile(
+                session,
+                user_id=int(user.id or 0),
+                project_id=None,
+                given_name=companion_name_value,
+                gender_identity=gender_value or "neutral",
+                vocal_preset="alloy",
+            )
+        except Exception:
+            pass
+
     token = create_access_token(subject=str(user.id))
-    response = RedirectResponse(url="/live", status_code=302)
+    response = RedirectResponse(url="/cinema?onboarding=1", status_code=302)
     response.set_cookie(
         key=settings.cookie_name,
         value=token,

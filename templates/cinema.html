@@ -477,6 +477,18 @@ requestAnimationFrame(animate);
   }catch(e){}
 })();
 
+// Auto-redirect to /live after cinema if onboarding
+const isOnboarding = new URLSearchParams(window.location.search).get('onboarding') === '1';
+if (isOnboarding) {
+  setTimeout(() => { window.location.href = '/live'; }, 26000);
+  // Also add a skip button
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = 'Skip →';
+  skipBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:100;padding:8px 20px;border-radius:20px;background:rgba(34,211,238,0.2);border:1px solid rgba(34,211,238,0.3);color:#22d3ee;font-size:13px;cursor:pointer;backdrop-filter:blur(4px)';
+  skipBtn.onclick = () => { window.location.href = '/live'; };
+  document.body.appendChild(skipBtn);
+}
+
 // Resize
 window.addEventListener('resize',()=>{
   const w=window.innerWidth,h=window.innerHeight;

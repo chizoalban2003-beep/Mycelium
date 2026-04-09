@@ -331,6 +331,138 @@ def force_field_state(
     return {"ok": True, "force_field": ff}
 
 
+@router.get("/anomalies")
+def get_anomalies(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Detect anomalies by comparing current field to previous snapshot."""
+    from mycelium_app.unified_field import detect_anomalies
+    from mycelium_app.force_field import load_previous_field
+
+    ff_data = _build_live_force_field(session, int(current_user.id or 0))
+    if not ff_data:
+        return {"ok": True, "anomalies": [], "message": "Not enough data"}
+
+    prev = load_previous_field(user_id=int(current_user.id or 0))
+
+    # Rebuild ForceFieldState from API data for anomaly detection
+    from mycelium_app.force_field import compute_force_field
+    import json as _json
+    from datetime import datetime as dt, timedelta as td
+    since = dt.utcnow() - td(hours=6)
+    from mycelium_app.models import SignalLedgerEvent as SLE
+    rows = session.exec(
+        select(SLE).where(SLE.created_by_user_id == int(current_user.id or 0), SLE.created_at >= since)
+    ).all()
+    signals = []
+    for r in rows:
+        try:
+            payload = _json.loads(r.payload_json or "{}")
+        except Exception:
+            payload = {}
+        surface = payload.get("surface") or payload.get("stimulus") or payload
+        signals.append({
+            "signal_type": str(r.signal_type or ""),
+            "app_name": str(surface.get("app_name", r.signal_type or "")),
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "payload": surface,
+        })
+
+    ff = compute_force_field(signals, window_hours=6, n_iterations=15)
+    anomalies = detect_anomalies(ff, prev)
+
+    return {"ok": True, "anomalies": anomalies, "n_anomalies": len(anomalies)}
+
+
+@router.get("/digest")
+def weekly_digest(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Generate a weekly ecosystem summary digest."""
+    from mycelium_app.unified_field import generate_weekly_digest
+    from mycelium_app.force_field import compute_force_field
+    from mycelium_app.assistant_profile import get_assistant_profile_effective
+    import json as _json
+    from datetime import datetime as dt, timedelta as td
+
+    user_id = int(current_user.id or 0)
+    since = dt.utcnow() - td(hours=168)
+    from mycelium_app.models import SignalLedgerEvent as SLE
+    rows = session.exec(
+        select(SLE).where(SLE.created_by_user_id == user_id, SLE.created_at >= since)
+    ).all()
+
+    signals = []
+    for r in rows:
+        try:
+            payload = _json.loads(r.payload_json or "{}")
+        except Exception:
+            payload = {}
+        surface = payload.get("surface") or payload.get("stimulus") or payload
+        signals.append({
+            "signal_type": str(r.signal_type or ""),
+            "app_name": str(surface.get("app_name", r.signal_type or "")),
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "payload": surface,
+        })
+
+    ff = compute_force_field(signals, window_hours=168, n_iterations=20)
+    pats = analyze_patterns(session, user_id=user_id, window_hours=168)
+    profile = get_assistant_profile_effective(session, user_id=user_id, project_id=None)
+
+    digest = generate_weekly_digest(
+        ff, pats, agent_name=str(profile.get("given_name", "Myco")),
+    )
+    return {"ok": True, "digest": digest}
+
+
+@router.get("/predict-next-app")
+def predict_next(
+    current_app: str = "unknown",
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Predict the next app the user will open."""
+    from mycelium_app.unified_field import predict_next_app
+    from mycelium_app.humanizer import humanize_app
+    from datetime import datetime as dt, timedelta as td
+    import json as _json
+
+    since = dt.utcnow() - td(hours=24)
+    from mycelium_app.models import SignalLedgerEvent as SLE
+    rows = session.exec(
+        select(SLE).where(
+            SLE.created_by_user_id == int(current_user.id or 0),
+            SLE.signal_type == "app_focus",
+            SLE.created_at >= since,
+        ).order_by(SLE.created_at)
+    ).all()
+
+    transitions = []
+    for r in rows:
+        try:
+            payload = _json.loads(r.payload_json or "{}")
+        except Exception:
+            continue
+        surface = payload.get("surface") or payload.get("stimulus") or payload
+        app = str(surface.get("app_name", "")).lower()[:32]
+        prev = str(surface.get("previous_app", "")).lower()[:32]
+        if app and prev and app != prev:
+            transitions.append((prev, app))
+
+    result = predict_next_app(transitions, current_app.lower(), dt.utcnow().hour)
+
+    if result.get("prediction"):
+        result["prediction_label"] = humanize_app(result["prediction"])
+        result["alternatives"] = [
+            {**a, "label": humanize_app(a["app"])} for a in result.get("alternatives", [])
+        ]
+
+    return {"ok": True, **result}
+
+
 @router.get("/patterns")
 def get_patterns(
     window_hours: int = 48,
