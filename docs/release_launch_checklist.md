@@ -1,4 +1,4 @@
-# Mycelium Go-Live Checklist
+# Myco Go-Live Checklist
 
 This is the practical checklist for turning the repo into a production deployment.
 

@@ -1,6 +1,6 @@
-# Mycelium Platform Architecture
+# Myco Platform Architecture
 
-This document defines the architectural structure of Mycelium as a standalone AI platform, not just an app.
+This document defines the architectural structure of Myco as a standalone AI platform, not just an app.
 
 The platform is designed around five cooperating layers:
 
@@ -231,7 +231,7 @@ That is the central operating loop of the platform.
 
 ## Trust boundaries
 
-Mycelium should keep the following boundaries clear:
+Myco should keep the following boundaries clear:
 
 - local device data stays local unless consented
 - Hive receives allowlisted, coarse, or filtered wisdom
@@ -297,6 +297,6 @@ That means the rest of the workspace is not separate from the project — it is 
 
 ## Platform summary
 
-Mycelium is a device-native AI platform with a visible learning loop, consent-first governance, and a real-time Hive network view.
+Myco is a device-native AI platform with a visible learning loop, consent-first governance, and a real-time Hive network view.
 
 It is designed to live across user devices, learn from structured signals, and grow from a child-like learner into a personal assistant with trust-gated shared intelligence.

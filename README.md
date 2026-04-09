@@ -1,6 +1,6 @@
-# Mycelium Physics Predictor
+# Myco — Grow with Data
 
-A local-first, physics-inspired prediction engine for tabular, sensor, and electricity data.
+A local-first, physics-inspired prediction engine and digital companion for tabular, sensor, and electricity data.
 
 It frames feature selection as a physical system: strong signals migrate, weak signals slow down, correlated features bond, and noisy measurements are cleaned without erasing real transients.
 

@@ -1,9 +1,9 @@
-# Mycelium workflow so far (Apr 2, 2026)
+# Myco workflow so far (Apr 2, 2026)
 
-## 1) What Mycelium is right now
+## 1) What Myco is right now
 
 - A FastAPI app with login + project UI, plus an electrophoresis-inspired predictor.
-- You can upload a CSV, pick any column as the target (numeric/categorical/datetime), and Mycelium:
+- You can upload a CSV, pick any column as the target (numeric/categorical/datetime), and Myco:
   - infers feature/target kinds,
   - builds association weights ("physics-like" pulls/drag),
   - runs an electrophoresis simulation with v4 cascade (Zone-1 fractionation, inhibition, optional thermal noise, scavenger recycling),

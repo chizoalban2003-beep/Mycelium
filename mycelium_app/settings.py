@@ -7,14 +7,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    app_name: str = "Mycelium"
+    app_name: str = "Myco"
     system_motto: str = "Grow with Data."
     secret_key: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 60 * 24 * 7
     database_url: str = "sqlite:///storage/mycelium.db"
     db_auto_create_tables: bool = True
     db_migration_mode: str = "create_all"  # create_all|migrate
-    cookie_name: str = "mycelium_access_token"
+    cookie_name: str = "myco_access_token"
     cookie_secure: bool = False
 
     # CORS (for SaaS: when hosting API and frontend on different origins)
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
 
     # Optional SMTP mail delivery for account recovery.
     mail_enabled: bool = False
-    mail_from_address: str = "noreply@mycelium.local"
+    mail_from_address: str = "noreply@myco.local"
     mail_smtp_host: str = ""
     mail_smtp_port: int = 587
     mail_smtp_username: str = ""
@@ -168,9 +168,9 @@ class Settings(BaseSettings):
     def normalize_legacy_app_name(cls, value: object) -> str:
         raw = str(value or "").strip()
         if not raw:
-            return "Mycelium"
-        if raw.lower() == "proofgrid":
-            return "Mycelium"
+            return "Myco"
+        if raw.lower() in ("proofgrid", "mycelium"):
+            return "Myco"
         return raw
 
 

@@ -1,6 +1,6 @@
 # Android APK Packaging (Trusted Web Activity)
 
-Use this when you want a **real downloadable APK** (Play Store style) that wraps your hosted Mycelium web app.
+Use this when you want a **real downloadable APK** (Play Store style) that wraps your hosted Myco web app.
 
 Suggested package naming:
 

@@ -1,6 +1,6 @@
 # Android TWA Launch Readiness Checklist
 
-Use this checklist right before you build and upload the first Mycelium Android package.
+Use this checklist right before you build and upload the first Myco Android package.
 
 ## Identity
 

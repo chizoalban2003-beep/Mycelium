@@ -1,6 +1,6 @@
 # Production Readiness Summary
 
-Mycelium is already **deployable pilot-ready**, but not yet fully hardened for an unattended public launch.
+Myco is already **deployable pilot-ready**, but not yet fully hardened for an unattended public launch.
 
 ## What looks production-oriented
 

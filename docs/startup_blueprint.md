@@ -1,12 +1,12 @@
-# Mycelium AI Platform Blueprint
+# Myco AI Platform Blueprint
 
-Mycelium is a consent-first AI platform built to feel like a living assistant stack: it starts in a guided, child-like mode, learns only from approved signals, explains what it learned, and gradually earns the right to act more autonomously.
+Myco is a consent-first AI platform built to feel like a living assistant stack: it starts in a gentle guided mode, learns only from approved signals, explains what it learned, and gradually earns the right to act more autonomously.
 
 The product is intentionally different from a generic chatbot. It is designed as a layered system with a visible learning loop, a trust membrane, and a shared intelligence layer called Hive that only activates through consent and policy.
 
 ## Startup identity
 
-Mycelium is best understood as a personal AI operating platform for founders, developers, operators, and power users.
+Myco is best understood as a personal AI operating platform for founders, developers, operators, and power users.
 
 Core promise:
 
@@ -27,7 +27,7 @@ The product follows the same format you described for the assistant itself:
 5. Expand into a personal copilot.
 6. Share only allowlisted wisdom through Hive.
 
-That makes Mycelium a platform that behaves like a growing system instead of a static app.
+That makes Myco a platform that behaves like a growing system instead of a static app.
 
 ## Learning format
 
@@ -60,7 +60,7 @@ For the full architectural structure and Hive visualization model, see [docs/pla
 
 ## Device-native learning architecture
 
-Mycelium is meant to live on the user’s devices as a child-stage assistant that watches approved digital signals and turns them into structured learning rows.
+Myco is meant to live on the user’s devices as a companion assistant that watches approved digital signals and turns them into structured learning rows.
 
 The intended path is:
 
@@ -170,7 +170,7 @@ These files turn the idea into something shippable and measurable.
 
 ## Startup narrative
 
-Mycelium begins as a guided assistant that helps a user work, reflect, and stay organized.
+Myco begins as a guided assistant that helps a user work, reflect, and stay organized.
 
 As the user allows more signals, the assistant becomes better at summarizing context, proposing next steps, and protecting focus. Once trust is earned, it can coordinate actions across devices. Once Hive is enabled, it can share only filtered, consented wisdom with other approved users or nodes.
 
@@ -184,7 +184,7 @@ That creates a startup narrative with a clear progression:
 
 ## What the platform is becoming
 
-Mycelium is becoming a visible AI platform for people who want:
+Myco is becoming a visible AI platform for people who want:
 
 - a personal assistant that learns from them
 - a system they can inspect and revoke
@@ -194,4 +194,4 @@ Mycelium is becoming a visible AI platform for people who want:
 
 ## One-sentence description
 
-Mycelium is a consent-first, child-first AI platform that learns visibly from approved user signals, grows into a personal copilot, and expands into a trust-gated Hive of shared intelligence.
+Myco is a consent-first AI platform that learns visibly from approved user signals, grows into a personal copilot, and expands into a trust-gated Hive of shared intelligence.

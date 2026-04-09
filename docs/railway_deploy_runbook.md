@@ -1,12 +1,12 @@
 # Railway Deploy Runbook
 
-This is the copy/paste path for deploying Mycelium to Railway.
+This is the copy/paste path for deploying Myco to Railway.
 
 ## 1) Prepare secrets
 
 Set these Railway variables first:
 
-- `APP_NAME=Mycelium`
+- `APP_NAME=Myco`
 - `SECRET_KEY=<long-random-secret>`
 - `DATABASE_URL=<railway-postgres-url>`
 - `COOKIE_SECURE=true`

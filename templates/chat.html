@@ -81,7 +81,7 @@
 
   async function shareLastReply() {
     if (!lastAssistantText) return;
-    const payload = { title: 'Mycelium reply', text: lastAssistantText };
+    const payload = { title: 'Myco reply', text: lastAssistantText };
     try {
       if (navigator.share) {
         await navigator.share(payload);

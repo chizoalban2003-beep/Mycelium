@@ -68,7 +68,7 @@ def _send_email_message(*, to_email: str, subject: str, text: str, base_url: str
     port = int(getattr(settings, "mail_smtp_port", 587) or 587)
     username = str(getattr(settings, "mail_smtp_username", "") or "").strip()
     password = str(getattr(settings, "mail_smtp_password", "") or "").strip()
-    sender = str(getattr(settings, "mail_from_address", "") or "noreply@mycelium.local").strip()
+    sender = str(getattr(settings, "mail_from_address", "") or "noreply@myco.local").strip()
     timeout = max(1, min(int(getattr(settings, "mail_smtp_timeout_seconds", 10) or 10), 60))
     use_tls = bool(getattr(settings, "mail_smtp_use_tls", True))
     use_ssl = bool(getattr(settings, "mail_smtp_use_ssl", False))

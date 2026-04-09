@@ -424,7 +424,7 @@ def deploy_version(
 
     return DeployVersionResponse(
         ok=True,
-        app_name=str(getattr(settings, "app_name", "Mycelium")),
+        app_name=str(getattr(settings, "app_name", "Myco")),
         app_version=app_version,
         git_sha=git_sha,
         build_id=build_id,

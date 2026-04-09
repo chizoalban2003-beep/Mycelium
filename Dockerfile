@@ -1,4 +1,4 @@
-# Mycelium Parent Hub (SaaS-ready)
+# Myco Parent Hub (SaaS-ready)
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

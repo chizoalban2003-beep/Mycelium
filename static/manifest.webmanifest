@@ -1,7 +1,7 @@
 {
-  "name": "Mycelium",
-  "short_name": "Mycelium",
-  "description": "A transparent human and AI companion for device-native growth and learning.",
+  "name": "Myco",
+  "short_name": "Myco",
+  "description": "Your digital companion that grows with you.",
   "id": "/device",
   "start_url": "/projects",
   "scope": "/",

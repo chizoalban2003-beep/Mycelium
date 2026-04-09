@@ -6,7 +6,7 @@ Use this as the concrete Railway configuration for a production deployment.
 
 Set these before launch:
 
-- `APP_NAME=Mycelium`
+- `APP_NAME=Myco`
 - `SECRET_KEY=<long-random-secret>`
 - `DATABASE_URL=<railway-postgres-url>`
 - `COOKIE_SECURE=true`

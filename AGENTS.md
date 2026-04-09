@@ -4,7 +4,7 @@
 
 ### Project overview
 
-Mycelium is a FastAPI-based Python web application — a local-first, physics-inspired prediction engine and SaaS platform. It uses SQLite by default for development (zero config), Jinja2 templates, and includes background daemons for homeostasis, wisdom nudges, telemetry, and messaging.
+Myco is a FastAPI-based Python web application — a local-first, physics-inspired prediction engine and SaaS platform. It uses SQLite by default for development (zero config), Jinja2 templates, and includes background daemons for homeostasis, wisdom nudges, telemetry, and messaging.
 
 ### Running the dev server
 

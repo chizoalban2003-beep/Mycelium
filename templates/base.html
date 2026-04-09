@@ -14,7 +14,7 @@
     <script>
       (function applyThemeEarly() {
         try {
-          const saved = localStorage.getItem('mycelium-theme');
+          const saved = localStorage.getItem('myco-theme');
           if (saved) document.documentElement.dataset.theme = saved;
         } catch (e) {}
       })();
@@ -40,7 +40,7 @@
           <div>
             <a href="/projects" class="text-xl font-semibold tracking-wide">{{ app_name }}</a>
             <div class="text-[11px] uppercase tracking-[0.25em] text-cyan-300/90">{{ system_motto }}</div>
-            <div class="text-[10px] uppercase tracking-[0.3em] text-slate-400">A transparent human↔AI companion</div>
+            <div class="text-[10px] uppercase tracking-[0.3em] text-slate-400">Your digital companion that grows with you</div>
           </div>
           {% if user %}
             <a href="/device" class="text-sm text-cyan-300 hover:text-cyan-200">Device</a>
@@ -110,7 +110,7 @@
         const nextTheme = themeOrder.includes(theme) ? theme : 'midnight';
         document.documentElement.dataset.theme = nextTheme;
         document.body.dataset.theme = nextTheme;
-        try { localStorage.setItem('mycelium-theme', nextTheme); } catch (e) {}
+        try { localStorage.setItem('myco-theme', nextTheme); } catch (e) {}
         const themeMeta = document.querySelector('meta[name="theme-color"]');
         if (themeMeta) {
           themeMeta.setAttribute('content', nextTheme === 'paper' ? '#f8fafc' : nextTheme === 'aurora' ? '#07111f' : '#020617');

@@ -1,6 +1,6 @@
 # Railway Launch Pack
 
-This is the single copy/paste packet for launching Mycelium on Railway.
+This is the single copy/paste packet for launching Myco on Railway.
 
 If you want the fastest version of this plan, use [docs/railway_today_deploy.md](docs/railway_today_deploy.md).
 
@@ -11,7 +11,7 @@ Use [docs/railway_production_env.md](docs/railway_production_env.md) for the ful
 Copy this into Railway and replace the placeholders:
 
 ```bash
-APP_NAME=Mycelium
+APP_NAME=Myco
 SECRET_KEY=<long-random-secret>
 DATABASE_URL=<railway-postgres-url>
 COOKIE_SECURE=true
@@ -31,7 +31,7 @@ CORS_ALLOW_CREDENTIALS=true
 
 ### Required
 
-- `APP_NAME=Mycelium`
+- `APP_NAME=Myco`
 - `SECRET_KEY=<long-random-secret>`
 - `DATABASE_URL=<railway-postgres-url>`
 - `COOKIE_SECURE=true`

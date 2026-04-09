@@ -2,7 +2,7 @@
 
 ## Startup shape
 
-Mycelium is a consent-first AI platform that begins in a child-like guided mode and grows with the data a user intentionally allows it to consume.
+Myco is a consent-first AI platform that begins in a gentle guided mode and grows with the data a user intentionally allows it to consume.
 
 If you want the startup framing and the file-by-file learning map in one place, see [docs/startup_blueprint.md](docs/startup_blueprint.md).
 
@@ -108,7 +108,7 @@ caps) for public internet exposure. Tune with:
 - `HIVE_WHISPER_IMPORT_RATE_LIMIT_MAX_PER_SOURCE`
 - `HIVE_WHISPER_IMPORT_RATE_LIMIT_MAX_PER_DEVICE`
 
-### Optional: Telegram "Mycelium Bridge"
+### Optional: Telegram "Myco Bridge"
 
 If you want nudges to arrive outside the app, enable Telegram dispatch:
 
@@ -385,7 +385,7 @@ Device-side communication surfaces:
 Rule of thumb:
 
 - Use every surfaced channel the device/browser offers, but only when the user has opted in.
-- If the device is the main brain, Mycelium should communicate through the local surface that best matches the moment: voice, text, share, or notification.
+- If the device is the main brain, Myco should communicate through the local surface that best matches the moment: voice, text, share, or notification.
 
 Memory consolidation trigger:
 
@@ -394,7 +394,7 @@ Memory consolidation trigger:
 
 ### Consent-first learning model
 
-Mycelium learns from signals the user intentionally generates or allows, such as:
+Myco learns from signals the user intentionally generates or allows, such as:
 
 - app launches and session starts
 - approved actions and task outcomes

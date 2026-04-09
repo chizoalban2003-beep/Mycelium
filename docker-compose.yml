@@ -24,7 +24,7 @@ services:
       - "8000:8000"
     environment:
       # App
-      APP_NAME: ${APP_NAME:-Mycelium}
+      APP_NAME: ${APP_NAME:-Myco}
       SECRET_KEY: ${SECRET_KEY:-change-me-please}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}  # set true behind HTTPS
       DB_AUTO_CREATE_TABLES: ${DB_AUTO_CREATE_TABLES:-false}
