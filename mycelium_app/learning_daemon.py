@@ -356,6 +356,14 @@ def run_learning_tick(
         except Exception as e:
             result["actions"].append(f"timeseries_error: {type(e).__name__}")
 
+        # 4d. Check Hive readiness (nudge after ~7 days)
+        try:
+            from mycelium_app.hive_readiness import maybe_nudge_hive_readiness
+            if maybe_nudge_hive_readiness(session, user_id=user_id):
+                result["actions"].append("hive_readiness_nudge")
+        except Exception:
+            pass
+
         # 5. Generate narrative
         try:
             summary = build_ecosystem_summary(

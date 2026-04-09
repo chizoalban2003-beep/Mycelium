@@ -578,6 +578,16 @@ def fast_predict(
     return {"ok": True, "prediction": prediction, "session": session_type}
 
 
+@router.get("/hive-readiness")
+def hive_readiness(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Check if the ecosystem is mature enough to join the Hive."""
+    from mycelium_app.hive_readiness import check_hive_readiness
+    return check_hive_readiness(session, user_id=int(current_user.id or 0))
+
+
 @router.post("/notify-test")
 def test_desktop_notification(
     current_user: User = Depends(get_current_user),
