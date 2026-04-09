@@ -31,6 +31,7 @@
     <span class="text-emerald-300" id="insightText"></span>
   </div>
   <div class="ml-auto flex gap-1.5">
+    <button id="btnInstall" class="hud-pill text-cyan-300 hover:text-cyan-200 cursor-pointer hidden">📱 Install</button>
     <button id="btnCollect" class="hud-pill text-emerald-300 hover:text-emerald-200 cursor-pointer">⚡ Collect</button>
     <button id="btnLearn" class="hud-pill text-indigo-300 hover:text-indigo-200 cursor-pointer">🧠 Learn</button>
   </div>
@@ -549,6 +550,36 @@ document.querySelector('#hud .ml-auto').prepend(voiceBtn);
 const greeting = "Hello! I'm your digital companion. I live in your device's ecosystem and learn from your signals. Ask me anything!";
 addMsg(agentName, greeting + " 🌱", true);
 speak(greeting);
+
+// --- PWA Install prompt ---
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('btnInstall');
+  if (btn) { btn.classList.remove('hidden'); }
+});
+
+const installBtn = document.getElementById('btnInstall');
+if (installBtn) {
+  installBtn.onclick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const result = await deferredPrompt.userChoice;
+    if (result.outcome === 'accepted') {
+      installBtn.classList.add('hidden');
+      addMsg(agentName, "Welcome home! I'm now installed on your device. I'll be here whenever you need me. 🌱", true);
+      speak("Welcome home! I'm now installed on your device.");
+    }
+    deferredPrompt = null;
+  };
+}
+
+// Hide install button if already installed as PWA
+if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
+  const btn = document.getElementById('btnInstall');
+  if (btn) btn.classList.add('hidden');
+}
 
 })();
 </script>

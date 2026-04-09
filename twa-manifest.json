@@ -6,7 +6,7 @@
   "versionCode": 10000,
   "manifestUrl": "https://<your-railway-domain>/static/manifest.webmanifest",
   "assetLinksUrl": "https://<your-railway-domain>/.well-known/assetlinks.json",
-  "startUrl": "https://<your-railway-domain>/projects",
+  "startUrl": "https://<your-railway-domain>/live",
   "scope": "https://<your-railway-domain>/",
   "display": "standalone",
   "themeColor": "#020617",

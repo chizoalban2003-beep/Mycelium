@@ -1,15 +1,12 @@
-/* Minimal service worker for installability.
- * We keep this intentionally small and non-invasive.
- */
+/* Myco service worker — enables PWA installability and offline support. */
 
-const CACHE = 'mycelium-shell-v3';
+const CACHE = 'myco-shell-v4';
 const PRECACHE = [
   '/static/manifest.webmanifest',
   '/static/icon.svg',
-  '/device',
-  '/projects',
-  '/knowledge',
-  '/hive/health'
+  '/live',
+  '/login',
+  '/cinema',
 ];
 
 self.addEventListener('install', (event) => {
@@ -19,15 +16,21 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  // Clean old caches
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
 });
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
-  // Network-first for HTML, cache-first for static.
   const url = new URL(req.url);
+
+  // Cache-first for static assets (icons, CSS, JS)
   if (url.pathname.startsWith('/static/')) {
     event.respondWith(
       caches.match(req).then((hit) => hit || fetch(req).then((resp) => {
@@ -39,6 +42,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first for pages, fallback to cache, then /live
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
@@ -47,8 +51,14 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
           return resp;
         })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match('/device')))
+        .catch(() => caches.match(req).then((hit) => hit || caches.match('/live')))
     );
+    return;
+  }
+
+  // API calls: network only (no caching)
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(req));
     return;
   }
 

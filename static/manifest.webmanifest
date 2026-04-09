@@ -2,8 +2,8 @@
   "name": "Myco",
   "short_name": "Myco",
   "description": "Your digital companion that grows with you. Grow with Data.",
-  "id": "/device",
-  "start_url": "/projects",
+  "id": "/live",
+  "start_url": "/live",
   "scope": "/",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone"],
@@ -13,15 +13,21 @@
   "categories": ["productivity", "education", "utilities"],
   "shortcuts": [
     {
-      "name": "Device shell",
-      "short_name": "Device",
-      "url": "/device",
+      "name": "Live Ecosystem",
+      "short_name": "Live",
+      "url": "/live",
       "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     },
     {
-      "name": "Projects",
-      "short_name": "Projects",
-      "url": "/projects",
+      "name": "Talk to Myco",
+      "short_name": "Chat",
+      "url": "/chat",
+      "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Device Dashboard",
+      "short_name": "Device",
+      "url": "/device",
       "icons": [{ "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
     }
   ],
