@@ -147,7 +147,7 @@ if ! command -v keytool >/dev/null 2>&1; then
   exit "$EXIT_MISSING_TOOLS"
 fi
 
-echo "== Mycelium TWA release build =="
+echo "== Myco TWA release build =="
 echo "Domain:      $DOMAIN"
 echo "Package ID:  $PACKAGE_ID"
 echo "Manifest:    $MANIFEST_URL"

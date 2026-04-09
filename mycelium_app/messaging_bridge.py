@@ -112,7 +112,7 @@ def dispatch_pending_nudges(session: Session, *, max_items: int | None = None) -
             continue
 
         url = _build_nudge_url(int(n.id or 0))
-        msg = f"Mycelium • {str(n.title or 'Nudge').strip()}\n{str(n.message or '').strip()}"
+        msg = f"Myco • {str(n.title or 'Nudge').strip()}\n{str(n.message or '').strip()}"
         if url:
             msg = f"{msg}\n\nOpen: {url}"
 

@@ -15,7 +15,7 @@ from mycelium_app.security import hash_password
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Create a Mycelium user")
+    parser = argparse.ArgumentParser(description="Create a Myco user")
     parser.add_argument("--email", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--full-name", default="")

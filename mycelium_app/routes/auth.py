@@ -129,16 +129,16 @@ def create_password_reset_request_link(
             bot_token=bot_token,
             chat_id=telegram_chat_id,
             text=(
-                "Mycelium recovery link\n"
+                "Myco recovery link\n"
                 f"Open this once to set a new password:\n{reset_url}\n\n"
                 "If you did not request this, ignore it."
             ),
         )
 
-    mail_subject = "Mycelium recovery link"
+    mail_subject = "Myco recovery link"
     reset_url = f"{str(base_url).rstrip('/')}/reset-password/{token}"
     mail_text = (
-        "Mycelium account recovery\n\n"
+        "Myco account recovery\n\n"
         "Use this one-time link to set a new password:\n"
         f"{reset_url}\n\n"
         "If you did not request this, you can ignore this message."

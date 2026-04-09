@@ -105,7 +105,7 @@ def make_icon(size: int, maskable: bool) -> Image.Image:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate Mycelium Android TWA launcher icons")
+    parser = argparse.ArgumentParser(description="Generate Myco Android TWA launcher icons")
     parser.add_argument("--out-dir", default="static/twa-icons", help="Output directory for generated icons")
     args = parser.parse_args()
 

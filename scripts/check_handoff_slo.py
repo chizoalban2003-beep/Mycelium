@@ -68,7 +68,7 @@ def main() -> int:
     ok = bool(obj.get("error_budget_ok", True))
     if not ok and str(args.telegram_bot_token).strip() and str(args.telegram_chat_id).strip():
         msg = (
-            "Mycelium SLO alert\n"
+            "Myco SLO alert\n"
             f"failure_rate={obj.get('failure_rate')} timeout_rate={obj.get('timeout_rate')}\n"
             f"total={obj.get('total')} failed={obj.get('failed')} timed_out={obj.get('timed_out')}"
         )

@@ -330,7 +330,7 @@ def _compose_today_story(
     else:
         headline = "The assistant is learning"
         summary = (
-            f"In the last {window_hours} hours, Mycelium observed {signal_count} signal{'s' if signal_count != 1 else ''}, "
+            f"In the last {window_hours} hours, Myco observed {signal_count} signal{'s' if signal_count != 1 else ''}, "
             f"recorded {growth_count} growth event{'s' if growth_count != 1 else ''}, and queued {nudge_count} nudge{'s' if nudge_count != 1 else ''}."
         )
         next_step = f"Review the latest {growth_label} {growth_metric} and turn it into the next guided action."
