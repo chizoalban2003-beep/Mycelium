@@ -10,6 +10,7 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.ecosystem_bridge import build_ecosystem_dataframe, build_ecosystem_summary
 from mycelium_app.growth import compute_growth_stage
 from mycelium_app.learning_daemon import run_learning_tick, run_signal_collection_tick
+from mycelium_app.force_field import compute_force_field, serialize_force_field
 from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
 from mycelium_app.jarvis import chat as jarvis_chat
 from mycelium_app.models import User
@@ -257,7 +258,53 @@ def live_ecosystem(
             "features": sed_features,
         } if sed_layers else None,
         "graph": _humanize_graph(graph_data) if graph_data else None,
+        "force_field": _build_live_force_field(session, user_id),
     }
+
+
+def _build_live_force_field(session, user_id: int) -> dict | None:
+    """Build force field from recent signals for the live view."""
+    try:
+        from datetime import datetime as dt, timedelta as td
+        since = dt.utcnow() - td(hours=6)
+        from mycelium_app.models import SignalLedgerEvent as SLE
+        rows = session.exec(
+            select(SLE)
+            .where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
+            .order_by(SLE.created_at)
+        ).all()
+        if not rows:
+            return None
+
+        import json as _json
+        signals = []
+        for r in rows:
+            payload = {}
+            try:
+                payload = _json.loads(r.payload_json or "{}")
+            except Exception:
+                pass
+            surface = payload.get("surface") or payload.get("stimulus") or payload
+            signals.append({
+                "signal_type": str(r.signal_type or ""),
+                "app_name": str(surface.get("app_name", r.signal_type or "")),
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "session_seconds": surface.get("session_seconds", 0),
+            })
+
+        ff = compute_force_field(signals, window_hours=6, n_iterations=20)
+        serialized = serialize_force_field(ff)
+
+        # Humanize particle names
+        for p in serialized.get("particles", []):
+            p["label"] = humanize_app(p.get("name", "")) or humanize_feature(p.get("name", ""))
+        for b in serialized.get("bonds", []):
+            b["source_label"] = humanize_app(b.get("source", ""))
+            b["target_label"] = humanize_app(b.get("target", ""))
+
+        return serialized
+    except Exception:
+        return None
 
 
 def _humanize_graph(graph: dict) -> dict:
@@ -268,6 +315,19 @@ def _humanize_graph(graph: dict) -> dict:
         node["label"] = humanize_feature(node.get("id", ""))
         node["layer_label"] = humanize_layer(node.get("layer", ""))
     return graph
+
+
+@router.get("/field")
+def force_field_state(
+    window_hours: int = 6,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Get the raw force field state — particles, forces, bonds, agent waveform."""
+    ff = _build_live_force_field(session, int(current_user.id or 0))
+    if ff is None:
+        return {"ok": True, "force_field": None, "message": "No signals yet"}
+    return {"ok": True, "force_field": ff}
 
 
 @router.get("/patterns")

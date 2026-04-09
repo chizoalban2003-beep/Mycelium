@@ -326,6 +326,22 @@ function applyData(d){
     spawnP(['turbulent','suspension','bedrock'][Math.floor(Math.random()*3)]);
   });
 
+  // Force field integration
+  const ff=d.force_field;
+  if(ff&&ff.agent){
+    const ag=ff.agent;
+    if(ag.crystallized){
+      agentTarget.set((ag.center||[])[0]||0, ((ag.center||[])[1]||0)*3-18, (ag.center||[])[2]||0);
+      const eScale=(stageScale[ag.stage]||1)*(0.8+ag.coherence*0.5);
+      agentGroup.scale.set(eScale,eScale,eScale);
+      if(ag.stage){stage=ag.stage; $('stageHud').textContent=ag.stage; $('agentEmoji').textContent=stageEmoji[ag.stage]||'🌱';}
+    }
+    const m=ff.metrics||{};
+    if(m.n_particles) $('sigCount').textContent=m.n_particles+' | E:'+m.total_energy.toFixed(1);
+    const cons=ff.conservation||{};
+    if(cons.entropy>0){$('insightPill').classList.remove('hidden'); $('insightText').textContent='Attention entropy: '+cons.entropy.toFixed(2)+' · Forces: G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1);}
+  }
+
   // Layer cards
   const feats=(sed&&sed.features)||[];
   const byL={bedrock:[],suspension:[],turbulent:[]};
