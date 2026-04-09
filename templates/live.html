@@ -201,7 +201,29 @@ function createBuilding(f, idx, total){
 
   g.position.set(Math.cos(angle)*radius, baseY, Math.sin(angle)*radius);
   scene.add(g);
-  buildings.push({group:g, data:f, orb, orbMat, baseY, angle, radius});
+
+  // Force vector arrows (gravity=green, em=cyan, strong=orange, weak=red)
+  const arrows=[];
+  if(f.forces){
+    const forceColors={gravity:0x059669, electromagnetic:0x22d3ee, strong_nuclear:0xf59e0b, weak_nuclear:0xef4444};
+    Object.entries(forceColors).forEach(([fname,fc])=>{
+      const fv=f.forces[fname];
+      if(!fv||!Array.isArray(fv))return;
+      const mag=Math.sqrt(fv[0]*fv[0]+fv[1]*fv[1]+fv[2]*fv[2]);
+      if(mag<0.05)return;
+      const dir=new THREE.Vector3(fv[0],fv[1],fv[2]).normalize();
+      const len=Math.min(8,mag*3);
+      const arrowGeo=new THREE.CylinderGeometry(0.08,0.08,len,4);
+      const arrowMat=new THREE.MeshBasicMaterial({color:fc,transparent:true,opacity:0.4});
+      const arrow=new THREE.Mesh(arrowGeo,arrowMat);
+      arrow.position.set(0,h/2+1,0);
+      arrow.lookAt(dir.multiplyScalar(5));
+      g.add(arrow);
+      arrows.push(arrow);
+    });
+  }
+
+  buildings.push({group:g, data:f, orb, orbMat, baseY, angle, radius, arrows});
 }
 
 // --- Signal particles ---
@@ -311,11 +333,21 @@ function applyData(d){
   const n=d.narrative||{};
   if(n.insight && n.insight.length>10){$('insightPill').classList.remove('hidden'); $('insightText').textContent=n.insight;}
 
-  // Buildings from sedimentation features
+  // Buildings from sedimentation features, enriched with force field data
   const sed=d.sedimentation;
+  const ffParticles=(d.force_field&&d.force_field.particles)||[];
   if(sed&&sed.features&&sed.features.length){
     clearBuildings();
-    sed.features.forEach((f,i)=>createBuilding(f, i, sed.features.length));
+    sed.features.forEach((f,i)=>{
+      // Merge force field data into feature
+      const ffp=ffParticles.find(p=>p.name===f.raw_feature||p.name===f.feature);
+      if(ffp){
+        f.forces=ffp.forces; f.momentum=ffp.momentum;
+        f.medium=ffp.medium; f.energy=ffp.energy;
+        f.stationarity=ffp.stationarity;
+      }
+      createBuilding(f, i, sed.features.length);
+    });
   }
 
   // Signal toasts

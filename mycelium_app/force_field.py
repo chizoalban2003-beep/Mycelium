@@ -26,6 +26,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from mycelium_app.particle_stats import compute_fingerprint, fingerprint_to_particle_props
+
 
 # ---------------------------------------------------------------------------
 # Particle model
@@ -60,11 +62,32 @@ class SignalParticle:
     bonds: list[str] = field(default_factory=list)
     bond_strengths: dict[str, float] = field(default_factory=dict)
 
+    # Statistical fingerprint
+    normality_p: float | None = None
+    medium: str = "unknown"     # fluid / crystalline / gaseous / frozen
+    autocorrelation: float = 0.0
+    stationarity: float = 0.5
+    entropy_stat: float = 0.0
+    skewness: float = 0.0
+    kurtosis_stat: float = 0.0
+
+    # Force vectors (for visualization)
+    gravity_vec: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    em_vec: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    strong_vec: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    weak_vec: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    # Momentum (for time evolution)
+    vx: float = 0.0
+    vy_vel: float = 0.0
+    vz: float = 0.0
+
     # Metadata
     layer: str = "suspension"   # bedrock / suspension / turbulent
     age_hours: float = 0.0
     occurrences: int = 1
     last_seen: str = ""
+    value_history: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -388,11 +411,27 @@ def compute_force_field(
         bucket = int(age_hours * 4)  # 15-minute buckets
         time_buckets[bucket].append(name)
 
+        # Collect numeric values for fingerprinting
+        numeric_val = None
+        payload = sig.get("payload", {})
+        if isinstance(payload, dict):
+            for key in ("cpu_percent", "memory_percent", "battery_percent",
+                        "bytes_sent_delta", "bytes_recv_delta", "session_seconds"):
+                v = payload.get(key)
+                if v is not None:
+                    try:
+                        numeric_val = float(v)
+                    except Exception:
+                        pass
+                    break
+
         if name in particle_map:
             p = particle_map[name]
             p.occurrences += 1
             p.age_hours = min(p.age_hours, age_hours)
             p.last_seen = created_at.isoformat()
+            if numeric_val is not None:
+                p.value_history.append(numeric_val)
         else:
             pid = hashlib.md5(name.encode()).hexdigest()[:8]
             particle_map[name] = SignalParticle(
@@ -418,10 +457,10 @@ def compute_force_field(
             forces_applied={},
         )
 
-    # --- Compute intrinsic properties ---
+    # --- Compute intrinsic properties with statistical fingerprinting ---
     max_occurrences = max(p.occurrences for p in particles)
     for p in particles:
-        # Mass = normalized occurrence count (statistical weight)
+        # Base mass from occurrence frequency
         p.mass = p.occurrences / max(1, max_occurrences)
 
         # Velocity = inverse of age (recent signals are "fast")
@@ -431,6 +470,21 @@ def compute_force_field(
         buckets_present = sum(1 for b, names in time_buckets.items() if p.name in names)
         total_buckets = max(1, len(time_buckets))
         p.spin = buckets_present / total_buckets
+
+        # Statistical fingerprint — the particle's full physical characterization
+        if p.value_history and len(p.value_history) >= 3:
+            fp = compute_fingerprint(p.value_history)
+            props = fingerprint_to_particle_props(fp)
+
+            p.mass *= props["mass_amplifier"]
+            p.spin = p.spin * 0.5 + props["spin"] * 0.5
+            p.normality_p = fp.get("normality_p")
+            p.medium = props["medium"]
+            p.autocorrelation = fp.get("autocorrelation", 0.0)
+            p.stationarity = props["stability"]
+            p.entropy_stat = fp.get("entropy", 0.0)
+            p.skewness = props["skewness"]
+            p.kurtosis_stat = props["kurtosis"]
 
         # Energy = mass * velocity (decays via weak force later)
         p.energy = p.mass * p.velocity
@@ -471,6 +525,9 @@ def compute_force_field(
                 p.bond_strengths[partner_name] = corr
                 n_bonds += 1
 
+    # --- Load previous field state for momentum continuity ---
+    # (requires user_id passed via kwargs if available)
+
     # --- Force relaxation iterations ---
     force_totals: dict[str, float] = {"gravity": 0.0, "electromagnetic": 0.0, "strong_nuclear": 0.0, "weak_nuclear": 0.0}
 
@@ -493,12 +550,20 @@ def compute_force_field(
                 force_totals["electromagnetic"] += fe.magnitude
                 force_totals["strong_nuclear"] += fs.magnitude
                 force_totals["weak_nuclear"] += fw.magnitude
+                # Store individual force vectors for visualization
+                p.gravity_vec = (round(fg.fx, 3), round(fg.fy, 3), round(fg.fz, 3))
+                p.em_vec = (round(fe.fx, 3), round(fe.fy, 3), round(fe.fz, 3))
+                p.strong_vec = (round(fs.fx, 3), round(fs.fy, 3), round(fs.fz, 3))
+                p.weak_vec = (round(fw.fx, 3), round(fw.fy, 3), round(fw.fz, 3))
 
-        # Integrate positions
+        # Integrate positions with momentum
         for p in particles:
-            p.x = p.x * damping + p.fx * 0.1
-            p.y = p.y * damping + p.fy * 0.1
-            p.z = p.z * damping + p.fz * 0.1
+            p.vx = p.vx * damping + p.fx * 0.1
+            p.vy_vel = p.vy_vel * damping + p.fy * 0.1
+            p.vz = p.vz * damping + p.fz * 0.1
+            p.x += p.vx
+            p.y += p.vy_vel
+            p.z += p.vz
 
     # --- Normalize positions and assign layers ---
     ys = [p.y for p in particles]
@@ -542,6 +607,73 @@ def compute_force_field(
     )
 
 
+def save_field_snapshot(state: ForceFieldState, *, user_id: int) -> None:
+    """Persist the force field state for time evolution across sessions."""
+    from sqlmodel import Session as DBSession
+    from mycelium_app.db import engine
+    from mycelium_app.models import ForceFieldSnapshot
+
+    forces = state.forces_applied or {}
+    dominant = max(forces, key=forces.get, default="") if forces else ""
+
+    snapshot = ForceFieldSnapshot(
+        user_id=user_id,
+        n_particles=len(state.particles),
+        n_bonds=state.n_bonds,
+        total_energy=state.total_energy,
+        mean_coherence=state.mean_coherence,
+        agent_stage=state.agent.stage,
+        agent_coherence=state.agent.coherence,
+        agent_crystallized=state.agent.crystallized,
+        agent_bound_particles=state.agent.bound_particles,
+        attention_entropy=state.conservation.entropy,
+        dominant_force=dominant,
+        field_json=json.dumps({
+            "particles": [
+                {"name": p.name, "x": round(p.x, 2), "y": round(p.y, 2), "z": round(p.z, 2),
+                 "vx": round(p.vx, 3), "vy": round(p.vy_vel, 3), "vz": round(p.vz, 3),
+                 "energy": round(p.energy, 4), "mass": round(p.mass, 4)}
+                for p in state.particles
+            ],
+        }, separators=(",", ":")),
+    )
+
+    try:
+        with DBSession(engine) as session:
+            session.add(snapshot)
+            session.commit()
+    except Exception:
+        pass
+
+
+def load_previous_field(*, user_id: int) -> dict[str, Any] | None:
+    """Load the most recent field snapshot for time evolution."""
+    from sqlmodel import Session as DBSession, select
+    from mycelium_app.db import engine
+    from mycelium_app.models import ForceFieldSnapshot
+
+    try:
+        with DBSession(engine) as session:
+            row = session.exec(
+                select(ForceFieldSnapshot)
+                .where(ForceFieldSnapshot.user_id == user_id)
+                .order_by(ForceFieldSnapshot.created_at.desc())
+                .limit(1)
+            ).first()
+            if row and row.field_json:
+                data = json.loads(row.field_json)
+                data["_meta"] = {
+                    "agent_stage": row.agent_stage,
+                    "agent_coherence": row.agent_coherence,
+                    "total_energy": row.total_energy,
+                    "created_at": row.created_at.isoformat() if row.created_at else "",
+                }
+                return data
+    except Exception:
+        pass
+    return None
+
+
 def serialize_force_field(state: ForceFieldState) -> dict[str, Any]:
     """Serialize force field state to JSON-safe dict for API and 3D rendering."""
     return {
@@ -557,6 +689,17 @@ def serialize_force_field(state: ForceFieldState) -> dict[str, Any]:
                 "bond_count": len(p.bonds),
                 "occurrences": p.occurrences,
                 "age_hours": round(p.age_hours, 2),
+                "medium": p.medium,
+                "stationarity": round(p.stationarity, 4),
+                "autocorrelation": round(p.autocorrelation, 4),
+                "entropy": round(p.entropy_stat, 4),
+                "forces": {
+                    "gravity": list(p.gravity_vec),
+                    "electromagnetic": list(p.em_vec),
+                    "strong_nuclear": list(p.strong_vec),
+                    "weak_nuclear": list(p.weak_vec),
+                },
+                "momentum": [round(p.vx, 3), round(p.vy_vel, 3), round(p.vz, 3)],
             }
             for p in state.particles
         ],

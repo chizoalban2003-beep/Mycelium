@@ -539,3 +539,29 @@ class HandoffSession(SQLModel, table=True):
     last_error: str = ""
 
     details_json: str = "{}"
+
+
+class ForceFieldSnapshot(SQLModel, table=True):
+    """Persistent force field state — allows time evolution across sessions.
+
+    Yesterday's equilibrium becomes today's initial condition. The field has
+    memory, momentum, and continuity.
+    """
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+
+    n_particles: int = Field(default=0)
+    n_bonds: int = Field(default=0)
+    total_energy: float = Field(default=0.0)
+    mean_coherence: float = Field(default=0.0)
+
+    agent_stage: str = Field(default="infant", index=True)
+    agent_coherence: float = Field(default=0.0)
+    agent_crystallized: bool = Field(default=False, index=True)
+    agent_bound_particles: int = Field(default=0)
+
+    attention_entropy: float = Field(default=0.0)
+    dominant_force: str = Field(default="")
+    field_json: str = "{}"
