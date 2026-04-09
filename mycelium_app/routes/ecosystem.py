@@ -10,6 +10,7 @@ from mycelium_app.deps import get_current_user
 from mycelium_app.ecosystem_bridge import build_ecosystem_dataframe, build_ecosystem_summary
 from mycelium_app.growth import compute_growth_stage
 from mycelium_app.learning_daemon import run_learning_tick, run_signal_collection_tick
+from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
 from mycelium_app.models import User
 from mycelium_app.narrative import generate_ecosystem_narrative
 from mycelium_app.sedimentation import run_sedimentation
@@ -179,7 +180,8 @@ def live_ecosystem(
     live_signals = []
     for r in recent:
         live_signals.append({
-            "type": str(r.signal_type or ""),
+            "type": humanize_signal(r.signal_type),
+            "raw_type": str(r.signal_type or ""),
             "device": str(r.device_id or ""),
             "at": r.created_at.isoformat() if r.created_at else "",
         })
@@ -199,8 +201,13 @@ def live_ecosystem(
             sed_layers = {k: v["count"] for k, v in sed.layer_summary.items()}
             sed_features = [
                 {
-                    "feature": f.feature, "depth": f.depth, "layer": f.layer,
-                    "density": f.density, "velocity": f.settling_velocity,
+                    "feature": humanize_feature(f.feature),
+                    "raw_feature": f.feature,
+                    "depth": f.depth,
+                    "layer": f.layer,
+                    "layer_label": humanize_layer(f.layer),
+                    "density": f.density,
+                    "velocity": f.settling_velocity,
                     "complex_id": f.complex_id,
                 }
                 for f in sed.features[:30]
@@ -237,11 +244,25 @@ def live_ecosystem(
         "narrative": narrative,
         "summary": {
             "n_signals": summary.get("n_signals", 0),
-            "top_apps": summary.get("top_apps", {}),
+            "top_apps": humanize_apps_dict(summary.get("top_apps", {})),
             "cpu_mean": summary.get("cpu_mean"),
             "battery_mean": summary.get("battery_mean"),
         },
         "live_signals": live_signals,
-        "sedimentation": {"layers": sed_layers, "features": sed_features} if sed_layers else None,
-        "graph": graph_data,
+        "sedimentation": {
+            "layers": {humanize_layer(k): v for k, v in sed_layers.items()} if sed_layers else None,
+            "layers_raw": sed_layers,
+            "features": sed_features,
+        } if sed_layers else None,
+        "graph": _humanize_graph(graph_data) if graph_data else None,
     }
+
+
+def _humanize_graph(graph: dict) -> dict:
+    """Add human-friendly labels to graph nodes."""
+    if not graph:
+        return graph
+    for node in graph.get("nodes", []):
+        node["label"] = humanize_feature(node.get("id", ""))
+        node["layer_label"] = humanize_layer(node.get("layer", ""))
+    return graph
