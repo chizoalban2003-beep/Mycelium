@@ -5,8 +5,8 @@ import json
 import os
 from datetime import datetime, timedelta
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, select
@@ -48,6 +48,24 @@ from mycelium_app.web import router as web_router
 
 
 app = FastAPI(title=settings.app_name)
+
+
+@app.exception_handler(Exception)
+async def global_error_handler(request: Request, exc: Exception):
+    """Show actual error details instead of blank 'Internal Server Error'."""
+    import traceback
+    tb = traceback.format_exc()
+    print(f"ERROR on {request.url}: {exc}\n{tb}")
+    return HTMLResponse(
+        content=f"""<html><body style="background:#020617;color:#e2e8f0;font-family:monospace;padding:40px">
+        <h1 style="color:#f87171">Myco Error</h1>
+        <p style="color:#94a3b8">{request.method} {request.url.path}</p>
+        <pre style="color:#fbbf24;white-space:pre-wrap;font-size:13px">{type(exc).__name__}: {exc}</pre>
+        <pre style="color:#64748b;font-size:11px;margin-top:20px;white-space:pre-wrap">{tb}</pre>
+        <p style="margin-top:30px;color:#22d3ee">Try: delete storage/mycelium.db and restart the server</p>
+        </body></html>""",
+        status_code=500,
+    )
 
 
 def _csv_list(s: str | None) -> list[str]:
