@@ -390,27 +390,177 @@ def _maybe_upsert_learning_law(
         "delta": round(float(delta), 4),
         "recorded_at": datetime.utcnow().isoformat(),
     }
+    default_half_life_days = float(
+        getattr(settings, "ecosystem_autonomy_law_decay_half_life_days", 14.0) or 14.0
+    )
     if row is None:
         row = AutonomyLaw(
             user_id=int(user_id),
             law_name=law_name,
             confidence=0.55 if delta > 0 else 0.45,
             support_n=1,
-            law_json=json.dumps({"evidence": [evidence]}, sort_keys=True),
+            law_state="active",
+            decay_half_life_days=default_half_life_days,
+            last_activated_at=datetime.utcnow(),
+            law_json=json.dumps(
+                {
+                    "evidence": [evidence],
+                    "lifecycle": {"state": "active", "state_reason": "new_evidence"},
+                },
+                sort_keys=True,
+            ),
         )
     else:
         row.support_n = int(row.support_n or 0) + 1
         row.confidence = _bounded01(
             (float(row.confidence or 0.5) * 0.85) + ((0.65 if delta > 0 else 0.35) * 0.15)
         )
+        row.law_state = "active"
+        row.last_activated_at = datetime.utcnow()
+        row.decay_half_life_days = default_half_life_days
         try:
             payload = json.loads(row.law_json or "{}")
             existing = list((payload if isinstance(payload, dict) else {}).get("evidence") or [])
         except Exception:
+            payload = {}
             existing = []
         existing.append(evidence)
-        row.law_json = json.dumps({"evidence": existing[-40:]}, sort_keys=True)
+        payload_obj = payload if isinstance(payload, dict) else {}
+        payload_obj["evidence"] = existing[-40:]
+        payload_obj["lifecycle"] = {
+            "state": "active",
+            "state_reason": "support_increase",
+            "support_n": int(row.support_n or 0),
+        }
+        row.law_json = json.dumps(payload_obj, sort_keys=True)
     session.add(row)
+
+
+def _autonomy_law_state(row: AutonomyLaw) -> str:
+    """Read lifecycle state safely across legacy/new law payloads."""
+    state = str(getattr(row, "law_state", "") or "").strip().lower()
+    if state in {"active", "cooling", "dissolved"}:
+        return state
+    try:
+        payload = json.loads(row.law_json or "{}")
+    except Exception:
+        payload = {}
+    if isinstance(payload, dict):
+        lifecycle = payload.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            fallback = str(lifecycle.get("state") or "").strip().lower()
+            if fallback in {"active", "cooling", "dissolved"}:
+                return fallback
+    return "active"
+
+
+def _refresh_law_lifecycle(session: Session, *, user_id: int) -> dict:
+    """Transition laws across active->cooling->dissolved and emit recycler priors."""
+    now = datetime.utcnow()
+    rows = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == int(user_id))
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(500)
+    ).all()
+    cooling_after = max(1, int(getattr(settings, "ecosystem_autonomy_law_cooling_support_n", 2)))
+    dissolve_after = max(1, int(getattr(settings, "ecosystem_autonomy_law_dissolve_support_n", 1)))
+    recycler_priors: list[dict] = []
+    transitioned = {"active": 0, "cooling": 0, "dissolved": 0}
+
+    for row in rows:
+        try:
+            payload = json.loads(row.law_json or "{}")
+        except Exception:
+            payload = {}
+        payload_obj = payload if isinstance(payload, dict) else {}
+        evidence = list(payload_obj.get("evidence") or [])
+        support_n = int(row.support_n or len(evidence) or 0)
+        # Keep half-life logic in payload for backward compatibility across DB schemas.
+        decay_half_life_days = float(getattr(settings, "ecosystem_autonomy_law_decay_half_life_days", 14.0))
+        latest_delta = 0.0
+        if evidence:
+            try:
+                latest_delta = float((evidence[-1] if isinstance(evidence[-1], dict) else {}).get("delta", 0.0) or 0.0)
+            except Exception:
+                latest_delta = 0.0
+        old_state = _autonomy_law_state(row)
+        new_state = old_state
+        if support_n <= dissolve_after and (row.confidence or 0.0) < 0.45:
+            new_state = "dissolved"
+        elif support_n <= cooling_after or (row.confidence or 0.0) < 0.55:
+            new_state = "cooling"
+        else:
+            new_state = "active"
+
+        if new_state != old_state:
+            transitioned[new_state] = int(transitioned.get(new_state, 0)) + 1
+            if new_state == "active":
+                row.last_activated_at = now
+            elif new_state == "cooling":
+                row.last_cooled_at = now
+            elif new_state == "dissolved":
+                row.last_dissolved_at = now
+                row.dissolved_at = now
+                recycler_priors.append(
+                    {
+                        "law_name": str(row.law_name or ""),
+                        "confidence": round(float(row.confidence or 0.0), 4),
+                        "support_n": support_n,
+                        "latest_delta": round(float(latest_delta), 4),
+                        "at": now.isoformat(),
+                    }
+                )
+        row.law_state = new_state
+        row.decay_half_life_days = decay_half_life_days
+        payload_obj["lifecycle"] = {
+            "state": new_state,
+            "support_n": support_n,
+            "confidence": round(float(row.confidence or 0.0), 4),
+            "decay_half_life_days": round(float(decay_half_life_days), 2),
+        }
+        payload_obj["recycler"] = {
+            "eligible": bool(new_state == "dissolved"),
+            "latest_delta": round(float(latest_delta), 4),
+        }
+        row.law_json = json.dumps(payload_obj, sort_keys=True)
+        session.add(row)
+
+    return {"transitioned": transitioned, "recycler_priors": recycler_priors}
+
+
+def _apply_recycler_priors(genome: AutonomyGenome, priors: list[dict]) -> dict:
+    """Apply dissolved-law priors as small exploration nudges on action bias."""
+    if not priors:
+        return {}
+    try:
+        payload = json.loads(genome.genome_json or "{}")
+    except Exception:
+        payload = {}
+    action_bias = dict((payload if isinstance(payload, dict) else {}).get("action_bias") or {})
+    deltas: dict[str, float] = {}
+    for prior in priors[:20]:
+        if not isinstance(prior, dict):
+            continue
+        law_name = str(prior.get("law_name") or "")
+        action_name = law_name.split(":", 1)[0].strip().lower()
+        if action_name not in {"collect", "learn", "experiment", "rest"}:
+            continue
+        latest_delta = float(prior.get("latest_delta", 0.0) or 0.0)
+        current = float(action_bias.get(action_name, 0.2))
+        # Dissolved negative laws push slight exploration away; neutral/positive provide tiny nudge.
+        shift = -0.015 if latest_delta < 0 else 0.008
+        updated = max(0.01, min(0.95, current + shift))
+        action_bias[action_name] = updated
+        deltas[action_name] = round(updated - current, 4)
+    payload_obj = payload if isinstance(payload, dict) else {}
+    payload_obj["action_bias"] = action_bias
+    recycler = dict(payload_obj.get("recycler_priors") or {})
+    recycler["last_applied_at"] = datetime.utcnow().isoformat()
+    recycler["last_deltas"] = deltas
+    payload_obj["recycler_priors"] = recycler
+    genome.genome_json = json.dumps(payload_obj, sort_keys=True)
+    return deltas
 
 
 def _mutate_genome(genome: AutonomyGenome, action_bias: dict) -> dict:
@@ -2026,6 +2176,14 @@ def autonomy_laws(
         .order_by(AutonomyLaw.created_at.desc())
         .limit(n)
     ).all()
+    lifecycle = _refresh_law_lifecycle(session, user_id=user_id)
+    session.commit()
+    rows = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == user_id)
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(n)
+    ).all()
     laws = []
     for row in rows:
         try:
@@ -2039,11 +2197,21 @@ def autonomy_laws(
                 "law_name": str(row.law_name or ""),
                 "confidence": float(row.confidence or 0.0),
                 "support_count": int(row.support_n or 0),
+                "law_state": _autonomy_law_state(row),
+                "decay_half_life_days": float(
+                    float(row.decay_half_life_days or 0.0)
+                    or float(getattr(settings, "ecosystem_autonomy_law_decay_half_life_days", 14.0) or 14.0)
+                ),
                 "latest_evidence": (evidence[-1] if evidence else {}),
                 "updated_at": row.created_at.isoformat() if row.created_at else "",
             }
         )
-    return {"ok": True, "count": len(laws), "laws": laws}
+    return {
+        "ok": True,
+        "count": len(laws),
+        "laws": laws,
+        "lifecycle_refresh": lifecycle,
+    }
 
 
 @router.post("/autonomy/propose")
@@ -2241,6 +2409,29 @@ def autonomy_governance_report(
     rejected = sum(1 for p in pending_rows if str(p.status or "") == "rejected")
     executed = sum(1 for p in pending_rows if str(p.status or "") == "executed")
     denom = max(1, approved + rejected)
+    laws = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == user_id)
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(500)
+    ).all()
+    law_counts = {"active": 0, "cooling": 0, "dissolved": 0}
+    dissolved_recent = 0
+    recycler_candidates: list[dict] = []
+    for law in laws:
+        state = _autonomy_law_state(law)
+        if state not in law_counts:
+            state = "active"
+        law_counts[state] = int(law_counts[state]) + 1
+        if state == "dissolved":
+            dissolved_recent += 1
+            recycler_candidates.append(
+                {
+                    "law_name": str(law.law_name or ""),
+                    "confidence": round(float(law.confidence or 0.0), 4),
+                    "support_n": int(law.support_n or 0),
+                }
+            )
 
     def _avg(vals: list[float]) -> float:
         return round(float(mean(vals)) if vals else 0.0, 4)
@@ -2267,6 +2458,13 @@ def autonomy_governance_report(
             "executed": int(executed),
             "rejected": int(rejected),
             "approval_rate": round(float(approved) / float(denom), 4),
+        },
+        "laws": {
+            "active": int(law_counts["active"]),
+            "cooling": int(law_counts["cooling"]),
+            "dissolved": int(law_counts["dissolved"]),
+            "dissolved_recent": int(dissolved_recent),
+            "recycler_candidates": recycler_candidates[:8],
         },
     }
 

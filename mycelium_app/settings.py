@@ -183,6 +183,11 @@ class Settings(BaseSettings):
     ecosystem_autonomy_goal_weekly_refresh_hours: int = 24
     ecosystem_autonomy_memory_consolidation_tick_minutes: int = 180
     ecosystem_autonomy_heat_threshold: float = 0.68
+    ecosystem_autonomy_law_decay_half_life_days: int = 14
+    ecosystem_autonomy_law_cooling_threshold: float = 0.52
+    ecosystem_autonomy_law_cooling_support_n: int = 2
+    ecosystem_autonomy_law_dissolve_support_n: int = 1
+    ecosystem_autonomy_governance_min_confidence: float = 0.55
 
     @field_validator("app_name", mode="before")
     @classmethod

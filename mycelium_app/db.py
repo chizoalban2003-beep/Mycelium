@@ -74,6 +74,15 @@ def _migrate_sqlite_columns(eng) -> None:
             ("autonomygoalstate", "heat_band", "TEXT DEFAULT 'balanced'"),
             ("autonomyepisode", "governance_status", "TEXT DEFAULT 'executed'"),
             ("autonomyepisode", "requires_human_confirm", "INTEGER DEFAULT 0"),
+            ("autonomylaw", "lifecycle_state", "TEXT DEFAULT 'active'"),
+            ("autonomylaw", "last_reinforced_at", "TEXT"),
+            ("autonomylaw", "dissolved_at", "TEXT"),
+            ("autonomylaw", "decay_half_life_days", "REAL DEFAULT 14.0"),
+            # New law lifecycle naming (kept alongside legacy columns).
+            ("autonomylaw", "law_state", "TEXT DEFAULT 'active'"),
+            ("autonomylaw", "last_activated_at", "TEXT"),
+            ("autonomylaw", "last_cooled_at", "TEXT"),
+            ("autonomylaw", "last_dissolved_at", "TEXT"),
         ]
         for table, column, col_type in migrations:
             try:
