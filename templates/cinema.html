@@ -159,7 +159,8 @@ const agentGroup=new THREE.Group();
 agentGroup.visible=false;
 
 // Body
-const bodyGeo=new THREE.CapsuleGeometry(1.8,4,16,32);
+// CylinderGeometry (not CapsuleGeometry): CapsuleGeometry requires three.js r139+; we pin r128 for CDN stability.
+const bodyGeo=new THREE.CylinderGeometry(1.8,1.8,4,32,16);
 const bodyMat=new THREE.MeshPhongMaterial({color:0x0f172a,emissive:0x22d3ee,emissiveIntensity:0.4,transparent:true,opacity:0});
 const body=new THREE.Mesh(bodyGeo,bodyMat);
 agentGroup.add(body);
