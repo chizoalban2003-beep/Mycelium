@@ -10,6 +10,7 @@ body{background:#000;overflow:hidden;font-family:-apple-system,BlinkMacSystemFon
 canvas{display:block}
 #overlay{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
 .text-overlay{position:absolute;left:50%;transform:translateX(-50%);text-align:center;opacity:0;transition:opacity 0.8s ease}
+.text-overlay.visible{opacity:1}
 .text-overlay h1{font-size:clamp(28px,5vw,56px);font-weight:700;letter-spacing:0.08em;background:linear-gradient(135deg,#22d3ee,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .text-overlay h2{font-size:clamp(14px,2.5vw,24px);font-weight:400;color:#94a3b8;letter-spacing:0.15em;margin-top:8px}
 .text-overlay p{font-size:clamp(12px,1.8vw,18px);color:#64748b;letter-spacing:0.1em;margin-top:4px}
@@ -18,6 +19,11 @@ canvas{display:block}
 #t3{bottom:15%}
 #t4{top:50%;transform:translate(-50%,-50%)}
 #t5{bottom:8%}
+.fallback-ui{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;text-align:center;padding:24px 20px;border:1px solid rgba(34,211,238,0.25);border-radius:16px;background:rgba(2,6,23,0.75);backdrop-filter:blur(4px);max-width:min(92vw,560px);display:none}
+.fallback-ui h1{font-size:clamp(28px,5vw,56px);font-weight:700;letter-spacing:0.08em;background:linear-gradient(135deg,#22d3ee,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.fallback-ui p{font-size:clamp(13px,2.2vw,18px);margin-top:10px;color:#cbd5e1}
+.fallback-ui a{display:inline-block;margin-top:16px;padding:8px 20px;border-radius:20px;background:rgba(34,211,238,0.2);border:1px solid rgba(34,211,238,0.35);color:#22d3ee;text-decoration:none}
+.fallback-ui a:hover{background:rgba(34,211,238,0.26)}
 </style>
 </head>
 <body>
@@ -28,14 +34,55 @@ canvas{display:block}
   <div class="text-overlay" id="t4"><h1>AGENT ONLINE</h1><h2>YOUR DIGITAL COMPANION</h2></div>
   <div class="text-overlay" id="t5"><h1>MYCO</h1><h2>GROW WITH DATA</h2><p>Your digital companion that grows with you</p></div>
 </div>
+<div id="fallbackUi" class="fallback-ui" role="status" aria-live="polite">
+  <h1>MYCO</h1>
+  <p id="fallbackReason">Cinematic intro is unavailable on this device.</p>
+  <a href="/live">Continue to Live →</a>
+</div>
+<noscript>
+  <div class="fallback-ui" style="display:block">
+    <h1>MYCO</h1>
+    <p>JavaScript is disabled, so cinematic intro cannot run.</p>
+    <a href="/live">Continue to Live →</a>
+  </div>
+</noscript>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function(){
+const isOnboarding = new URLSearchParams(window.location.search).get('onboarding') === '1';
+const fallbackUi = document.getElementById('fallbackUi');
+const fallbackReason = document.getElementById('fallbackReason');
+const fallbackTitle = document.getElementById('t5');
+let fallbackActive = false;
+
+function showFallback(reason){
+  if(fallbackActive) return;
+  fallbackActive = true;
+  if(fallbackReason && reason){ fallbackReason.textContent = reason; }
+  if(fallbackUi){ fallbackUi.style.display='block'; }
+  if(fallbackTitle){ fallbackTitle.classList.add('visible'); }
+}
+
+if (isOnboarding) {
+  setTimeout(() => { window.location.href = '/live'; }, 26000);
+}
+
+if (typeof window.THREE === 'undefined') {
+  showFallback('Cinematic runtime failed to load. Please continue to Live.');
+  return;
+}
+
 const W=window.innerWidth, H=window.innerHeight;
 
 // --- Renderer ---
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+let renderer;
+try{
+  renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+}catch(e){
+  showFallback('WebGL is unavailable in this browser session. Please continue to Live.');
+  return;
+}
 renderer.setSize(W,H);
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.toneMapping=THREE.ACESFilmicToneMapping;
@@ -477,11 +524,8 @@ requestAnimationFrame(animate);
   }catch(e){}
 })();
 
-// Auto-redirect to /live after cinema if onboarding
-const isOnboarding = new URLSearchParams(window.location.search).get('onboarding') === '1';
+// Add onboarding skip button.
 if (isOnboarding) {
-  setTimeout(() => { window.location.href = '/live'; }, 26000);
-  // Also add a skip button
   const skipBtn = document.createElement('button');
   skipBtn.textContent = 'Skip →';
   skipBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:100;padding:8px 20px;border-radius:20px;background:rgba(34,211,238,0.2);border:1px solid rgba(34,211,238,0.3);color:#22d3ee;font-size:13px;cursor:pointer;backdrop-filter:blur(4px)';
