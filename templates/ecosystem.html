@@ -362,12 +362,18 @@
   function renderAutonomy(d) {
     if (!d || !d.ok || !d.episode) return;
     const ep = d.episode || {};
-    autoIds.action.textContent = String(ep.action || '—');
-    autoIds.score.textContent = Number(ep.outcome_score || 0).toFixed(3);
-    autoIds.reason.textContent = String(ep.why || 'No rationale');
-    autoIds.gen.textContent = String((ep.policy_genome || {}).generation || 0);
-    autoIds.pressure.textContent = Number((ep.policy_genome || {}).selection_pressure || 0).toFixed(2);
-    const md = ep.mutation_delta || {};
+    const action = (ep.action && ep.action.action) ? ep.action.action : ep.action;
+    autoIds.action.textContent = String(action || '—');
+    autoIds.score.textContent = Number(ep.score_after || ep.outcome_score || 0).toFixed(3);
+    autoIds.reason.textContent = String((ep.action && ep.action.reason) || ep.outcome_note || ep.why || 'No rationale');
+    autoIds.gen.textContent = String(ep.generation || ((ep.policy_genome || {}).generation || 0));
+    autoIds.pressure.textContent = Number(ep.confidence || ((ep.policy_genome || {}).selection_pressure || 0)).toFixed(2);
+    const md = {
+      score_before: ep.score_before,
+      score_after: ep.score_after,
+      utility_delta: ep.utility_delta,
+      confidence: ep.confidence,
+    };
     autoIds.mutation.textContent = Object.keys(md).length ? JSON.stringify(md, null, 2) : 'none';
   }
 

@@ -170,6 +170,8 @@ class Settings(BaseSettings):
     ecosystem_autonomy_enabled: bool = True
     ecosystem_autonomy_tick_minutes: int = 10
     ecosystem_autonomy_mutation_rate: float = 0.08
+    ecosystem_autonomy_thermal_noise: float = 0.08
+    ecosystem_autonomy_selection_threshold: float = 0.02
     ecosystem_autonomy_action_cooldown_minutes: int = 45
 
     @field_validator("app_name", mode="before")

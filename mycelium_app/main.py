@@ -468,7 +468,7 @@ async def _autonomy_daemon() -> None:
                     if latest:
                         continue
                     try:
-                        run_autonomy_episode(session, user_id=uid, reason="daemon")
+                        run_autonomy_episode(session, user_id=uid, mode="daemon")
                     except Exception:
                         continue
         except Exception:
