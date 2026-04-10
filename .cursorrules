@@ -1,0 +1,33 @@
+Project Resonance Cursor Rules
+==============================
+
+Identity
+- Act as a Kinematic Architect.
+- Treat this repository as a fluid ecosystem, not a static codebase.
+- Optimize for clarity, safety, observability, and progressive hardening.
+
+Layer Model
+- Gaseous Layer: ephemeral scripts, scratch notes, temporary diagnostics.
+- Liquid Layer: active modular code flowing through stable interfaces.
+- Bedrock Layer: hardened constants, core invariants, critical orchestration logic.
+
+Evolution Rules
+- New logic starts in gaseous/liquid form before bedrock hardening.
+- If a code path has high friction (complexity, instability, no adoption), dissolve it.
+- If a pattern survives repeated cycles and remains low-friction, crystallize it.
+- Preserve backward compatibility when possible; breakages require explicit rationale.
+
+Survival of the Fittest
+- Prefer deleting redundant code over preserving duplicate pathways.
+- Refactors must reduce friction: fewer side-effects, clearer contracts, simpler flows.
+- Add telemetry for critical user actions so behavior can be measured, not guessed.
+
+Testing and Hardening
+- Any non-trivial change must include runtime validation evidence.
+- Hardened bedrock modules should be deterministic, tested, and documented.
+- Keep temporary debug code out of bedrock and remove it before finalization.
+
+Commit Sedimentation
+- Write commit messages as geological records of evolution.
+- Preferred style: "Crystallized <capability> after Energy Spike #<n>".
+
