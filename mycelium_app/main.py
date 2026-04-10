@@ -18,7 +18,13 @@ from mycelium_app.hive_empathy import compute_wisdom_latest, stable_digest, summ
 from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.metric_snapshot import run_validation_shadow
 from mycelium_app.messaging_bridge import dispatch_pending_nudges
-from mycelium_app.models import EcosystemExperimentTick, NexusNudge, User, WisdomIntegrationState
+from mycelium_app.models import (
+    AutonomyEpisode,
+    EcosystemExperimentTick,
+    NexusNudge,
+    User,
+    WisdomIntegrationState,
+)
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.assistant import router as assistant_router
@@ -437,6 +443,39 @@ async def _experiment_daemon() -> None:
         await asyncio.sleep(float(tick_minutes * 60))
 
 
+async def _autonomy_daemon() -> None:
+    """Background daemon that lets Myco choose and score actions."""
+    from mycelium_app.routes.ecosystem import run_autonomy_episode
+
+    await asyncio.sleep(14.0)
+    tick_minutes = max(3, min(int(getattr(settings, "ecosystem_autonomy_tick_minutes", 10)), 720))
+
+    while True:
+        try:
+            with Session(engine) as session:
+                user_ids = session.exec(select(User.id)).all()
+                for uid in [int(u) for u in user_ids[:20] if u is not None]:
+                    cutoff = datetime.utcnow() - timedelta(minutes=tick_minutes - 1)
+                    latest = session.exec(
+                        select(AutonomyEpisode.id)
+                        .where(
+                            AutonomyEpisode.user_id == uid,
+                            AutonomyEpisode.created_at >= cutoff,
+                        )
+                        .order_by(AutonomyEpisode.created_at.desc())
+                        .limit(1)
+                    ).first()
+                    if latest:
+                        continue
+                    try:
+                        run_autonomy_episode(session, user_id=uid, reason="daemon")
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        await asyncio.sleep(float(tick_minutes * 60))
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     create_db_and_tables()
@@ -456,6 +495,8 @@ async def on_startup() -> None:
         asyncio.create_task(_learning_daemon())
     if bool(getattr(settings, "ecosystem_experiment_enabled", False)):
         asyncio.create_task(_experiment_daemon())
+    if bool(getattr(settings, "ecosystem_autonomy_enabled", True)):
+        asyncio.create_task(_autonomy_daemon())
     # Desktop notification daemon
     asyncio.create_task(_desktop_notify_daemon())
 

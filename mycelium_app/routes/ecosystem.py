@@ -18,7 +18,13 @@ from mycelium_app.learning_daemon import run_learning_tick, run_signal_collectio
 from mycelium_app.force_field import compute_force_field, serialize_force_field
 from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
 from mycelium_app.jarvis import chat as jarvis_chat
-from mycelium_app.models import EcosystemExperimentTick, EcosystemTimeSeries, User
+from mycelium_app.models import (
+    AutonomyEpisode,
+    AutonomyGenome,
+    EcosystemExperimentTick,
+    EcosystemTimeSeries,
+    User,
+)
 from mycelium_app.pattern_engine import analyze_patterns, generate_proactive_suggestions
 from mycelium_app.narrative import generate_ecosystem_narrative
 from mycelium_app.sedimentation import run_sedimentation
@@ -31,6 +37,214 @@ router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
 
 _shared_collector_state = CollectorState()
 _last_sedimentation_cache: dict[int, dict] = {}  # user_id → last result
+
+
+def _autonomy_get_or_create_genome(session: Session, *, user_id: int) -> AutonomyGenome:
+    row = session.exec(
+        select(AutonomyGenome)
+        .where(AutonomyGenome.user_id == int(user_id))
+        .order_by(AutonomyGenome.updated_at.desc())
+        .limit(1)
+    ).first()
+    if row:
+        return row
+    policy = {
+        "focus_weight": 0.45,
+        "energy_weight": 0.30,
+        "novelty_weight": 0.25,
+        "collect_bias": 0.52,
+        "learn_bias": 0.48,
+        "thermal_noise": float(getattr(settings, "autonomy_thermal_noise", 0.08)),
+    }
+    row = AutonomyGenome(
+        user_id=int(user_id),
+        generation=0,
+        confidence=0.35,
+        policy_json=json.dumps(policy, sort_keys=True),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def _autonomy_score(summary: dict, policy: dict, action_kind: str) -> float:
+    n_signals = float(summary.get("n_signals") or 0.0)
+    cpu = float(summary.get("cpu_mean") or 0.0)
+    battery = float(summary.get("battery_mean") or 0.0)
+    signal_types = summary.get("signal_types") or {}
+    diversity = float(len(signal_types.keys()))
+    hours = float(summary.get("hours_active") or 0.0)
+
+    focus = min(1.0, n_signals / 120.0)
+    energy = max(0.0, min(1.0, (battery / 100.0) if battery > 0 else (1.0 - min(1.0, cpu / 100.0))))
+    novelty = min(1.0, diversity / 8.0)
+    drift_penalty = min(0.4, hours / 240.0)
+
+    fw = float(policy.get("focus_weight", 0.45))
+    ew = float(policy.get("energy_weight", 0.30))
+    nw = float(policy.get("novelty_weight", 0.25))
+
+    base = (focus * fw) + (energy * ew) + (novelty * nw) - drift_penalty
+    if action_kind == "collect":
+        base += float(policy.get("collect_bias", 0.5)) * 0.18
+    if action_kind == "learn":
+        base += float(policy.get("learn_bias", 0.5)) * 0.18
+    if action_kind == "synthesize":
+        base += 0.12
+    return max(0.0, min(1.0, base))
+
+
+def _autonomy_mutate_policy(policy: dict, *, mutation_rate: float, thermal_noise: float) -> dict:
+    out = dict(policy)
+    keys = [
+        "focus_weight",
+        "energy_weight",
+        "novelty_weight",
+        "collect_bias",
+        "learn_bias",
+    ]
+    for k in keys:
+        if random.random() < mutation_rate:
+            delta = random.uniform(-0.14, 0.14) * (1.0 + thermal_noise)
+            out[k] = float(max(0.05, min(0.95, float(out.get(k, 0.3)) + delta)))
+    total_w = max(
+        0.001,
+        float(out.get("focus_weight", 0.45))
+        + float(out.get("energy_weight", 0.30))
+        + float(out.get("novelty_weight", 0.25)),
+    )
+    out["focus_weight"] = float(out.get("focus_weight", 0.45)) / total_w
+    out["energy_weight"] = float(out.get("energy_weight", 0.30)) / total_w
+    out["novelty_weight"] = float(out.get("novelty_weight", 0.25)) / total_w
+    out["thermal_noise"] = float(thermal_noise)
+    return out
+
+
+def run_autonomy_episode(
+    session: Session,
+    *,
+    user_id: int,
+    trigger: str = "manual",
+) -> dict:
+    user_id = int(user_id)
+    genome = _autonomy_get_or_create_genome(session, user_id=user_id)
+    try:
+        policy = json.loads(genome.policy_json or "{}")
+    except Exception:
+        policy = {}
+    summary = build_ecosystem_summary(session, user_id=user_id, window_hours=6)
+    mutation_rate = float(getattr(settings, "autonomy_mutation_rate", 0.10))
+    thermal_noise = float(getattr(settings, "autonomy_thermal_noise", 0.08))
+
+    candidates = [
+        {
+            "action": "collect",
+            "reason": "Need fresher mass input from signals.",
+            "score": _autonomy_score(summary, policy, "collect"),
+        },
+        {
+            "action": "learn",
+            "reason": "Need stronger coherence from learning cycles.",
+            "score": _autonomy_score(summary, policy, "learn"),
+        },
+        {
+            "action": "synthesize",
+            "reason": "Need to consolidate into stable layer narrative.",
+            "score": _autonomy_score(summary, policy, "synthesize"),
+        },
+    ]
+    candidates.sort(key=lambda x: float(x["score"]), reverse=True)
+    chosen = candidates[0]
+    score_before = float(chosen["score"])
+    outcome_note = ""
+
+    try:
+        if chosen["action"] == "collect":
+            n = run_signal_collection_tick(
+                _shared_collector_state,
+                user_id=user_id,
+                device_id=str(settings.nexus_device_id or "local"),
+            )
+            outcome_note = f"Collected {int(n)} signals."
+        elif chosen["action"] == "learn":
+            r = run_learning_tick(
+                user_id=user_id,
+                device_id=str(settings.nexus_device_id or "local"),
+                window_hours=max(1, min(int(getattr(settings, "ecosystem_learning_window_hours", 6)), 24)),
+                bucket_minutes=max(5, min(int(getattr(settings, "ecosystem_learning_bucket_minutes", 30)), 120)),
+            )
+            outcome_note = "Learning cycle executed." if bool(r.get("ok", True)) else "Learning cycle returned partial state."
+        else:
+            # Synthesize means generating state + pattern snapshot without writes.
+            _ = analyze_patterns(session, user_id=user_id, window_hours=24)
+            outcome_note = "Synthesized pattern summary."
+    except Exception as exc:
+        outcome_note = f"Action error: {type(exc).__name__}: {exc}"
+
+    after_summary = build_ecosystem_summary(session, user_id=user_id, window_hours=6)
+    score_after = float(
+        _autonomy_score(after_summary, policy, str(chosen["action"]))
+    )
+    utility_delta = max(-1.0, min(1.0, score_after - score_before))
+
+    mutated = _autonomy_mutate_policy(
+        policy,
+        mutation_rate=mutation_rate,
+        thermal_noise=thermal_noise,
+    )
+    if utility_delta > float(getattr(settings, "autonomy_selection_threshold", 0.02)):
+        genome.generation = int(genome.generation) + 1
+        genome.confidence = max(0.01, min(0.99, float(genome.confidence) + utility_delta * 0.5))
+        genome.policy_json = json.dumps(mutated, sort_keys=True)
+    else:
+        genome.confidence = max(0.01, min(0.99, float(genome.confidence) - 0.01))
+    genome.updated_at = datetime.utcnow()
+    session.add(genome)
+
+    episode = AutonomyEpisode(
+        user_id=user_id,
+        trigger=str(trigger),
+        state_json=json.dumps(
+            {
+                "summary": summary,
+                "candidate_actions": candidates,
+            },
+            sort_keys=True,
+        ),
+        action_json=json.dumps(chosen, sort_keys=True),
+        outcome_json=json.dumps(
+            {
+                "outcome_note": outcome_note,
+                "score_before": round(score_before, 4),
+                "score_after": round(score_after, 4),
+                "utility_delta": round(utility_delta, 4),
+            },
+            sort_keys=True,
+        ),
+        utility_score=float(round(score_after, 4)),
+        confidence=float(round(genome.confidence, 4)),
+        generation=int(genome.generation),
+    )
+    session.add(episode)
+    session.commit()
+    session.refresh(episode)
+
+    return {
+        "ok": True,
+        "episode": {
+            "id": int(episode.id or 0),
+            "created_at": episode.created_at.isoformat() if episode.created_at else "",
+            "trigger": str(episode.trigger),
+            "action": chosen,
+            "outcome_note": outcome_note,
+            "score_before": round(score_before, 4),
+            "score_after": round(score_after, 4),
+            "utility_delta": round(utility_delta, 4),
+            "confidence": round(float(genome.confidence), 4),
+            "generation": int(genome.generation),
+        },
+    }
 
 
 def _experimental_force_evolution(
@@ -1157,6 +1371,101 @@ def force_experiment_history(
         }
         for r in rows
     ]
+    return {"ok": True, "count": len(history), "history": history}
+
+
+@router.post("/autonomy/run")
+def run_autonomy_episode(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    return _run_autonomy_episode(session, user_id=user_id, source="manual")
+
+
+@router.get("/autonomy/latest")
+def latest_autonomy_episode(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    row = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == user_id)
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(1)
+    ).first()
+    if not row:
+        return {"ok": True, "has_data": False}
+
+    try:
+        state = json.loads(row.state_json or "{}")
+    except Exception:
+        state = {}
+    try:
+        action = json.loads(row.action_json or "{}")
+    except Exception:
+        action = {}
+    try:
+        outcome = json.loads(row.outcome_json or "{}")
+    except Exception:
+        outcome = {}
+    try:
+        genome = json.loads(row.genome_json or "{}")
+    except Exception:
+        genome = {}
+
+    return {
+        "ok": True,
+        "has_data": True,
+        "episode": {
+            "id": int(row.id or 0),
+            "created_at": row.created_at.isoformat() if row.created_at else "",
+            "source": str(row.source or ""),
+            "decision": str(row.decision_name or ""),
+            "reason": str(row.reason or ""),
+            "predicted_utility": float(row.predicted_utility or 0.0),
+            "realized_utility": float(row.realized_utility or 0.0),
+            "counterfactual_utility": float(row.counterfactual_utility or 0.0),
+            "delta": float(row.realized_utility or 0.0) - float(row.counterfactual_utility or 0.0),
+            "state": state,
+            "action": action,
+            "outcome": outcome,
+            "genome": genome,
+        },
+    }
+
+
+@router.get("/autonomy/history")
+def autonomy_history(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    n = max(1, min(int(limit), 200))
+    rows = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == user_id)
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(n)
+    ).all()
+
+    history = []
+    for row in rows:
+        history.append(
+            {
+                "id": int(row.id or 0),
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+                "source": str(row.source or ""),
+                "decision": str(row.decision_name or ""),
+                "predicted_utility": float(row.predicted_utility or 0.0),
+                "realized_utility": float(row.realized_utility or 0.0),
+                "counterfactual_utility": float(row.counterfactual_utility or 0.0),
+                "delta": float(row.realized_utility or 0.0) - float(row.counterfactual_utility or 0.0),
+                "genome_version": int(row.genome_version or 0),
+            }
+        )
     return {"ok": True, "count": len(history), "history": history}
 
 @router.post("/chat")

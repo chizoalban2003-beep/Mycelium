@@ -167,6 +167,10 @@ class Settings(BaseSettings):
     ecosystem_experiment_mutation_rate: float = 0.06
     ecosystem_experiment_selection_pressure: float = 1.35
     ecosystem_experiment_thermal_noise: float = 0.08
+    ecosystem_autonomy_enabled: bool = True
+    ecosystem_autonomy_tick_minutes: int = 10
+    ecosystem_autonomy_mutation_rate: float = 0.08
+    ecosystem_autonomy_action_cooldown_minutes: int = 45
 
     @field_validator("app_name", mode="before")
     @classmethod

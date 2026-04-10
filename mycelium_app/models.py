@@ -641,3 +641,54 @@ class EcosystemExperimentTick(SQLModel, table=True):
     # JSON blobs for richer replay in UI.
     output_json: str = "{}"
     best_species_json: str = "{}"
+
+
+class AutonomyGenome(SQLModel, table=True):
+    """Per-user policy genome for autonomous decision behavior."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True, unique=True)
+
+    generation: int = Field(default=0, index=True)
+    fitness_score: float = Field(default=0.0, index=True)
+
+    # Gene weights for utility calculation.
+    weight_energy: float = Field(default=0.8)
+    weight_focus: float = Field(default=1.0)
+    weight_recovery: float = Field(default=0.7)
+    weight_novelty: float = Field(default=0.6)
+
+    mutation_rate: float = Field(default=0.12)
+    explore_bias: float = Field(default=0.25)
+    genome_json: str = "{}"
+
+
+class AutonomyEpisode(SQLModel, table=True):
+    """One autonomous decision cycle: state -> action -> outcome -> score."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+
+    mode: str = Field(default="autonomous", index=True)  # autonomous|manual
+    status: str = Field(default="completed", index=True)  # completed|failed
+
+    # Decision payload.
+    chosen_action: str = Field(default="", index=True)
+    rationale: str = Field(default="")
+    expected_utility: float = Field(default=0.0)
+    observed_utility: float = Field(default=0.0)
+    confidence: float = Field(default=0.0, index=True)
+
+    # Snapshot metrics.
+    n_signals_window: int = Field(default=0)
+    coherence: float = Field(default=0.0)
+    attention_entropy: float = Field(default=0.0)
+    momentum: float = Field(default=0.0)
+    novelty_index: float = Field(default=0.0)
+
+    action_candidates_json: str = "{}"
+    state_json: str = "{}"
+    outcome_json: str = "{}"
