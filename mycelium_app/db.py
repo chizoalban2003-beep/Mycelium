@@ -67,6 +67,13 @@ def _migrate_sqlite_columns(eng) -> None:
         # Check existing columns and add missing ones
         migrations = [
             ("user", "gender", "TEXT DEFAULT ''"),
+            # Backward-compatible autonomy schema upgrades.
+            ("autonomyactionfeedback", "action_name", "TEXT DEFAULT ''"),
+            ("autonomygoalstate", "last_7d_json", "TEXT DEFAULT '{}'"),
+            ("autonomygoalstate", "heat_score", "REAL DEFAULT 0.0"),
+            ("autonomygoalstate", "heat_band", "TEXT DEFAULT 'balanced'"),
+            ("autonomyepisode", "governance_status", "TEXT DEFAULT 'executed'"),
+            ("autonomyepisode", "requires_human_confirm", "INTEGER DEFAULT 0"),
         ]
         for table, column, col_type in migrations:
             try:

@@ -19,8 +19,12 @@ from mycelium_app.force_field import compute_force_field, serialize_force_field
 from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
 from mycelium_app.jarvis import chat as jarvis_chat
 from mycelium_app.models import (
+    AutonomyPendingAction,
     AutonomyEpisode,
     AutonomyGenome,
+    AutonomyGoalState,
+    AutonomyLaw,
+    AutonomyActionFeedback,
     EcosystemExperimentTick,
     EcosystemTimeSeries,
     User,
@@ -39,11 +43,36 @@ _shared_collector_state = CollectorState()
 _last_sedimentation_cache: dict[int, dict] = {}  # user_id → last result
 
 
+def _bounded01(v: float) -> float:
+    return max(0.0, min(1.0, float(v)))
+
+
+def _autonomy_get_or_create_goal_state(session: Session, *, user_id: int) -> AutonomyGoalState:
+    row = session.exec(
+        select(AutonomyGoalState).where(AutonomyGoalState.user_id == int(user_id)).limit(1)
+    ).first()
+    if row:
+        return row
+    row = AutonomyGoalState(
+        user_id=int(user_id),
+        focus_progress=0.5,
+        recovery_progress=0.5,
+        novelty_progress=0.4,
+        consistency_progress=0.45,
+        last_7d_json=json.dumps(
+            {"focus": [0.5], "recovery": [0.5], "novelty": [0.4], "consistency": [0.45]},
+            sort_keys=True,
+        ),
+    )
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def _autonomy_get_or_create_genome(session: Session, *, user_id: int) -> AutonomyGenome:
     row = session.exec(
-        select(AutonomyGenome)
-        .where(AutonomyGenome.user_id == int(user_id))
-        .limit(1)
+        select(AutonomyGenome).where(AutonomyGenome.user_id == int(user_id)).limit(1)
     ).first()
     if row:
         return row
@@ -61,6 +90,7 @@ def _autonomy_get_or_create_genome(session: Session, *, user_id: int) -> Autonom
             {
                 "action_bias": {"collect": 0.45, "learn": 0.35, "experiment": 0.20, "rest": 0.15},
                 "selection_pressure": float(getattr(settings, "ecosystem_experiment_selection_pressure", 1.35)),
+                "last_mutation": {},
             },
             sort_keys=True,
         ),
@@ -69,10 +99,6 @@ def _autonomy_get_or_create_genome(session: Session, *, user_id: int) -> Autonom
     session.commit()
     session.refresh(row)
     return row
-
-
-def _bounded01(v: float) -> float:
-    return max(0.0, min(1.0, float(v)))
 
 
 def _autonomy_state_features(summary: dict, ts: EcosystemTimeSeries | None) -> dict:
@@ -100,6 +126,33 @@ def _autonomy_state_features(summary: dict, ts: EcosystemTimeSeries | None) -> d
     }
 
 
+def _get_nudge_feedback_effect(session: Session, *, user_id: int, action_name: str) -> float:
+    rows = session.exec(
+        select(AutonomyActionFeedback)
+        .where(
+            AutonomyActionFeedback.user_id == int(user_id),
+            AutonomyActionFeedback.action_name == str(action_name),
+        )
+        .order_by(AutonomyActionFeedback.created_at.desc())
+        .limit(40)
+    ).all()
+    if not rows:
+        return 0.0
+    weighted = 0.0
+    total_weight = 0.0
+    for idx, row in enumerate(rows):
+        w = 1.0 / (1.0 + idx * 0.25)
+        decision = str(row.decision or "neutral")
+        score = 0.5
+        if decision in {"accepted", "approve"}:
+            score = 0.7
+        elif decision in {"rejected", "reject"}:
+            score = 0.3
+        weighted += score * w
+        total_weight += w
+    return _bounded01(weighted / max(0.0001, total_weight)) - 0.5
+
+
 def _autonomy_expected_utility(features: dict, genome: AutonomyGenome, action: str, action_bias: dict) -> float:
     base = (
         float(genome.weight_focus) * float(features.get("focus", 0.0))
@@ -107,17 +160,257 @@ def _autonomy_expected_utility(features: dict, genome: AutonomyGenome, action: s
         + float(genome.weight_recovery) * float(features.get("recovery", 0.0))
         + float(genome.weight_novelty) * float(features.get("novelty", 0.0))
     )
-    base /= max(0.001, float(genome.weight_focus + genome.weight_energy + genome.weight_recovery + genome.weight_novelty))
+    base /= max(
+        0.001,
+        float(genome.weight_focus + genome.weight_energy + genome.weight_recovery + genome.weight_novelty),
+    )
     action_term = float(action_bias.get(action, 0.2))
     if action == "experiment":
-        action_term += float(features.get("novelty", 0.0)) * 0.2
-    if action == "learn":
+        action_term += float(features.get("novelty", 0.0)) * 0.20
+    elif action == "learn":
         action_term += float(features.get("focus", 0.0)) * 0.15
-    if action == "rest":
-        action_term += float(features.get("entropy", 0.0)) * 0.2
-    if action == "collect":
-        action_term += (1.0 - float(features.get("focus", 0.0))) * 0.1
-    return _bounded01(base * 0.75 + action_term * 0.25)
+    elif action == "rest":
+        action_term += float(features.get("entropy", 0.0)) * 0.20
+    elif action == "collect":
+        action_term += (1.0 - float(features.get("focus", 0.0))) * 0.10
+    return _bounded01((base * 0.75) + (action_term * 0.25))
+
+
+def _autonomy_risk_score(features: dict, action: str) -> float:
+    entropy = float(features.get("entropy", 0.3))
+    energy = float(features.get("energy", 0.5))
+    momentum = float(features.get("momentum", 0.2))
+    risk = 0.0
+    if action == "experiment":
+        risk = 0.25 + entropy * 0.35 + momentum * 0.15 + (1.0 - energy) * 0.10
+    elif action == "learn":
+        risk = 0.18 + entropy * 0.30 + (1.0 - energy) * 0.12
+    elif action == "collect":
+        risk = 0.12 + (1.0 - energy) * 0.12
+    else:  # rest
+        risk = 0.06 + (1.0 - entropy) * 0.04
+    return _bounded01(risk)
+
+
+def _risk_level(risk: float) -> str:
+    if risk < 0.35:
+        return "safe"
+    if risk < 0.65:
+        return "caution"
+    return "high"
+
+
+def _counterfactual_v2(session: Session, *, user_id: int, action: str, expected_utility: float) -> float:
+    rows = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == int(user_id), AutonomyEpisode.chosen_action == str(action))
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(30)
+    ).all()
+    if not rows:
+        return _bounded01(expected_utility * 0.94)
+    observed = [float(r.observed_utility or 0.0) for r in rows]
+    conf = [float(r.confidence or 0.0) for r in rows]
+    trend = float(mean(observed)) if observed else 0.0
+    certainty = float(mean(conf)) if conf else 0.5
+    baseline = (_bounded01(expected_utility) * 0.45) + (trend * 0.45) + ((1.0 - certainty) * 0.10)
+    return _bounded01(baseline)
+
+
+def _adaptive_tick_minutes(session: Session, *, user_id: int) -> int:
+    rows = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == int(user_id))
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(24)
+    ).all()
+    base = int(getattr(settings, "ecosystem_autonomy_tick_minutes", 10))
+    if not rows:
+        return max(3, base)
+
+    mean_conf = float(mean([float(r.confidence or 0.0) for r in rows]))
+    mean_entropy = float(mean([float(r.attention_entropy or 0.0) for r in rows]))
+    deltas: list[float] = []
+    for row in rows:
+        try:
+            outcome = json.loads(row.outcome_json or "{}")
+            deltas.append(float(outcome.get("delta", 0.0) or 0.0))
+        except Exception:
+            continue
+    mean_delta = float(mean(deltas)) if deltas else 0.0
+
+    if mean_conf > 0.72 and mean_entropy < 0.4 and mean_delta > 0.01:
+        return max(3, base - 2)
+    if mean_conf < 0.45 or mean_delta < -0.02:
+        return min(45, base + 5)
+    return base
+
+
+def _autonomy_heat_state(
+    session: Session,
+    *,
+    user_id: int,
+    features_before: dict,
+    features_after: dict,
+    delta: float,
+    confidence: float,
+    risk_score: float,
+    feedback_effect: float,
+) -> dict:
+    """Compute rolling heat budget used for exploration and governance gates."""
+    rows = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == int(user_id))
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(24)
+    ).all()
+    prev_heat = 0.35
+    if rows:
+        try:
+            prev_state = json.loads(rows[0].state_json or "{}")
+            prev_heat = float((prev_state if isinstance(prev_state, dict) else {}).get("heat_score", 0.35) or 0.35)
+        except Exception:
+            prev_heat = 0.35
+
+    entropy_before = float(features_before.get("entropy", 0.3) or 0.3)
+    entropy_after = float(features_after.get("entropy", 0.3) or 0.3)
+    entropy_spike = max(0.0, entropy_after - entropy_before)
+    risk_pressure = max(0.0, float(risk_score) - 0.45)
+    low_conf_penalty = max(0.0, 0.55 - float(confidence))
+    rejection_pressure = max(0.0, -float(feedback_effect))
+    poor_delta_penalty = max(0.0, -float(delta))
+    positive_cooling = max(0.0, float(delta)) * 0.45
+
+    raw_heat = (
+        (float(prev_heat) * 0.72)
+        + (entropy_spike * 0.35)
+        + (risk_pressure * 0.28)
+        + (low_conf_penalty * 0.22)
+        + (rejection_pressure * 0.20)
+        + (poor_delta_penalty * 0.30)
+        - positive_cooling
+    )
+    heat_score = _bounded01(raw_heat)
+    band = "cool"
+    if heat_score >= 0.72:
+        band = "hot"
+    elif heat_score >= 0.45:
+        band = "warm"
+    return {"score": round(heat_score, 4), "band": band}
+
+
+def _compute_long_horizon_goals(session: Session, *, user_id: int) -> dict:
+    now = datetime.utcnow()
+    week_ago = now - timedelta(days=7)
+    rows = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == int(user_id), AutonomyEpisode.created_at >= week_ago)
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(500)
+    ).all()
+    if not rows:
+        return {
+            "window_days": 7,
+            "focus_depth": 0.0,
+            "recovery_balance": 0.0,
+            "novelty_exploration": 0.0,
+            "consistency": 0.0,
+            "episodes": 0,
+        }
+
+    total = float(len(rows))
+    learn_ratio = sum(1 for r in rows if str(r.chosen_action or "") == "learn") / total
+    rest_ratio = sum(1 for r in rows if str(r.chosen_action or "") == "rest") / total
+    exp_ratio = sum(1 for r in rows if str(r.chosen_action or "") == "experiment") / total
+    success_ratio = sum(1 for r in rows if str(r.status or "") == "completed") / total
+    avg_conf = sum(float(r.confidence or 0.0) for r in rows) / total
+    return {
+        "window_days": 7,
+        "focus_depth": round(_bounded01((learn_ratio * 0.7) + (avg_conf * 0.3)), 4),
+        "recovery_balance": round(_bounded01((rest_ratio * 0.8) + (success_ratio * 0.2)), 4),
+        "novelty_exploration": round(_bounded01(exp_ratio), 4),
+        "consistency": round(_bounded01(success_ratio), 4),
+        "episodes": int(total),
+    }
+
+
+def _update_goal_state(goal: AutonomyGoalState, *, features: dict, delta: float) -> None:
+    goal.focus_progress = _bounded01(
+        (float(goal.focus_progress or 0.5) * 0.92) + (float(features.get("focus", 0.0)) * 0.08)
+    )
+    goal.recovery_progress = _bounded01(
+        (float(goal.recovery_progress or 0.5) * 0.92) + (float(features.get("recovery", 0.0)) * 0.08)
+    )
+    goal.novelty_progress = _bounded01(
+        (float(goal.novelty_progress or 0.4) * 0.92) + (float(features.get("novelty", 0.0)) * 0.08)
+    )
+    consistency_signal = 0.5 + max(-0.5, min(0.5, float(delta)))
+    goal.consistency_progress = _bounded01(
+        (float(goal.consistency_progress or 0.45) * 0.92) + (consistency_signal * 0.08)
+    )
+    goal.updated_at = datetime.utcnow()
+    try:
+        progress = json.loads(goal.last_7d_json or "{}")
+    except Exception:
+        progress = {}
+    for k, v in (
+        ("focus", goal.focus_progress),
+        ("recovery", goal.recovery_progress),
+        ("novelty", goal.novelty_progress),
+        ("consistency", goal.consistency_progress),
+    ):
+        arr = list(progress.get(k) or [])
+        arr.append(round(float(v), 4))
+        progress[k] = arr[-14:]
+    goal.last_7d_json = json.dumps(progress, sort_keys=True)
+
+
+def _maybe_upsert_learning_law(
+    session: Session,
+    *,
+    user_id: int,
+    action_name: str,
+    expected_utility: float,
+    observed_utility: float,
+    delta: float,
+) -> None:
+    if abs(delta) < float(getattr(settings, "ecosystem_autonomy_learning_law_threshold", 0.03)):
+        return
+    sign = "improves" if delta > 0 else "degrades"
+    law_name = f"{action_name}:{sign}"
+    row = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == int(user_id), AutonomyLaw.law_name == law_name)
+        .limit(1)
+    ).first()
+    evidence = {
+        "action": action_name,
+        "expected_utility": round(float(expected_utility), 4),
+        "observed_utility": round(float(observed_utility), 4),
+        "delta": round(float(delta), 4),
+        "recorded_at": datetime.utcnow().isoformat(),
+    }
+    if row is None:
+        row = AutonomyLaw(
+            user_id=int(user_id),
+            law_name=law_name,
+            confidence=0.55 if delta > 0 else 0.45,
+            support_n=1,
+            law_json=json.dumps({"evidence": [evidence]}, sort_keys=True),
+        )
+    else:
+        row.support_n = int(row.support_n or 0) + 1
+        row.confidence = _bounded01(
+            (float(row.confidence or 0.5) * 0.85) + ((0.65 if delta > 0 else 0.35) * 0.15)
+        )
+        try:
+            payload = json.loads(row.law_json or "{}")
+            existing = list((payload if isinstance(payload, dict) else {}).get("evidence") or [])
+        except Exception:
+            existing = []
+        existing.append(evidence)
+        row.law_json = json.dumps({"evidence": existing[-40:]}, sort_keys=True)
+    session.add(row)
 
 
 def _mutate_genome(genome: AutonomyGenome, action_bias: dict) -> dict:
@@ -130,7 +423,6 @@ def _mutate_genome(genome: AutonomyGenome, action_bias: dict) -> dict:
             new = max(0.05, min(1.5 if field_name.startswith("weight_") else 0.9, old + delta))
             setattr(genome, field_name, new)
             mutation_delta[field_name] = round(new - old, 4)
-
     for action_name in ("collect", "learn", "experiment", "rest"):
         if random.random() < mutation_rate * 0.9:
             old = float(action_bias.get(action_name, 0.2))
@@ -145,9 +437,12 @@ def _run_autonomy_episode(
     *,
     user_id: int,
     mode: str = "manual",
+    forced_action: str | None = None,
 ) -> dict:
     user_id = int(user_id)
     genome = _autonomy_get_or_create_genome(session, user_id=user_id)
+    goal_state = _autonomy_get_or_create_goal_state(session, user_id=user_id)
+
     try:
         genome_payload = json.loads(genome.genome_json or "{}")
     except Exception:
@@ -162,6 +457,7 @@ def _run_autonomy_episode(
         .limit(1)
     ).first()
     features_before = _autonomy_state_features(summary_before, ts_before)
+    goal_alignment = _compute_long_horizon_goals(session, user_id=user_id)
 
     actions = [
         ("collect", "Need fresher signals for state estimation."),
@@ -169,34 +465,58 @@ def _run_autonomy_episode(
         ("experiment", "Need novelty search to discover stronger dynamics."),
         ("rest", "Need recovery to reduce entropy drift."),
     ]
-    candidates = []
+    candidates: list[dict] = []
+    explainability: dict[str, dict] = {}
     for action_name, rationale in actions:
+        feedback_effect = _get_nudge_feedback_effect(session, user_id=user_id, action_name=action_name)
+        expected = _autonomy_expected_utility(features_before, genome, action_name, action_bias)
+        adjusted_expected = _bounded01(expected + (feedback_effect * 0.08))
+        risk = _autonomy_risk_score(features_before, action_name)
+        risk_level = _risk_level(risk)
+        risk_threshold = float(getattr(settings, "ecosystem_autonomy_high_risk_threshold", 0.72))
+        safety_gate = not (risk > risk_threshold and action_name in {"learn", "experiment"})
+        effective_score = adjusted_expected if safety_gate else adjusted_expected * 0.65
         candidates.append(
             {
                 "action": action_name,
-                "why": rationale,
-                "expected_utility": round(
-                    _autonomy_expected_utility(features_before, genome, action_name, action_bias), 4
-                ),
+                "reason": rationale,
+                "expected_utility": round(adjusted_expected, 4),
+                "effective_score": round(effective_score, 4),
+                "feedback_effect": round(feedback_effect, 4),
+                "risk": {"score": round(risk, 4), "risk_level": risk_level, "safety_gate": safety_gate},
             }
         )
-    candidates.sort(key=lambda x: float(x["expected_utility"]), reverse=True)
+        explainability[action_name] = {
+            "focus": round(float(genome.weight_focus) * float(features_before.get("focus", 0.0)), 4),
+            "energy": round(float(genome.weight_energy) * float(features_before.get("energy", 0.0)), 4),
+            "recovery": round(float(genome.weight_recovery) * float(features_before.get("recovery", 0.0)), 4),
+            "novelty": round(float(genome.weight_novelty) * float(features_before.get("novelty", 0.0)), 4),
+            "feedback_signal": round(feedback_effect, 4),
+        }
+    candidates.sort(key=lambda x: float(x["effective_score"]), reverse=True)
     chosen = dict(candidates[0])
     if random.random() < float(genome.explore_bias or 0.2) and len(candidates) > 1:
         chosen = dict(random.choice(candidates[: min(3, len(candidates))]))
+    if forced_action:
+        forced = str(forced_action).strip().lower()
+        match = next((c for c in candidates if str(c.get("action") or "") == forced), None)
+        if match:
+            chosen = dict(match)
 
     chosen_action = str(chosen["action"])
-    rationale = str(chosen["why"])
+    rationale = str(chosen["reason"])
     expected_utility = float(chosen["expected_utility"])
+    risk_payload = dict(chosen.get("risk") or {})
+    risk_score = float(risk_payload.get("score", 0.0) or 0.0)
+    risk_level = str(risk_payload.get("risk_level", "safe") or "safe")
+    safety_gate = bool(risk_payload.get("safety_gate", True))
     outcome_note = ""
     status = "completed"
 
     try:
         if chosen_action == "collect":
             n = run_signal_collection_tick(
-                _shared_collector_state,
-                user_id=user_id,
-                device_id=str(settings.nexus_device_id or "local"),
+                _shared_collector_state, user_id=user_id, device_id=str(settings.nexus_device_id or "local")
             )
             outcome_note = f"Collected {int(n)} signals."
         elif chosen_action == "learn":
@@ -222,17 +542,12 @@ def _run_autonomy_episode(
             _ = analyze_patterns(session, user_id=user_id, window_hours=24)
             outcome_note = "Recovery cycle synthesized recent patterns."
     except Exception as exc:
-        # Degrade gracefully: fallback to collect so autonomy loop remains active.
         try:
             n = run_signal_collection_tick(
-                _shared_collector_state,
-                user_id=user_id,
-                device_id=str(settings.nexus_device_id or "local"),
+                _shared_collector_state, user_id=user_id, device_id=str(settings.nexus_device_id or "local")
             )
             status = "completed"
-            outcome_note = (
-                f"Primary action error ({type(exc).__name__}); fallback collect succeeded with {int(n)} signals."
-            )
+            outcome_note = f"Primary action error ({type(exc).__name__}); fallback collect succeeded with {int(n)} signals."
         except Exception as fallback_exc:
             status = "failed"
             outcome_note = (
@@ -249,20 +564,55 @@ def _run_autonomy_episode(
     ).first()
     features_after = _autonomy_state_features(summary_after, ts_after)
     observed_utility = _autonomy_expected_utility(features_after, genome, chosen_action, action_bias)
-    confidence = _bounded01((expected_utility * 0.6) + (observed_utility * 0.4))
-    counterfactual_utility = _bounded01(expected_utility * 0.94)
+    counterfactual_utility = _counterfactual_v2(
+        session, user_id=user_id, action=chosen_action, expected_utility=expected_utility
+    )
     delta = observed_utility - counterfactual_utility
+    confidence = _bounded01((expected_utility * 0.6) + (observed_utility * 0.4))
+    chosen_feedback_effect = _get_nudge_feedback_effect(session, user_id=user_id, action_name=chosen_action)
+    heat = _autonomy_heat_state(
+        session,
+        user_id=user_id,
+        features_before=features_before,
+        features_after=features_after,
+        delta=delta,
+        confidence=confidence,
+        risk_score=risk_score,
+        feedback_effect=chosen_feedback_effect,
+    )
 
-    # Selection + mutation: reinforce successful actions, then mutate genome stochastically.
+    high_impact = chosen_action in {"experiment", "learn"}
+    confidence_floor = float(getattr(settings, "ecosystem_autonomy_governance_min_confidence", 0.55))
+    risk_gate = float(getattr(settings, "ecosystem_autonomy_governance_risk_threshold", 0.72))
+    heat_gate = float(getattr(settings, "ecosystem_autonomy_heat_governance_threshold", 0.78))
+    requires_confirmation = bool(
+        high_impact
+        and (
+            (risk_score >= risk_gate)
+            or (heat.get("score", 0.0) >= heat_gate)
+            or (confidence < confidence_floor)
+        )
+    )
+    proposal_status = "proposed" if requires_confirmation else "none"
+
+    _update_goal_state(goal_state, features=features_after, delta=delta)
+    session.add(goal_state)
+    _maybe_upsert_learning_law(
+        session,
+        user_id=user_id,
+        action_name=chosen_action,
+        expected_utility=expected_utility,
+        observed_utility=observed_utility,
+        delta=delta,
+    )
+
     action_bias[chosen_action] = max(
-        0.01,
-        min(0.95, float(action_bias.get(chosen_action, 0.2)) + (0.07 if delta > 0 else -0.03)),
+        0.01, min(0.95, float(action_bias.get(chosen_action, 0.2)) + (0.07 if delta > 0 else -0.03))
     )
     mutation_delta = {}
     if random.random() < float(getattr(settings, "ecosystem_autonomy_mutation_rate", 0.08)):
         mutation_delta = _mutate_genome(genome, action_bias)
         genome.generation = int(genome.generation) + 1
-
     genome.fitness_score = (float(genome.fitness_score or 0.0) * 0.85) + (observed_utility * 0.15)
     genome.genome_json = json.dumps(
         {
@@ -274,10 +624,54 @@ def _run_autonomy_episode(
     )
     session.add(genome)
 
+    recommended_tick = _adaptive_tick_minutes(session, user_id=user_id)
+    episode_state = {
+        "before": features_before,
+        "after": features_after,
+        "summary_before": summary_before,
+        "summary_after": summary_after,
+        "goal_alignment": goal_alignment,
+        "policy_genome": {
+            "generation": int(genome.generation),
+            "selection_pressure": float(getattr(settings, "ecosystem_experiment_selection_pressure", 1.35)),
+            "fitness_score": round(float(genome.fitness_score or 0.0), 4),
+            "explore_bias": round(float(genome.explore_bias or 0.0), 4),
+        },
+        "recommended_next_tick_minutes": int(recommended_tick),
+        "heat_score": float(heat.get("score", 0.0)),
+        "heat_band": str(heat.get("band", "cool")),
+        "project_codename": str(getattr(settings, "project_codename", "Project Resonance")),
+        "project_tagline": str(getattr(settings, "project_tagline", "Where data settles into life.")),
+    }
+    episode_outcome = {
+        "outcome_note": outcome_note,
+        "counterfactual_utility": round(counterfactual_utility, 4),
+        "counterfactual_method": "counterfactual_v2",
+        "delta": round(delta, 4),
+        "mutation_delta": mutation_delta,
+        "risk": {
+            "risk_score": round(risk_score, 4),
+            "risk_level": risk_level,
+            "safety_gate": bool(safety_gate),
+        },
+        "nudge_feedback_signal": round(chosen_feedback_effect, 4),
+        "explainability": explainability.get(chosen_action, {}),
+        "governance": {
+            "requires_confirmation": bool(requires_confirmation),
+            "proposal_status": proposal_status,
+            "reason": (
+                "high_impact_gate"
+                if requires_confirmation
+                else "auto_execute"
+            ),
+        },
+    }
     episode = AutonomyEpisode(
         user_id=user_id,
         mode="autonomous" if mode == "daemon" else "manual",
         status=status,
+        governance_status="proposed" if requires_confirmation else "executed",
+        requires_human_confirm=bool(requires_confirmation),
         chosen_action=chosen_action,
         rationale=rationale,
         expected_utility=float(round(expected_utility, 4)),
@@ -289,30 +683,8 @@ def _run_autonomy_episode(
         momentum=float(round(features_after["momentum"], 4)),
         novelty_index=float(round(features_after["novelty"], 4)),
         action_candidates_json=json.dumps(candidates, sort_keys=True),
-        state_json=json.dumps(
-            {
-                "before": features_before,
-                "after": features_after,
-                "summary_before": summary_before,
-                "summary_after": summary_after,
-                "policy_genome": {
-                    "generation": int(genome.generation),
-                    "selection_pressure": float(getattr(settings, "ecosystem_experiment_selection_pressure", 1.35)),
-                    "fitness_score": round(float(genome.fitness_score or 0.0), 4),
-                    "explore_bias": round(float(genome.explore_bias or 0.0), 4),
-                },
-            },
-            sort_keys=True,
-        ),
-        outcome_json=json.dumps(
-            {
-                "outcome_note": outcome_note,
-                "counterfactual_utility": round(counterfactual_utility, 4),
-                "delta": round(delta, 4),
-                "mutation_delta": mutation_delta,
-            },
-            sort_keys=True,
-        ),
+        state_json=json.dumps(episode_state, sort_keys=True),
+        outcome_json=json.dumps(episode_outcome, sort_keys=True),
     )
     session.add(episode)
     session.commit()
@@ -329,6 +701,7 @@ def _run_autonomy_episode(
             "outcome_score": round(float(episode.observed_utility or 0.0), 4),
             "expected_utility": round(float(episode.expected_utility or 0.0), 4),
             "counterfactual_utility": round(counterfactual_utility, 4),
+            "counterfactual_method": "counterfactual_v2",
             "delta": round(delta, 4),
             "confidence": round(float(episode.confidence or 0.0), 4),
             "policy_genome": {
@@ -337,6 +710,16 @@ def _run_autonomy_episode(
                 "fitness_score": round(float(genome.fitness_score or 0.0), 4),
                 "explore_bias": round(float(genome.explore_bias or 0.0), 4),
             },
+            "risk": {"risk_score": round(risk_score, 4), "risk_level": risk_level, "safety_gate": bool(safety_gate)},
+            "goal_alignment": goal_alignment,
+            "recommended_next_tick_minutes": int(recommended_tick),
+            "nudge_feedback_signal": round(
+                chosen_feedback_effect, 4
+            ),
+            "explainability": explainability.get(chosen_action, {}),
+            "heat_score": float(heat.get("score", 0.0)),
+            "heat_band": str(heat.get("band", "cool")),
+            "governance": episode_outcome.get("governance", {}),
             "mutation_delta": mutation_delta,
             "outcome_note": outcome_note,
         },
@@ -349,7 +732,6 @@ def run_autonomy_episode(
     user_id: int,
     mode: str = "manual",
 ) -> dict:
-    """Compatibility wrapper used by background daemon callers."""
     return _run_autonomy_episode(session, user_id=int(user_id), mode=str(mode))
 
 
@@ -1509,17 +1891,9 @@ def latest_autonomy_episode(
     except Exception:
         state = {}
     try:
-        action = json.loads(row.action_json or "{}")
-    except Exception:
-        action = {}
-    try:
         outcome = json.loads(row.outcome_json or "{}")
     except Exception:
         outcome = {}
-    try:
-        genome = json.loads(row.genome_json or "{}")
-    except Exception:
-        genome = {}
 
     state_policy = state.get("policy_genome") if isinstance(state, dict) else {}
     if not isinstance(state_policy, dict):
@@ -1532,25 +1906,39 @@ def latest_autonomy_episode(
             "id": int(row.id or 0),
             "created_at": row.created_at.isoformat() if row.created_at else "",
             "mode": str(row.mode or ""),
-            "action": str(row.chosen_action or (action.get("action") if isinstance(action, dict) else "")),
+            "action": str(row.chosen_action or ""),
             "why": str(row.rationale or ""),
             "expected_utility": float(row.expected_utility or 0.0),
             "outcome_score": float(row.observed_utility or 0.0),
             "counterfactual_utility": float(outcome.get("counterfactual_utility", 0.0) or 0.0),
             "delta": float(outcome.get("delta", 0.0) or 0.0),
             "confidence": float(row.confidence or 0.0),
-            "generation": int((state.get("policy_genome") or {}).get("generation", 0) or 0),
+            "generation": int(state_policy.get("generation", 0) or 0),
             "state": state,
-            "action_detail": action,
+            "action_detail": {"chosen_action": str(row.chosen_action or "")},
             "outcome": outcome,
             "policy_genome": {
-                "generation": int((state.get("policy_genome") or {}).get("generation", 0) or 0),
+                "generation": int(state_policy.get("generation", 0) or 0),
                 "fitness_score": float(state_policy.get("fitness_score", 0.0) or 0.0),
                 "selection_pressure": float(state_policy.get("selection_pressure", 0.0) or 0.0),
                 "explore_bias": float(state_policy.get("explore_bias", 0.0) or 0.0),
             },
-            "mutation_delta": outcome.get("mutation_delta", {}),
+            "mutation_delta": outcome.get("mutation_delta", {}) if isinstance(outcome, dict) else {},
             "outcome_note": str(outcome.get("outcome_note", "")),
+            "risk": (outcome.get("risk", {}) if isinstance(outcome, dict) else {}),
+            "goal_alignment": (state.get("goal_alignment", {}) if isinstance(state, dict) else {}),
+            "recommended_next_tick_minutes": int(
+                (state.get("recommended_next_tick_minutes", getattr(settings, "ecosystem_autonomy_tick_minutes", 10)) if isinstance(state, dict) else getattr(settings, "ecosystem_autonomy_tick_minutes", 10)) or getattr(settings, "ecosystem_autonomy_tick_minutes", 10)
+            ),
+            "nudge_feedback_signal": float(outcome.get("nudge_feedback_signal", 0.0) or 0.0),
+            "explainability": (outcome.get("explainability", {}) if isinstance(outcome, dict) else {}),
+            "heat_score": float((state.get("heat_score", 0.0) if isinstance(state, dict) else 0.0) or 0.0),
+            "heat_band": str((state.get("heat_band", "cool") if isinstance(state, dict) else "cool") or "cool"),
+            "governance": (outcome.get("governance", {}) if isinstance(outcome, dict) else {}),
+            "project": {
+                "codename": str((state.get("project_codename", getattr(settings, "project_codename", "Project Resonance")) if isinstance(state, dict) else getattr(settings, "project_codename", "Project Resonance"))),
+                "tagline": str((state.get("project_tagline", getattr(settings, "project_tagline", "Where data settles into life.")) if isinstance(state, dict) else getattr(settings, "project_tagline", "Where data settles into life."))),
+            },
         },
     }
 
@@ -1595,6 +1983,350 @@ def autonomy_history(
             }
         )
     return {"ok": True, "count": len(history), "history": history}
+
+
+@router.get("/autonomy/goals")
+def autonomy_goals(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    goal = _autonomy_get_or_create_goal_state(session, user_id=user_id)
+    try:
+        week = json.loads(goal.last_7d_json or "{}")
+    except Exception:
+        week = {}
+    return {
+        "ok": True,
+        "goals": {
+            "focus_goal": float(goal.focus_goal or 0.0),
+            "recovery_goal": float(goal.recovery_goal or 0.0),
+            "novelty_goal": float(goal.novelty_goal or 0.0),
+            "consistency_goal": float(goal.consistency_goal or 0.0),
+            "focus_progress": float(goal.focus_progress or 0.0),
+            "recovery_progress": float(goal.recovery_progress or 0.0),
+            "novelty_progress": float(goal.novelty_progress or 0.0),
+            "consistency_progress": float(goal.consistency_progress or 0.0),
+            "weekly_trace": week,
+        },
+    }
+
+
+@router.get("/autonomy/laws")
+def autonomy_laws(
+    limit: int = 12,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    n = max(1, min(int(limit), 100))
+    rows = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == user_id)
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(n)
+    ).all()
+    laws = []
+    for row in rows:
+        try:
+            law_obj = json.loads(row.law_json or "{}")
+            evidence = list((law_obj if isinstance(law_obj, dict) else {}).get("evidence") or [])
+        except Exception:
+            evidence = []
+        laws.append(
+            {
+                "id": int(row.id or 0),
+                "law_name": str(row.law_name or ""),
+                "confidence": float(row.confidence or 0.0),
+                "support_count": int(row.support_n or 0),
+                "latest_evidence": (evidence[-1] if evidence else {}),
+                "updated_at": row.created_at.isoformat() if row.created_at else "",
+            }
+        )
+    return {"ok": True, "count": len(laws), "laws": laws}
+
+
+@router.post("/autonomy/propose")
+def propose_autonomy_action(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Two-key governance: create an explicit proposal for high-impact actions."""
+    user_id = int(current_user.id or 0)
+    action_name = str(payload.get("action") or "").strip().lower()
+    rationale = str(payload.get("why") or "Operator proposed action").strip()[:500]
+    allowed = {"collect", "learn", "experiment", "rest"}
+    if action_name not in allowed:
+        return {"ok": False, "error": "invalid_action"}
+
+    proposal = AutonomyPendingAction(
+        user_id=user_id,
+        action_name=action_name,
+        rationale=rationale,
+        status="proposed",
+        proposal_json=json.dumps(
+            {
+                "source": "manual_proposal",
+                "created_at": datetime.utcnow().isoformat(),
+                "project_codename": str(getattr(settings, "project_codename", "Project Resonance")),
+            },
+            sort_keys=True,
+        ),
+    )
+    session.add(proposal)
+    session.commit()
+    session.refresh(proposal)
+    return {
+        "ok": True,
+        "proposal": {
+            "id": int(proposal.id or 0),
+            "action": str(proposal.action_name or ""),
+            "status": str(proposal.status or "proposed"),
+            "created_at": proposal.created_at.isoformat() if proposal.created_at else "",
+        },
+    }
+
+
+@router.post("/autonomy/confirm")
+def confirm_autonomy_action(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Two-key governance: confirm a proposed action and execute a real episode."""
+    user_id = int(current_user.id or 0)
+    proposal_id = int(payload.get("pending_id") or payload.get("proposal_id") or 0)
+    approve = bool(payload.get("approve", True))
+    row = session.exec(
+        select(AutonomyPendingAction)
+        .where(AutonomyPendingAction.id == proposal_id, AutonomyPendingAction.user_id == user_id)
+        .limit(1)
+    ).first()
+    if not row:
+        return {"ok": False, "error": "proposal_not_found"}
+    if str(row.status or "") != "proposed":
+        return {"ok": False, "error": "proposal_not_open"}
+    if not approve:
+        row.status = "rejected"
+        row.updated_at = datetime.utcnow()
+        session.add(row)
+        session.commit()
+        return {"ok": True, "pending_id": int(row.id or 0), "status": "rejected"}
+
+    row.status = "approved"
+    row.updated_at = datetime.utcnow()
+    session.add(row)
+    session.commit()
+    forced_action = str(row.action_name or "").strip().lower()
+    result = _run_autonomy_episode(session, user_id=user_id, mode="manual", forced_action=forced_action)
+    try:
+        episode_id = int((result.get("episode") or {}).get("id") or 0)
+    except Exception:
+        episode_id = 0
+    row.proposal_json = json.dumps(
+        {
+            "executed_episode_id": episode_id or None,
+            "last_confirmed_at": datetime.utcnow().isoformat(),
+        },
+        sort_keys=True,
+    )
+    row.status = "executed" if episode_id else "approved"
+    row.updated_at = datetime.utcnow()
+    session.add(row)
+    session.commit()
+    return {
+        "ok": True,
+        "pending_id": int(row.id or 0),
+        "status": str(row.status or "approved"),
+        "executed_episode_id": int(episode_id or 0),
+        "episode": result.get("episode"),
+    }
+
+
+@router.get("/autonomy/pending")
+def list_pending_autonomy_actions(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    n = max(1, min(int(limit), 100))
+    rows = session.exec(
+        select(AutonomyPendingAction)
+        .where(AutonomyPendingAction.user_id == user_id)
+        .order_by(AutonomyPendingAction.created_at.desc())
+        .limit(n)
+    ).all()
+    pending = []
+    for row in rows:
+        try:
+            payload = json.loads(row.proposal_json or "{}")
+        except Exception:
+            payload = {}
+        pending.append(
+            {
+                "id": int(row.id or 0),
+                "created_at": row.created_at.isoformat() if row.created_at else "",
+                "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+                "status": str(row.status or ""),
+                "mode": str(row.mode or ""),
+                "action": str(row.action_name or ""),
+                "why": str(row.rationale or ""),
+                "risk_score": float(row.risk_score or 0.0),
+                "risk_level": str(row.risk_level or "safe"),
+                "expected_utility": float(row.expected_utility or 0.0),
+                "heat_score": float(row.heat_score or 0.0),
+                "proposal": payload if isinstance(payload, dict) else {},
+            }
+        )
+    return {"ok": True, "count": len(pending), "pending": pending}
+
+
+@router.get("/autonomy/governance/report")
+def autonomy_governance_report(
+    window_days: int = 7,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Weekly governance report for heat, risk, and approval dynamics."""
+    user_id = int(current_user.id or 0)
+    days = max(1, min(int(window_days), 30))
+    since = datetime.utcnow() - timedelta(days=days)
+
+    episodes = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == user_id, AutonomyEpisode.created_at >= since)
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(2000)
+    ).all()
+    pending_rows = session.exec(
+        select(AutonomyPendingAction)
+        .where(AutonomyPendingAction.user_id == user_id, AutonomyPendingAction.created_at >= since)
+        .order_by(AutonomyPendingAction.created_at.desc())
+        .limit(2000)
+    ).all()
+
+    heat_vals: list[float] = []
+    risk_vals: list[float] = []
+    deltas: list[float] = []
+    conf_vals: list[float] = []
+    high_risk_episodes = 0
+    governance_required = 0
+    for ep in episodes:
+        try:
+            state = json.loads(ep.state_json or "{}")
+        except Exception:
+            state = {}
+        try:
+            out = json.loads(ep.outcome_json or "{}")
+        except Exception:
+            out = {}
+        heat_vals.append(float((state if isinstance(state, dict) else {}).get("heat_score", 0.0) or 0.0))
+        risk = (out if isinstance(out, dict) else {}).get("risk") if isinstance(out, dict) else {}
+        if not isinstance(risk, dict):
+            risk = {}
+        rv = float(risk.get("risk_score", 0.0) or 0.0)
+        risk_vals.append(rv)
+        if rv >= float(getattr(settings, "ecosystem_autonomy_governance_risk_threshold", 0.72)):
+            high_risk_episodes += 1
+        gov = (out if isinstance(out, dict) else {}).get("governance") if isinstance(out, dict) else {}
+        if isinstance(gov, dict) and bool(gov.get("requires_confirmation", False)):
+            governance_required += 1
+        deltas.append(float((out if isinstance(out, dict) else {}).get("delta", 0.0) or 0.0))
+        conf_vals.append(float(ep.confidence or 0.0))
+
+    proposed = sum(1 for p in pending_rows if str(p.status or "") == "proposed")
+    approved = sum(1 for p in pending_rows if str(p.status or "") in {"approved", "executed"})
+    rejected = sum(1 for p in pending_rows if str(p.status or "") == "rejected")
+    executed = sum(1 for p in pending_rows if str(p.status or "") == "executed")
+    denom = max(1, approved + rejected)
+
+    def _avg(vals: list[float]) -> float:
+        return round(float(mean(vals)) if vals else 0.0, 4)
+
+    return {
+        "ok": True,
+        "window_days": days,
+        "project": {
+            "codename": str(getattr(settings, "project_codename", "Project Resonance")),
+            "tagline": str(getattr(settings, "project_tagline", "Where data settles into life.")),
+        },
+        "episodes": {
+            "count": len(episodes),
+            "mean_heat": _avg(heat_vals),
+            "mean_risk": _avg(risk_vals),
+            "mean_delta": _avg(deltas),
+            "mean_confidence": _avg(conf_vals),
+            "high_risk_count": int(high_risk_episodes),
+            "requires_confirmation_count": int(governance_required),
+        },
+        "approvals": {
+            "proposed": int(proposed),
+            "approved_or_executed": int(approved),
+            "executed": int(executed),
+            "rejected": int(rejected),
+            "approval_rate": round(float(approved) / float(denom), 4),
+        },
+    }
+
+
+@router.post("/autonomy/feedback")
+def autonomy_feedback(
+    payload: dict = Body(...),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    episode_id = int(payload.get("episode_id") or 0)
+    decision = str(payload.get("decision") or "neutral").strip().lower()
+    if decision == "approve":
+        decision = "accepted"
+    elif decision == "reject":
+        decision = "rejected"
+    if decision not in {"accepted", "rejected", "neutral"}:
+        decision = "neutral"
+    notes = str(payload.get("notes") or "")[:500]
+
+    row = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.id == episode_id, AutonomyEpisode.user_id == user_id)
+        .limit(1)
+    ).first()
+    if not row:
+        return {"ok": False, "error": "episode_not_found"}
+
+    feedback = AutonomyActionFeedback(
+        user_id=user_id,
+        episode_id=int(row.id or 0),
+        action_name=str(row.chosen_action or ""),
+        decision=decision,
+        notes=notes,
+    )
+    session.add(feedback)
+
+    # Closed-loop policy adjustment from user signal.
+    genome = _autonomy_get_or_create_genome(session, user_id=user_id)
+    try:
+        g = json.loads(genome.genome_json or "{}")
+    except Exception:
+        g = {}
+    action_bias = dict(g.get("action_bias") or {})
+    action = str(row.chosen_action or "")
+    cur = float(action_bias.get(action, 0.2))
+    if decision == "accepted":
+        cur = min(0.95, cur + 0.06)
+    elif decision == "rejected":
+        cur = max(0.01, cur - 0.08)
+    action_bias[action] = cur
+    g["action_bias"] = action_bias
+    g["selection_pressure"] = float(g.get("selection_pressure", getattr(settings, "ecosystem_experiment_selection_pressure", 1.35)))
+    genome.genome_json = json.dumps(g, sort_keys=True)
+    genome.updated_at = datetime.utcnow()
+    session.add(genome)
+    session.commit()
+
+    return {"ok": True, "episode_id": int(row.id or 0), "decision": decision, "action": action}
 
 @router.post("/chat")
 def ecosystem_chat(

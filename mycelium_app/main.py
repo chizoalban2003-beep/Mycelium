@@ -468,7 +468,14 @@ async def _autonomy_daemon() -> None:
                     if latest:
                         continue
                     try:
-                        run_autonomy_episode(session, user_id=uid, mode="daemon")
+                        result = run_autonomy_episode(session, user_id=uid, mode="daemon")
+                        ep = result.get("episode") if isinstance(result, dict) else {}
+                        score = float((ep or {}).get("outcome_score") or 0.0)
+                        # Adaptive cadence: slower when stable/high score, faster when weak.
+                        if score >= 0.78:
+                            tick_minutes = min(90, tick_minutes + 2)
+                        elif score <= 0.42:
+                            tick_minutes = max(3, tick_minutes - 1)
                     except Exception:
                         continue
         except Exception:
