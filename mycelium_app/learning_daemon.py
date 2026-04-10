@@ -99,6 +99,9 @@ def run_learning_tick(
         "narrative": None,
     }
 
+    # Keep these initialized for downstream stages even when
+    # prediction gating short-circuits for early growth states.
+    target_col: str | None = None
     with Session(engine) as session:
         # 1. Determine growth stage
         stage, unlocked, stats = compute_growth_stage(

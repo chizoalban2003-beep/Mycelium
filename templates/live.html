@@ -30,8 +30,12 @@
   <div class="hud-pill hidden" id="insightPill">
     <span class="text-emerald-300" id="insightText"></span>
   </div>
+  <div class="hud-pill hidden" id="puppeteerPill">
+    <span class="text-fuchsia-300" id="puppeteerText"></span>
+  </div>
   <div class="ml-auto flex gap-1.5">
     <button id="btnInstall" class="hud-pill text-cyan-300 hover:text-cyan-200 cursor-pointer hidden">📱 Install</button>
+    <button id="btnToggleAutoCollect" class="hud-pill text-fuchsia-300 hover:text-fuchsia-200 cursor-pointer">⏸ Pause flow</button>
     <button id="btnCollect" class="hud-pill text-emerald-300 hover:text-emerald-200 cursor-pointer">⚡ Collect</button>
     <button id="btnLearn" class="hud-pill text-indigo-300 hover:text-indigo-200 cursor-pointer">🧠 Learn</button>
   </div>
@@ -64,6 +68,22 @@
     <div class="text-[9px] uppercase tracking-widest text-rose-400/60">Changing</div>
     <div id="tCount" class="text-lg font-bold text-rose-300">0</div>
     <div id="tList" class="text-[9px] text-slate-500 mt-0.5 line-clamp-1"></div>
+  </div>
+</div>
+
+<!-- Ecosystem metaphor lanes -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+  <div class="rounded-xl border border-rose-900/40 bg-rose-950/10 p-2">
+    <div class="text-[10px] uppercase tracking-widest text-rose-300/70">Gaseous Sky</div>
+    <div id="zoneSky" class="text-sm text-rose-100 mt-1">—</div>
+  </div>
+  <div class="rounded-xl border border-cyan-900/40 bg-cyan-950/10 p-2">
+    <div class="text-[10px] uppercase tracking-widest text-cyan-300/70">Liquid Sea</div>
+    <div id="zoneSea" class="text-sm text-cyan-100 mt-1">—</div>
+  </div>
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/10 p-2">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-300/70">Bedrock + Secrets</div>
+    <div id="zoneBedrock" class="text-sm text-emerald-100 mt-1">—</div>
   </div>
 </div>
 
@@ -480,6 +500,9 @@ setInterval(()=>{
 let lastData=null, agentName='Myco', stage='infant', mood='curious';
 let chatHistory = [];
 
+function fmtCount(v){ const n=Number(v||0); return Number.isFinite(n)?String(Math.max(0,Math.round(n))):'0'; }
+function fmtFloat(v, d=2){ const n=Number(v||0); return Number.isFinite(n)?n.toFixed(d):'0.00'; }
+
 async function poll(){
   try{
     const r=await fetch('/api/ecosystem/live',{credentials:'same-origin'});
@@ -507,6 +530,30 @@ function applyData(d){
   // Insight pill
   const n=d.narrative||{};
   if(n.insight && n.insight.length>10){$('insightPill').classList.remove('hidden'); $('insightText').textContent=n.insight;}
+
+  // Backend puppeteer channel summary
+  const pup = d.puppeteer || {};
+  const channels = Array.isArray(pup.channels) ? pup.channels : [];
+  if (channels.length) {
+    const top = channels.slice().sort((a,b)=>Number(b.flow||0)-Number(a.flow||0))[0];
+    $('puppeteerPill').classList.remove('hidden');
+    $('puppeteerText').textContent = `Backend puppeteer: ${String(top.channel||'orchestrator')} flow ${fmtFloat(top.flow,2)}`;
+    if (top.channel === 'governance') {
+      autoCollectEnabled = false;
+      autoCollectMs = Math.max(autoCollectMs, 18000);
+      if (toggleAutoCollectBtn) {
+        toggleAutoCollectBtn.textContent = '▶ Resume flow';
+      }
+      restartAutoCollectLoop();
+    } else {
+      autoCollectEnabled = true;
+      autoCollectMs = Number(pup.poll_hint_ms || 12000) || 12000;
+      if (toggleAutoCollectBtn) {
+        toggleAutoCollectBtn.textContent = '⏸ Pause flow';
+      }
+      restartAutoCollectLoop();
+    }
+  }
 
   // 2D fallback update
   if(!use3D){
@@ -579,14 +626,57 @@ function applyData(d){
   $('fCount').textContent=byL.bedrock.length; $('fList').textContent=byL.bedrock.slice(0,4).join(', ')||'—';
   $('aCount').textContent=byL.suspension.length; $('aList').textContent=byL.suspension.slice(0,4).join(', ')||'—';
   $('tCount').textContent=byL.turbulent.length; $('tList').textContent=byL.turbulent.slice(0,4).join(', ')||'—';
+
+  // Ecosystem metaphor zones (from backend puppeteer state)
+  const zones = (d.puppeteer && d.puppeteer.zones) || {};
+  const sky = zones.gaseous_sky || {};
+  const sea = zones.liquid_sea || {};
+  const bed = zones.bedrock || {};
+  $('zoneSky').textContent = `${fmtCount(sky.count)} volatile strands · entropy ${fmtFloat(sky.entropy,2)}`;
+  $('zoneSea').textContent = `${fmtCount(sea.count)} active flows · coherence ${fmtFloat(sea.coherence,2)}`;
+  $('zoneBedrock').textContent = `${fmtCount(bed.count)} hardened signals · secrets ${fmtCount(zones.secrets_count||0)}`;
+
+  const dwellers = (d.puppeteer && d.puppeteer.dwellers) || {};
+  const collective = Number(dwellers.collective_fitness || 0);
+  const mode = String(dwellers.autonomy_mode || 'observe');
+  if (n.insight && n.insight.length > 10) {
+    $('insightText').textContent = `${n.insight} · dwellers ${mode} · fitness ${fmtFloat(collective, 2)}`;
+  } else {
+    $('insightPill').classList.remove('hidden');
+    $('insightText').textContent = `Dwellers ${mode} · fitness ${fmtFloat(collective, 2)} · backend orchestration active`;
+  }
 }
 
-poll(); setInterval(poll, 5000);
+poll();
+setInterval(poll, 5000);
 
-// Auto-collect
-setInterval(async()=>{
-  try{await fetch('/api/ecosystem/collect',{method:'POST',credentials:'same-origin'})}catch(e){}
-}, 12000);
+// Auto-collect (frontend ecosystem feeder controlled by backend puppeteer mode)
+let autoCollectEnabled = true;
+let autoCollectMs = 12000;
+let autoCollectTimer = null;
+
+function restartAutoCollectLoop() {
+  if (autoCollectTimer) {
+    clearInterval(autoCollectTimer);
+    autoCollectTimer = null;
+  }
+  if (!autoCollectEnabled) return;
+  const delay = Math.max(4000, Number(autoCollectMs || 12000));
+  autoCollectTimer = setInterval(async () => {
+    try { await fetch('/api/ecosystem/collect', { method: 'POST', credentials: 'same-origin' }); } catch (_e) {}
+  }, delay);
+}
+
+restartAutoCollectLoop();
+
+const toggleAutoCollectBtn = $('btnToggleAutoCollect');
+if (toggleAutoCollectBtn) {
+  toggleAutoCollectBtn.onclick = () => {
+    autoCollectEnabled = !autoCollectEnabled;
+    toggleAutoCollectBtn.textContent = autoCollectEnabled ? '⏸ Pause flow' : '▶ Resume flow';
+    restartAutoCollectLoop();
+  };
+}
 
 $('btnCollect').onclick=async()=>{
   try{const r=await fetch('/api/ecosystem/collect',{method:'POST',credentials:'same-origin'}); const d=await r.json(); setTimeout(poll,300);}catch(e){}

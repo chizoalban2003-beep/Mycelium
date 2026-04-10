@@ -726,6 +726,12 @@ class AutonomyLaw(SQLModel, table=True):
     confidence: float = Field(default=0.0, index=True)
     support_n: int = Field(default=0)
     horizon_days: int = Field(default=7)
+    law_state: str = Field(default="active", index=True)  # active|cooling|dissolved
+    decay_half_life_days: float = Field(default=14.0)
+    last_activated_at: Optional[datetime] = Field(default=None, index=True)
+    last_cooled_at: Optional[datetime] = Field(default=None, index=True)
+    last_dissolved_at: Optional[datetime] = Field(default=None, index=True)
+    dissolved_at: Optional[datetime] = Field(default=None, index=True)
     law_json: str = "{}"
 
 

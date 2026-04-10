@@ -390,27 +390,177 @@ def _maybe_upsert_learning_law(
         "delta": round(float(delta), 4),
         "recorded_at": datetime.utcnow().isoformat(),
     }
+    default_half_life_days = float(
+        getattr(settings, "ecosystem_autonomy_law_decay_half_life_days", 14.0) or 14.0
+    )
     if row is None:
         row = AutonomyLaw(
             user_id=int(user_id),
             law_name=law_name,
             confidence=0.55 if delta > 0 else 0.45,
             support_n=1,
-            law_json=json.dumps({"evidence": [evidence]}, sort_keys=True),
+            law_state="active",
+            decay_half_life_days=default_half_life_days,
+            last_activated_at=datetime.utcnow(),
+            law_json=json.dumps(
+                {
+                    "evidence": [evidence],
+                    "lifecycle": {"state": "active", "state_reason": "new_evidence"},
+                },
+                sort_keys=True,
+            ),
         )
     else:
         row.support_n = int(row.support_n or 0) + 1
         row.confidence = _bounded01(
             (float(row.confidence or 0.5) * 0.85) + ((0.65 if delta > 0 else 0.35) * 0.15)
         )
+        row.law_state = "active"
+        row.last_activated_at = datetime.utcnow()
+        row.decay_half_life_days = default_half_life_days
         try:
             payload = json.loads(row.law_json or "{}")
             existing = list((payload if isinstance(payload, dict) else {}).get("evidence") or [])
         except Exception:
+            payload = {}
             existing = []
         existing.append(evidence)
-        row.law_json = json.dumps({"evidence": existing[-40:]}, sort_keys=True)
+        payload_obj = payload if isinstance(payload, dict) else {}
+        payload_obj["evidence"] = existing[-40:]
+        payload_obj["lifecycle"] = {
+            "state": "active",
+            "state_reason": "support_increase",
+            "support_n": int(row.support_n or 0),
+        }
+        row.law_json = json.dumps(payload_obj, sort_keys=True)
     session.add(row)
+
+
+def _autonomy_law_state(row: AutonomyLaw) -> str:
+    """Read lifecycle state safely across legacy/new law payloads."""
+    state = str(getattr(row, "law_state", "") or "").strip().lower()
+    if state in {"active", "cooling", "dissolved"}:
+        return state
+    try:
+        payload = json.loads(row.law_json or "{}")
+    except Exception:
+        payload = {}
+    if isinstance(payload, dict):
+        lifecycle = payload.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            fallback = str(lifecycle.get("state") or "").strip().lower()
+            if fallback in {"active", "cooling", "dissolved"}:
+                return fallback
+    return "active"
+
+
+def _refresh_law_lifecycle(session: Session, *, user_id: int) -> dict:
+    """Transition laws across active->cooling->dissolved and emit recycler priors."""
+    now = datetime.utcnow()
+    rows = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == int(user_id))
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(500)
+    ).all()
+    cooling_after = max(1, int(getattr(settings, "ecosystem_autonomy_law_cooling_support_n", 2)))
+    dissolve_after = max(1, int(getattr(settings, "ecosystem_autonomy_law_dissolve_support_n", 1)))
+    recycler_priors: list[dict] = []
+    transitioned = {"active": 0, "cooling": 0, "dissolved": 0}
+
+    for row in rows:
+        try:
+            payload = json.loads(row.law_json or "{}")
+        except Exception:
+            payload = {}
+        payload_obj = payload if isinstance(payload, dict) else {}
+        evidence = list(payload_obj.get("evidence") or [])
+        support_n = int(row.support_n or len(evidence) or 0)
+        # Keep half-life logic in payload for backward compatibility across DB schemas.
+        decay_half_life_days = float(getattr(settings, "ecosystem_autonomy_law_decay_half_life_days", 14.0))
+        latest_delta = 0.0
+        if evidence:
+            try:
+                latest_delta = float((evidence[-1] if isinstance(evidence[-1], dict) else {}).get("delta", 0.0) or 0.0)
+            except Exception:
+                latest_delta = 0.0
+        old_state = _autonomy_law_state(row)
+        new_state = old_state
+        if support_n <= dissolve_after and (row.confidence or 0.0) < 0.45:
+            new_state = "dissolved"
+        elif support_n <= cooling_after or (row.confidence or 0.0) < 0.55:
+            new_state = "cooling"
+        else:
+            new_state = "active"
+
+        if new_state != old_state:
+            transitioned[new_state] = int(transitioned.get(new_state, 0)) + 1
+            if new_state == "active":
+                row.last_activated_at = now
+            elif new_state == "cooling":
+                row.last_cooled_at = now
+            elif new_state == "dissolved":
+                row.last_dissolved_at = now
+                row.dissolved_at = now
+                recycler_priors.append(
+                    {
+                        "law_name": str(row.law_name or ""),
+                        "confidence": round(float(row.confidence or 0.0), 4),
+                        "support_n": support_n,
+                        "latest_delta": round(float(latest_delta), 4),
+                        "at": now.isoformat(),
+                    }
+                )
+        row.law_state = new_state
+        row.decay_half_life_days = decay_half_life_days
+        payload_obj["lifecycle"] = {
+            "state": new_state,
+            "support_n": support_n,
+            "confidence": round(float(row.confidence or 0.0), 4),
+            "decay_half_life_days": round(float(decay_half_life_days), 2),
+        }
+        payload_obj["recycler"] = {
+            "eligible": bool(new_state == "dissolved"),
+            "latest_delta": round(float(latest_delta), 4),
+        }
+        row.law_json = json.dumps(payload_obj, sort_keys=True)
+        session.add(row)
+
+    return {"transitioned": transitioned, "recycler_priors": recycler_priors}
+
+
+def _apply_recycler_priors(genome: AutonomyGenome, priors: list[dict]) -> dict:
+    """Apply dissolved-law priors as small exploration nudges on action bias."""
+    if not priors:
+        return {}
+    try:
+        payload = json.loads(genome.genome_json or "{}")
+    except Exception:
+        payload = {}
+    action_bias = dict((payload if isinstance(payload, dict) else {}).get("action_bias") or {})
+    deltas: dict[str, float] = {}
+    for prior in priors[:20]:
+        if not isinstance(prior, dict):
+            continue
+        law_name = str(prior.get("law_name") or "")
+        action_name = law_name.split(":", 1)[0].strip().lower()
+        if action_name not in {"collect", "learn", "experiment", "rest"}:
+            continue
+        latest_delta = float(prior.get("latest_delta", 0.0) or 0.0)
+        current = float(action_bias.get(action_name, 0.2))
+        # Dissolved negative laws push slight exploration away; neutral/positive provide tiny nudge.
+        shift = -0.015 if latest_delta < 0 else 0.008
+        updated = max(0.01, min(0.95, current + shift))
+        action_bias[action_name] = updated
+        deltas[action_name] = round(updated - current, 4)
+    payload_obj = payload if isinstance(payload, dict) else {}
+    payload_obj["action_bias"] = action_bias
+    recycler = dict(payload_obj.get("recycler_priors") or {})
+    recycler["last_applied_at"] = datetime.utcnow().isoformat()
+    recycler["last_deltas"] = deltas
+    payload_obj["recycler_priors"] = recycler
+    genome.genome_json = json.dumps(payload_obj, sort_keys=True)
+    return deltas
 
 
 def _mutate_genome(genome: AutonomyGenome, action_bias: dict) -> dict:
@@ -1073,6 +1223,14 @@ def live_ecosystem(
     from mycelium_app.assistant_profile import get_assistant_profile_effective
 
     user_id = int(current_user.id or 0)
+    force_state, recent_apps = _build_live_force_state(session, user_id, window_hours=6, n_iterations=20)
+    force_field_payload = _serialize_live_force_field(force_state) if force_state else None
+    crystals_payload = _build_crystals_from_force_state(force_state) if force_state else None
+    soul_payload = (
+        _build_soul_from_force_state(session, user_id=user_id, force_state=force_state, recent_apps=recent_apps)
+        if force_state
+        else None
+    )
 
     # Growth stage
     stage, unlocked, _ = compute_growth_stage(session, user_id=user_id, project_id=None)
@@ -1166,55 +1324,234 @@ def live_ecosystem(
             "features": sed_features,
         } if sed_layers else None,
         "graph": _humanize_graph(graph_data) if graph_data else None,
-        "force_field": _build_live_force_field(session, user_id),
-        "crystals": _build_crystals(session, user_id),
-        "soul": _build_soul(session, user_id),
+        "force_field": force_field_payload,
+        "crystals": crystals_payload,
+        "soul": soul_payload,
+        "puppeteer": _build_live_puppeteer_bridge(
+            stage=stage,
+            summary=summary,
+            live_signals=live_signals,
+            force_field=force_field_payload,
+            crystals=crystals_payload,
+            soul=soul_payload,
+        ),
+    }
+
+
+def _recent_signal_rows_for_live_state(session: Session, user_id: int, *, window_hours: int = 6) -> list:
+    since = datetime.utcnow() - timedelta(hours=max(1, min(int(window_hours), 168)))
+    from mycelium_app.models import SignalLedgerEvent as SLE
+
+    return session.exec(
+        select(SLE)
+        .where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
+        .order_by(SLE.created_at)
+    ).all()
+
+
+def _signal_rows_to_force_inputs(rows: list) -> tuple[list[dict], list[str]]:
+    signals: list[dict] = []
+    recent_apps: list[str] = []
+    for r in rows:
+        payload = {}
+        try:
+            payload = json.loads(r.payload_json or "{}")
+        except Exception:
+            pass
+        surface = payload.get("surface") or payload.get("stimulus") or payload
+        app = str(surface.get("app_name", r.signal_type or ""))
+        signals.append(
+            {
+                "signal_type": str(r.signal_type or ""),
+                "app_name": app,
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+                "session_seconds": surface.get("session_seconds", 0),
+                "payload": surface,
+            }
+        )
+        if str(r.signal_type or "") in {"app_focus", "app_open"} and app:
+            recent_apps.append(app.lower())
+    return signals, recent_apps
+
+
+def _build_live_force_state(
+    session: Session,
+    user_id: int,
+    *,
+    window_hours: int = 6,
+    n_iterations: int = 20,
+):
+    rows = _recent_signal_rows_for_live_state(session, user_id, window_hours=window_hours)
+    if not rows:
+        return None, []
+    signals, recent_apps = _signal_rows_to_force_inputs(rows)
+    if not signals:
+        return None, []
+    state = compute_force_field(signals, window_hours=int(window_hours), n_iterations=max(5, int(n_iterations)))
+    return state, recent_apps
+
+
+def _serialize_live_force_field(force_state) -> dict:
+    serialized = serialize_force_field(force_state)
+    for p in serialized.get("particles", []):
+        p["label"] = humanize_app(p.get("name", "")) or humanize_feature(p.get("name", ""))
+    for b in serialized.get("bonds", []):
+        b["source_label"] = humanize_app(b.get("source", "")) or humanize_feature(b.get("source", ""))
+        b["target_label"] = humanize_app(b.get("target", "")) or humanize_feature(b.get("target", ""))
+    return serialized
+
+
+def _build_crystals_from_force_state(force_state) -> dict:
+    from mycelium_app.crystallization import crystallize, serialize_crystallization
+
+    result = serialize_crystallization(crystallize(force_state))
+    for crystal in result.get("crystals", []):
+        crystal["label"] = str(crystal.get("name") or "Crystal")
+        crystal["domain_label"] = humanize_feature(str(crystal.get("domain") or "general"))
+    return result
+
+
+def _build_soul_from_force_state(
+    session: Session,
+    *,
+    user_id: int,
+    force_state,
+    recent_apps: list[str],
+) -> dict:
+    from mycelium_app.crystallization import crystallize
+    from mycelium_app.digital_soul import compose_digital_soul, serialize_soul
+    from mycelium_app.assistant_profile import get_assistant_profile_effective
+
+    crystals = crystallize(force_state)
+    profile = get_assistant_profile_effective(session, user_id=user_id, project_id=None)
+    soul = compose_digital_soul(
+        crystals,
+        agent_name=str(profile.get("given_name", "Myco")),
+        active_signals=recent_apps[-20:],
+    )
+    return serialize_soul(soul)
+
+
+def _build_live_puppeteer_bridge(
+    *,
+    stage: str,
+    summary: dict,
+    live_signals: list[dict],
+    force_field: dict | None,
+    crystals: dict | None,
+    soul: dict | None,
+) -> dict:
+    particles = list((force_field or {}).get("particles") or [])
+    n_bonds = int(((force_field or {}).get("metrics") or {}).get("n_bonds") or 0)
+    layers = {"bedrock": 0, "suspension": 0, "turbulent": 0}
+    for p in particles:
+        layer = str((p or {}).get("layer") or "").strip().lower()
+        if layer in layers:
+            layers[layer] += 1
+
+    crystal_rows = list((crystals or {}).get("crystals") or [])
+    sovereign_count = sum(
+        1 for c in crystal_rows if str((c or {}).get("crystal_type") or "").strip().lower() == "sovereign"
+    )
+    top_apps = summary.get("top_apps") or {}
+    top_app = next(iter(top_apps.keys()), "none")
+    soul_name = str((soul or {}).get("name") or "Myco")
+    soul_coherence = float((soul or {}).get("soul_coherence") or 0.0)
+
+    channels = [
+        {
+            "id": "telemetry-ingest",
+            "label": "Telemetry Ingest",
+            "throughput": int(len(live_signals)),
+            "status": "flowing" if live_signals else "idle",
+        },
+        {
+            "id": "force-solver",
+            "label": "Force Solver",
+            "throughput": int(len(particles)),
+            "status": "active" if particles else "idle",
+        },
+        {
+            "id": "crystal-forge",
+            "label": "Crystal Forge",
+            "throughput": int(len(crystal_rows)),
+            "status": "active" if crystal_rows else "idle",
+        },
+        {
+            "id": "soul-orchestrator",
+            "label": "Soul Orchestrator",
+            "throughput": int(round(soul_coherence * 100)),
+            "status": "active" if soul else "idle",
+        },
+    ]
+    threads = [
+        {"source": "frontend.ecosystem", "target": "backend.telemetry", "intensity": max(0.08, min(1.0, len(live_signals) / 20.0))},
+        {"source": "backend.telemetry", "target": "backend.force_solver", "intensity": max(0.08, min(1.0, len(particles) / 25.0))},
+        {"source": "backend.force_solver", "target": "frontend.layers", "intensity": max(0.08, min(1.0, n_bonds / 140.0))},
+        {"source": "backend.soul", "target": "frontend.dwellers", "intensity": max(0.08, min(1.0, soul_coherence))},
+    ]
+    return {
+        "role": "backend_puppeteer",
+        "tagline": "Frontend ecosystem, backend orchestrator.",
+        "stage": str(stage or "infant"),
+        "zones": {
+            "gaseous_sky": {
+                "count": int(layers["turbulent"]),
+                "entropy": round(float((force_field or {}).get("conservation", {}).get("entropy", 0.0) or 0.0), 4),
+            },
+            "liquid_sea": {
+                "count": int(layers["suspension"]),
+                "coherence": round(float((force_field or {}).get("agent", {}).get("coherence", 0.0) or 0.0), 4),
+            },
+            "bedrock": {
+                "count": int(layers["bedrock"]),
+                "bonded_mass": round(
+                    float(sum(float(p.get("mass", 0.0) or 0.0) for p in particles if str(p.get("layer", "")) == "bedrock")),
+                    4,
+                ),
+            },
+            "ai_dwellers": int(
+                max(sovereign_count, int((force_field or {}).get("agent", {}).get("bound_particles", 0) or 0))
+            ),
+            "secrets": {
+                "count": int(n_bonds),
+                "bond_density": round(float(n_bonds) / max(1.0, float(len(particles))), 4),
+            },
+            "secrets_count": int(n_bonds),
+        },
+        "channels": channels,
+        "threads": threads,
+        "cadence": {
+            "mode": "adaptive",
+            "recommended_collect_seconds": int(
+                max(8, min(30, float(getattr(settings, "ecosystem_collector_tick_seconds", 15))))
+            ),
+            "recommended_poll_seconds": 5,
+        },
+        "dwellers": {
+            "count": int(max(sovereign_count, len(crystal_rows))),
+            "sovereign_count": int(sovereign_count),
+        },
+        "focus": {
+            "dominant_app": humanize_app(str(top_app or "")) if top_app != "none" else "none",
+            "soul_name": soul_name,
+            "soul_coherence": round(float(soul_coherence), 4),
+        },
     }
 
 
 def _build_soul(session, user_id: int) -> dict | None:
     """Compose the digital soul from crystal neural network."""
     try:
-        from mycelium_app.crystallization import crystallize
-        from mycelium_app.digital_soul import compose_digital_soul, serialize_soul
-        from mycelium_app.force_field import compute_force_field
-        from mycelium_app.assistant_profile import get_assistant_profile_effective
-        import json as _json
-        from datetime import datetime as dt, timedelta as td
-
-        since = dt.utcnow() - td(hours=6)
-        from mycelium_app.models import SignalLedgerEvent as SLE
-        rows = session.exec(
-            select(SLE).where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
-        ).all()
-        if not rows:
+        force_state, recent_apps = _build_live_force_state(session, int(user_id), window_hours=6, n_iterations=15)
+        if not force_state:
             return None
-
-        signals = []
-        recent_apps = []
-        for r in rows:
-            try: payload = _json.loads(r.payload_json or "{}")
-            except: payload = {}
-            surface = payload.get("surface") or payload.get("stimulus") or payload
-            app = str(surface.get("app_name", r.signal_type or ""))
-            signals.append({
-                "signal_type": str(r.signal_type or ""), "app_name": app,
-                "created_at": r.created_at.isoformat() if r.created_at else "",
-                "payload": surface,
-            })
-            if r.signal_type in ("app_focus", "app_open"):
-                recent_apps.append(app.lower())
-
-        ff = compute_force_field(signals, window_hours=6, n_iterations=15)
-        crystals = crystallize(ff)
-        profile = get_assistant_profile_effective(session, user_id=user_id, project_id=None)
-
-        soul = compose_digital_soul(
-            crystals,
-            agent_name=str(profile.get("given_name", "Myco")),
-            active_signals=recent_apps[-20:],
+        return _build_soul_from_force_state(
+            session,
+            user_id=int(user_id),
+            force_state=force_state,
+            recent_apps=recent_apps,
         )
-        return serialize_soul(soul)
     except Exception:
         return None
 
@@ -1222,34 +1559,10 @@ def _build_soul(session, user_id: int) -> dict | None:
 def _build_crystals(session, user_id: int) -> dict | None:
     """Build crystallized signal complexes from force field."""
     try:
-        from mycelium_app.crystallization import crystallize, serialize_crystallization
-        from mycelium_app.force_field import compute_force_field
-        import json as _json
-        from datetime import datetime as dt, timedelta as td
-
-        since = dt.utcnow() - td(hours=6)
-        from mycelium_app.models import SignalLedgerEvent as SLE
-        rows = session.exec(
-            select(SLE).where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
-        ).all()
-        if not rows:
+        force_state, _recent_apps = _build_live_force_state(session, int(user_id), window_hours=6, n_iterations=15)
+        if not force_state:
             return None
-
-        signals = []
-        for r in rows:
-            try: payload = _json.loads(r.payload_json or "{}")
-            except: payload = {}
-            surface = payload.get("surface") or payload.get("stimulus") or payload
-            signals.append({
-                "signal_type": str(r.signal_type or ""),
-                "app_name": str(surface.get("app_name", r.signal_type or "")),
-                "created_at": r.created_at.isoformat() if r.created_at else "",
-                "payload": surface,
-            })
-
-        ff = compute_force_field(signals, window_hours=6, n_iterations=15)
-        result = crystallize(ff)
-        return serialize_crystallization(result)
+        return _build_crystals_from_force_state(force_state)
     except Exception:
         return None
 
@@ -1257,45 +1570,10 @@ def _build_crystals(session, user_id: int) -> dict | None:
 def _build_live_force_field(session, user_id: int) -> dict | None:
     """Build force field from recent signals for the live view."""
     try:
-        from datetime import datetime as dt, timedelta as td
-        since = dt.utcnow() - td(hours=6)
-        from mycelium_app.models import SignalLedgerEvent as SLE
-        rows = session.exec(
-            select(SLE)
-            .where(SLE.created_by_user_id == int(user_id), SLE.created_at >= since)
-            .order_by(SLE.created_at)
-        ).all()
-        if not rows:
+        force_state, _recent_apps = _build_live_force_state(session, int(user_id), window_hours=6, n_iterations=20)
+        if not force_state:
             return None
-
-        import json as _json
-        signals = []
-        for r in rows:
-            payload = {}
-            try:
-                payload = _json.loads(r.payload_json or "{}")
-            except Exception:
-                pass
-            surface = payload.get("surface") or payload.get("stimulus") or payload
-            signals.append({
-                "signal_type": str(r.signal_type or ""),
-                "app_name": str(surface.get("app_name", r.signal_type or "")),
-                "created_at": r.created_at.isoformat() if r.created_at else "",
-                "session_seconds": surface.get("session_seconds", 0),
-                "payload": surface,
-            })
-
-        ff = compute_force_field(signals, window_hours=6, n_iterations=20)
-        serialized = serialize_force_field(ff)
-
-        # Humanize particle names
-        for p in serialized.get("particles", []):
-            p["label"] = humanize_app(p.get("name", "")) or humanize_feature(p.get("name", ""))
-        for b in serialized.get("bonds", []):
-            b["source_label"] = humanize_app(b.get("source", ""))
-            b["target_label"] = humanize_app(b.get("target", ""))
-
-        return serialized
+        return _serialize_live_force_field(force_state)
     except Exception:
         return None
 
@@ -2026,6 +2304,14 @@ def autonomy_laws(
         .order_by(AutonomyLaw.created_at.desc())
         .limit(n)
     ).all()
+    lifecycle = _refresh_law_lifecycle(session, user_id=user_id)
+    session.commit()
+    rows = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == user_id)
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(n)
+    ).all()
     laws = []
     for row in rows:
         try:
@@ -2039,11 +2325,21 @@ def autonomy_laws(
                 "law_name": str(row.law_name or ""),
                 "confidence": float(row.confidence or 0.0),
                 "support_count": int(row.support_n or 0),
+                "law_state": _autonomy_law_state(row),
+                "decay_half_life_days": float(
+                    float(row.decay_half_life_days or 0.0)
+                    or float(getattr(settings, "ecosystem_autonomy_law_decay_half_life_days", 14.0) or 14.0)
+                ),
                 "latest_evidence": (evidence[-1] if evidence else {}),
                 "updated_at": row.created_at.isoformat() if row.created_at else "",
             }
         )
-    return {"ok": True, "count": len(laws), "laws": laws}
+    return {
+        "ok": True,
+        "count": len(laws),
+        "laws": laws,
+        "lifecycle_refresh": lifecycle,
+    }
 
 
 @router.post("/autonomy/propose")
@@ -2241,6 +2537,29 @@ def autonomy_governance_report(
     rejected = sum(1 for p in pending_rows if str(p.status or "") == "rejected")
     executed = sum(1 for p in pending_rows if str(p.status or "") == "executed")
     denom = max(1, approved + rejected)
+    laws = session.exec(
+        select(AutonomyLaw)
+        .where(AutonomyLaw.user_id == user_id)
+        .order_by(AutonomyLaw.created_at.desc())
+        .limit(500)
+    ).all()
+    law_counts = {"active": 0, "cooling": 0, "dissolved": 0}
+    dissolved_recent = 0
+    recycler_candidates: list[dict] = []
+    for law in laws:
+        state = _autonomy_law_state(law)
+        if state not in law_counts:
+            state = "active"
+        law_counts[state] = int(law_counts[state]) + 1
+        if state == "dissolved":
+            dissolved_recent += 1
+            recycler_candidates.append(
+                {
+                    "law_name": str(law.law_name or ""),
+                    "confidence": round(float(law.confidence or 0.0), 4),
+                    "support_n": int(law.support_n or 0),
+                }
+            )
 
     def _avg(vals: list[float]) -> float:
         return round(float(mean(vals)) if vals else 0.0, 4)
@@ -2267,6 +2586,13 @@ def autonomy_governance_report(
             "executed": int(executed),
             "rejected": int(rejected),
             "approval_rate": round(float(approved) / float(denom), 4),
+        },
+        "laws": {
+            "active": int(law_counts["active"]),
+            "cooling": int(law_counts["cooling"]),
+            "dissolved": int(law_counts["dissolved"]),
+            "dissolved_recent": int(dissolved_recent),
+            "recycler_candidates": recycler_candidates[:8],
         },
     }
 
