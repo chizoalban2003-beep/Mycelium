@@ -37,6 +37,7 @@
   </div>
   <div class="ml-auto flex gap-1.5">
     <button id="btnInstall" class="hud-pill text-cyan-300 hover:text-cyan-200 cursor-pointer hidden">📱 Install</button>
+    <button id="btnNarrativeMode" class="hud-pill text-amber-300 hover:text-amber-200 cursor-pointer" title="Switch narrative detail level">🧾 Simple mode</button>
     <button id="btnToggleAutoCollect" class="hud-pill text-fuchsia-300 hover:text-fuchsia-200 cursor-pointer">⏸ Pause flow</button>
     <button id="btnCollect" class="hud-pill text-emerald-300 hover:text-emerald-200 cursor-pointer">⚡ Collect</button>
     <button id="btnLearn" class="hud-pill text-indigo-300 hover:text-indigo-200 cursor-pointer">🧠 Learn</button>
@@ -76,16 +77,16 @@
 
 <!-- Ecosystem metaphor lanes -->
 <div class="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-  <div class="rounded-xl border border-rose-900/40 bg-rose-950/10 p-2">
-    <div class="text-[10px] uppercase tracking-widest text-rose-300/70">Gaseous Sky</div>
+  <div class="rounded-xl border border-rose-900/40 bg-rose-950/10 p-2" title="Gaseous Sky: fast-changing, noisy signals that are not stable yet.">
+    <div class="text-[10px] uppercase tracking-widest text-rose-300/70">Gaseous Sky <span class="text-slate-500 normal-case">(volatile signals)</span></div>
     <div id="zoneSky" class="text-sm text-rose-100 mt-1">—</div>
   </div>
-  <div class="rounded-xl border border-cyan-900/40 bg-cyan-950/10 p-2">
-    <div class="text-[10px] uppercase tracking-widest text-cyan-300/70">Liquid Sea</div>
+  <div class="rounded-xl border border-cyan-900/40 bg-cyan-950/10 p-2" title="Liquid Sea: active patterns currently being used by the model.">
+    <div class="text-[10px] uppercase tracking-widest text-cyan-300/70">Liquid Sea <span class="text-slate-500 normal-case">(active patterns)</span></div>
     <div id="zoneSea" class="text-sm text-cyan-100 mt-1">—</div>
   </div>
-  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/10 p-2">
-    <div class="text-[10px] uppercase tracking-widest text-emerald-300/70">Bedrock + Secrets</div>
+  <div class="rounded-xl border border-emerald-900/40 bg-emerald-950/10 p-2" title="Bedrock + Secrets: stable, hardened signals and their strongest hidden connections.">
+    <div class="text-[10px] uppercase tracking-widest text-emerald-300/70">Bedrock + Secrets <span class="text-slate-500 normal-case">(stable core)</span></div>
     <div id="zoneBedrock" class="text-sm text-emerald-100 mt-1">—</div>
   </div>
 </div>
@@ -546,9 +547,8 @@ function applyData(d){
   const mdColors={curious:'bg-cyan-400',content:'bg-emerald-400',agitated:'bg-rose-400',focused:'bg-indigo-400'};
   $('moodDot').className='w-2 h-2 rounded-full '+(mdColors[mood]||'bg-cyan-400');
 
-  // Insight pill
+  // Insight + narrative rendering mode
   const n=d.narrative||{};
-  if(n.insight && n.insight.length>10){$('insightPill').classList.remove('hidden'); $('insightText').textContent=n.insight;}
 
   // Backend puppeteer channel summary
   const pup = d.puppeteer || {};
@@ -634,7 +634,9 @@ function applyData(d){
       $('sigCount').textContent=m.n_particles+' | E:'+totalEnergy.toFixed(1);
     }
     const cons=ff.conservation||{};
-    if(cons.entropy>0){$('insightPill').classList.remove('hidden'); $('insightText').textContent='System load entropy '+cons.entropy.toFixed(2)+' · Forces G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1);}
+    const entropyLine = cons.entropy>0 ? ('System load entropy '+cons.entropy.toFixed(2)+' · Forces G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1)) : '';
+    if(entropyLine){ $('insightPill').classList.remove('hidden'); }
+    if(narrativeMode === 'advanced' && entropyLine){ $('insightText').textContent = entropyLine; }
   }
 
   // Layer cards (prefer sedimentation features, fallback to force-field particles)
@@ -660,10 +662,27 @@ function applyData(d){
   const collective = Number(dwellers.collective_fitness || 0);
   const mode = String(dwellers.autonomy_mode || 'observe');
   $('insightPill').classList.remove('hidden');
-  if (n.insight && n.insight.length > 10) {
+  if (narrativeMode === 'simple') {
+    $('insightText').textContent = (n.next_step && n.next_step.length > 6)
+      ? n.next_step
+      : 'Keep using your device. I will continue learning your normal flow.';
+  } else if (n.insight && n.insight.length > 10) {
     $('insightText').textContent = `${n.insight} · dwellers ${mode} · fitness ${fmtFloat(collective, 2)}`;
   } else {
     $('insightText').textContent = `Dwellers ${mode} · fitness ${fmtFloat(collective, 2)} · backend orchestration active`;
+  }
+
+  if (typeof queueTelemetryEvent === 'function') {
+    queueTelemetryEvent('live_puppeteer_render', {
+      stage: stage,
+      mood: mood,
+      n_signals: Number((d.summary||{}).n_signals || 0),
+      channel_count: channels.length,
+      ai_dwellers: Number((zones.ai_dwellers || 0)),
+      secrets_count: Number((zones.secrets_count || 0)),
+      auto_collect_enabled: !!autoCollectEnabled,
+      simple_language_mode: !!simpleLanguageMode,
+    });
   }
 }
 

@@ -35,6 +35,7 @@ from mycelium_app.sedimentation import run_sedimentation
 from mycelium_app.signal_collector import CollectorState
 from mycelium_app.schemas import EcosystemExperimentRunRequest
 from mycelium_app.settings import settings
+from mycelium_app.stimulus import record_stimulus_event
 
 
 router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
@@ -1096,6 +1097,23 @@ def collect_signals(
         user_id=int(current_user.id or 0),
         device_id=str(settings.nexus_device_id or "local"),
     )
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="ecosystem_api",
+            modality="interaction",
+            signal_type="live_collect_triggered",
+            stimulus={
+                "signals_collected": int(n),
+                "tick": int(_shared_collector_state.tick_count),
+            },
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
     return {"ok": True, "signals_collected": n, "tick": _shared_collector_state.tick_count}
 
 
@@ -1113,6 +1131,24 @@ def trigger_learning(
         window_hours=max(1, min(window_hours, 168)),
         bucket_minutes=max(5, min(bucket_minutes, 120)),
     )
+    try:
+        record_stimulus_event(
+            session,
+            user_id=int(current_user.id or 0),
+            project_id=None,
+            device_id=str(settings.nexus_device_id or "local"),
+            source="ecosystem_api",
+            modality="interaction",
+            signal_type="live_learn_triggered",
+            stimulus={
+                "ok": bool(result.get("ok", False)),
+                "stage": str(result.get("stage", "")),
+                "actions": list(result.get("actions", [])[:10]),
+            },
+            occurred_at=datetime.utcnow(),
+        )
+    except Exception:
+        pass
     return result
 
 
