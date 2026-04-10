@@ -740,3 +740,26 @@ class AutonomyActionFeedback(SQLModel, table=True):
 
     decision: str = Field(default="approve", index=True)  # approve|reject|neutral
     notes: str = Field(default="")
+
+
+class AutonomyPendingAction(SQLModel, table=True):
+    """High-impact autonomy actions that require explicit human confirmation."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+
+    status: str = Field(default="proposed", index=True)  # proposed|approved|rejected|expired|executed
+    mode: str = Field(default="autonomous", index=True)  # autonomous|manual
+
+    action_name: str = Field(default="", index=True)
+    rationale: str = Field(default="")
+
+    risk_score: float = Field(default=0.0, index=True)
+    risk_level: str = Field(default="safe", index=True)
+    expected_utility: float = Field(default=0.0)
+    heat_score: float = Field(default=0.0, index=True)
+
+    proposal_json: str = "{}"
+    confirmation_notes: str = Field(default="")

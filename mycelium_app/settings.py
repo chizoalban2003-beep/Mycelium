@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "Myco"
+    project_codename: str = "Project Resonance"
+    project_tagline: str = "Where data settles into life."
     system_motto: str = "Grow with Data."
     secret_key: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 60 * 24 * 7
@@ -175,9 +177,12 @@ class Settings(BaseSettings):
     ecosystem_autonomy_action_cooldown_minutes: int = 45
     ecosystem_autonomy_min_confidence: float = 0.35
     ecosystem_autonomy_high_risk_threshold: float = 0.72
+    ecosystem_autonomy_governance_risk_threshold: float = 0.72
+    ecosystem_autonomy_heat_governance_threshold: float = 0.78
     ecosystem_autonomy_nudge_feedback_learning_rate: float = 0.08
     ecosystem_autonomy_goal_weekly_refresh_hours: int = 24
     ecosystem_autonomy_memory_consolidation_tick_minutes: int = 180
+    ecosystem_autonomy_heat_threshold: float = 0.68
 
     @field_validator("app_name", mode="before")
     @classmethod
