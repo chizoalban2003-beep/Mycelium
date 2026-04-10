@@ -66,6 +66,11 @@ function showFallback(reason){
 
 if (isOnboarding) {
   setTimeout(() => { window.location.href = '/live'; }, 26000);
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = 'Skip →';
+  skipBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:100;padding:8px 20px;border-radius:20px;background:rgba(34,211,238,0.2);border:1px solid rgba(34,211,238,0.3);color:#22d3ee;font-size:13px;cursor:pointer;backdrop-filter:blur(4px)';
+  skipBtn.onclick = () => { window.location.href = '/live'; };
+  document.body.appendChild(skipBtn);
 }
 
 if (typeof window.THREE === 'undefined') {
@@ -73,6 +78,7 @@ if (typeof window.THREE === 'undefined') {
   return;
 }
 
+try {
 const W=window.innerWidth, H=window.innerHeight;
 
 // --- Renderer ---
@@ -206,7 +212,9 @@ const agentGroup=new THREE.Group();
 agentGroup.visible=false;
 
 // Body
-const bodyGeo=new THREE.CapsuleGeometry(1.8,4,16,32);
+const bodyGeo = (typeof THREE.CapsuleGeometry === 'function')
+  ? new THREE.CapsuleGeometry(1.8,4,16,32)
+  : new THREE.CylinderGeometry(1.8,1.8,6,24);
 const bodyMat=new THREE.MeshPhongMaterial({color:0x0f172a,emissive:0x22d3ee,emissiveIntensity:0.4,transparent:true,opacity:0});
 const body=new THREE.Mesh(bodyGeo,bodyMat);
 agentGroup.add(body);
@@ -524,21 +532,15 @@ requestAnimationFrame(animate);
   }catch(e){}
 })();
 
-// Add onboarding skip button.
-if (isOnboarding) {
-  const skipBtn = document.createElement('button');
-  skipBtn.textContent = 'Skip →';
-  skipBtn.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:100;padding:8px 20px;border-radius:20px;background:rgba(34,211,238,0.2);border:1px solid rgba(34,211,238,0.3);color:#22d3ee;font-size:13px;cursor:pointer;backdrop-filter:blur(4px)';
-  skipBtn.onclick = () => { window.location.href = '/live'; };
-  document.body.appendChild(skipBtn);
-}
-
 // Resize
 window.addEventListener('resize',()=>{
   const w=window.innerWidth,h=window.innerHeight;
   camera.aspect=w/h;camera.updateProjectionMatrix();
   renderer.setSize(w,h);
 });
+} catch (e) {
+  showFallback('Cinematic intro failed to initialize. Please continue to Live.');
+}
 })();
 </script>
 </body>
