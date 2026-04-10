@@ -18,7 +18,7 @@ from mycelium_app.hive_empathy import compute_wisdom_latest, stable_digest, summ
 from mycelium_app.homeostasis import list_recent_user_ids, tick_homeostasis
 from mycelium_app.metric_snapshot import run_validation_shadow
 from mycelium_app.messaging_bridge import dispatch_pending_nudges
-from mycelium_app.models import NexusNudge, WisdomIntegrationState
+from mycelium_app.models import EcosystemExperimentTick, NexusNudge, User, WisdomIntegrationState
 from mycelium_app.telemetry_assistant import maybe_queue_telemetry_assistant_nudge
 from mycelium_app.routes.auth import router as auth_router
 from mycelium_app.routes.assistant import router as assistant_router
@@ -396,6 +396,47 @@ async def _learning_daemon() -> None:
         await asyncio.sleep(float(tick_s))
 
 
+async def _experiment_daemon() -> None:
+    """Background daemon that periodically runs force+mass experiment snapshots."""
+    from mycelium_app.routes.ecosystem import run_force_experiment_tick
+
+    await asyncio.sleep(12.0)
+    tick_minutes = max(5, min(int(getattr(settings, "ecosystem_experiment_tick_minutes", 30)), 720))
+
+    while True:
+        try:
+            with Session(engine) as session:
+                user_ids = session.exec(select(User.id)).all()
+                for uid in [int(u) for u in user_ids[:20] if u is not None]:
+                    # Skip users with very recent experiment ticks.
+                    cutoff = datetime.utcnow() - timedelta(minutes=tick_minutes - 1)
+                    latest = session.exec(
+                        select(EcosystemExperimentTick.id)
+                        .where(
+                            EcosystemExperimentTick.user_id == uid,
+                            EcosystemExperimentTick.created_at >= cutoff,
+                        )
+                        .order_by(EcosystemExperimentTick.created_at.desc())
+                        .limit(1)
+                    ).first()
+                    if latest:
+                        continue
+                    try:
+                        run_force_experiment_tick(
+                            session,
+                            user_id=uid,
+                            cycles=120,
+                            mutation_rate=float(getattr(settings, "ecosystem_experiment_mutation_rate", 0.12)),
+                            selection_pressure_ui=0.45,
+                            thermal_noise=float(getattr(settings, "ecosystem_experiment_thermal_noise", 0.08)),
+                        )
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        await asyncio.sleep(float(tick_minutes * 60))
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     create_db_and_tables()
@@ -413,6 +454,8 @@ async def on_startup() -> None:
         asyncio.create_task(_signal_collector_daemon())
     if bool(getattr(settings, "ecosystem_learning_enabled", False)):
         asyncio.create_task(_learning_daemon())
+    if bool(getattr(settings, "ecosystem_experiment_enabled", False)):
+        asyncio.create_task(_experiment_daemon())
     # Desktop notification daemon
     asyncio.create_task(_desktop_notify_daemon())
 

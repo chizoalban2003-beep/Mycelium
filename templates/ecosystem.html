@@ -299,6 +299,10 @@
     trace: document.getElementById('expTrace'),
   };
 
+  function selectionUiFromStored(v) {
+    return Math.max(0.01, Math.min(1.0, (Number(v || 1.35) - 1.0) / 2.0));
+  }
+
   function renderExperiment(data) {
     if (!data || !data.ok) return;
     const out = data.output || {};
@@ -311,6 +315,23 @@
     expIds.best.textContent = `id=${best.id || '—'} fitness=${Number(best.fitness || 0).toFixed(3)} cohesion=${Number(best.cohesion || 0).toFixed(3)} mutations=${best.mutations || 0}`;
     const pop = Array.isArray(out.population_trace) ? out.population_trace : [];
     expIds.trace.textContent = pop.length ? pop.map((v, i) => `${i}:${Number(v).toFixed(2)}`).join('  ') : 'No trace yet';
+  }
+
+  async function fetchLatestExperiment() {
+    try {
+      const r = await fetch(API + '/experiment/latest', { credentials: 'same-origin' });
+      const d = await r.json();
+      if (!d.ok || !d.has_data) return;
+      const tick = d.tick || {};
+      expIds.cycles.value = String(tick.cycles || expIds.cycles.value || 120);
+      expIds.mutation.value = String(Number(tick.mutation_rate || 0.12).toFixed(2));
+      expIds.selection.value = String(selectionUiFromStored(tick.selection_pressure).toFixed(2));
+      expIds.thermal.value = String(Number(tick.thermal_noise || 0.08).toFixed(2));
+      renderExperiment({ ok: true, output: d.output || {} });
+      expIds.status.textContent = `Latest experiment loaded (${tick.created_at ? tick.created_at.slice(0, 19).replace('T', ' ') + ' UTC' : 'saved run'})`;
+    } catch (_e) {
+      // Non-fatal: keep manual controls available.
+    }
   }
 
   expIds.button.addEventListener('click', async () => {
@@ -341,6 +362,7 @@
   });
 
   fetchState();
+  fetchLatestExperiment();
 })();
 </script>
 {% endblock %}

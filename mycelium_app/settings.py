@@ -166,6 +166,7 @@ class Settings(BaseSettings):
     ecosystem_experiment_tick_minutes: int = 30
     ecosystem_experiment_mutation_rate: float = 0.06
     ecosystem_experiment_selection_pressure: float = 1.35
+    ecosystem_experiment_thermal_noise: float = 0.08
 
     @field_validator("app_name", mode="before")
     @classmethod

@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from statistics import mean
 import random
+import json
 
 from fastapi import APIRouter, Depends, Body
 from sqlmodel import Session, select
@@ -17,7 +18,7 @@ from mycelium_app.learning_daemon import run_learning_tick, run_signal_collectio
 from mycelium_app.force_field import compute_force_field, serialize_force_field
 from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
 from mycelium_app.jarvis import chat as jarvis_chat
-from mycelium_app.models import EcosystemTimeSeries, User
+from mycelium_app.models import EcosystemExperimentTick, EcosystemTimeSeries, User
 from mycelium_app.pattern_engine import analyze_patterns, generate_proactive_suggestions
 from mycelium_app.narrative import generate_ecosystem_narrative
 from mycelium_app.sedimentation import run_sedimentation
@@ -973,34 +974,48 @@ def ecosystem_evolution(
     return _experimental_force_evolution(session, user_id=user_id, steps=steps)
 
 
-@router.post("/experiment/run")
-def run_force_experiment(
-    payload: EcosystemExperimentRunRequest,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
-):
-    """Run experimental force+mass evolution with caller-supplied knobs."""
-    user_id = int(current_user.id or 0)
-    cycles = int(payload.cycles or 120)
-    mutation_rate = float(payload.mutation_rate or settings.ecosystem_experiment_mutation_rate or 0.12)
-    thermal_noise = float(payload.thermal_noise or 0.08)
+def run_force_experiment_tick(
+    session: Session,
+    *,
+    user_id: int,
+    cycles: int | None = None,
+    mutation_rate: float | None = None,
+    selection_pressure_ui: float | None = None,
+    thermal_noise: float | None = None,
+) -> dict:
+    """Run one experiment cycle and persist the result for history/latest APIs."""
+    resolved_cycles = max(4, min(int(cycles or 120), 1000))
+    resolved_mutation = float(
+        mutation_rate if mutation_rate is not None else settings.ecosystem_experiment_mutation_rate or 0.12
+    )
+    resolved_mutation = max(0.01, min(0.9, resolved_mutation))
+    resolved_thermal = float(
+        thermal_noise
+        if thermal_noise is not None
+        else getattr(settings, "ecosystem_experiment_thermal_noise", 0.08)
+    )
+    resolved_thermal = max(0.0, min(1.0, resolved_thermal))
+    sel_ui = float(selection_pressure_ui if selection_pressure_ui is not None else 0.45)
     # UI submits 0..1, simulation uses multiplicative threshold 1.01..3.0
-    sel_ui = float(payload.selection_pressure or 0.45)
-    selection_pressure = 1.0 + max(0.01, min(2.0, sel_ui * 2.0))
+    resolved_selection = 1.0 + max(0.01, min(2.0, sel_ui * 2.0))
 
     raw = _experimental_force_evolution(
         session,
         user_id=user_id,
-        steps=cycles,
-        mutation_rate=mutation_rate,
-        selection_pressure=selection_pressure,
-        thermal_noise=thermal_noise,
+        steps=resolved_cycles,
+        mutation_rate=resolved_mutation,
+        selection_pressure=resolved_selection,
+        thermal_noise=resolved_thermal,
     )
     species = raw.get("species") or []
     timeline = raw.get("timeline") or []
     best = species[0] if species else {}
     stage_rank = {"infant": 0, "toddler": 1, "adolescent": 2, "adult": 3}
-    emergent_stage = max((sp.get("stage", "infant") for sp in species), key=lambda s: stage_rank.get(str(s), 0), default="infant")
+    emergent_stage = max(
+        (sp.get("stage", "infant") for sp in species),
+        key=lambda s: stage_rank.get(str(s), 0),
+        default="infant",
+    )
 
     output = {
         "seed_particles": int(raw.get("seed_points", 0)),
@@ -1017,7 +1032,117 @@ def run_force_experiment(
         "force_constants": raw.get("force_constants", {}),
         "message": raw.get("narrative", ""),
     }
+
+    try:
+        row = EcosystemExperimentTick(
+            user_id=int(user_id),
+            cycles=resolved_cycles,
+            mutation_rate=resolved_mutation,
+            selection_pressure=resolved_selection,
+            thermal_noise=resolved_thermal,
+            seed_particles=int(output["seed_particles"]),
+            n_species=int(output["n_species"]),
+            emergent_stage=str(output["emergent_stage"]),
+            novelty_index=float(output["novelty_index"]),
+            output_json=json.dumps(output),
+            best_species_json=json.dumps(output.get("best_species", {})),
+        )
+        session.add(row)
+        session.commit()
+    except Exception:
+        # Experiment persistence should not block response.
+        pass
     return {"ok": True, "output": output}
+
+
+@router.post("/experiment/run")
+def run_force_experiment(
+    payload: EcosystemExperimentRunRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Run experimental force+mass evolution with caller-supplied knobs."""
+    user_id = int(current_user.id or 0)
+    return run_force_experiment_tick(
+        session,
+        user_id=user_id,
+        cycles=int(payload.cycles or 120),
+        mutation_rate=float(payload.mutation_rate or settings.ecosystem_experiment_mutation_rate or 0.12),
+        selection_pressure_ui=float(payload.selection_pressure or 0.45),
+        thermal_noise=float(
+            payload.thermal_noise
+            or getattr(settings, "ecosystem_experiment_thermal_noise", 0.08)
+        ),
+    )
+
+
+@router.get("/experiment/latest")
+def latest_force_experiment(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    row = session.exec(
+        select(EcosystemExperimentTick)
+        .where(EcosystemExperimentTick.user_id == user_id)
+        .order_by(EcosystemExperimentTick.created_at.desc())
+        .limit(1)
+    ).first()
+    if not row:
+        return {"ok": True, "has_data": False}
+    try:
+        output = json.loads(row.output_json or "{}")
+    except Exception:
+        output = {}
+    return {
+        "ok": True,
+        "has_data": True,
+        "tick": {
+            "id": int(row.id or 0),
+            "created_at": row.created_at.isoformat() if row.created_at else "",
+            "cycles": int(row.cycles),
+            "mutation_rate": float(row.mutation_rate),
+            "selection_pressure": float(row.selection_pressure),
+            "thermal_noise": float(row.thermal_noise),
+            "seed_particles": int(row.seed_particles),
+            "n_species": int(row.n_species),
+            "emergent_stage": str(row.emergent_stage),
+            "novelty_index": float(row.novelty_index),
+        },
+        "output": output,
+    }
+
+
+@router.get("/experiment/history")
+def force_experiment_history(
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    user_id = int(current_user.id or 0)
+    n = max(1, min(int(limit), 200))
+    rows = session.exec(
+        select(EcosystemExperimentTick)
+        .where(EcosystemExperimentTick.user_id == user_id)
+        .order_by(EcosystemExperimentTick.created_at.desc())
+        .limit(n)
+    ).all()
+    history = [
+        {
+            "id": int(r.id or 0),
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "cycles": int(r.cycles),
+            "mutation_rate": float(r.mutation_rate),
+            "selection_pressure": float(r.selection_pressure),
+            "thermal_noise": float(r.thermal_noise),
+            "seed_particles": int(r.seed_particles),
+            "n_species": int(r.n_species),
+            "emergent_stage": str(r.emergent_stage),
+            "novelty_index": float(r.novelty_index),
+        }
+        for r in rows
+    ]
+    return {"ok": True, "count": len(history), "history": history}
 
 @router.post("/chat")
 def ecosystem_chat(

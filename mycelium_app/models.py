@@ -619,3 +619,25 @@ class EcosystemTimeSeries(SQLModel, table=True):
     force_em: float = Field(default=0.5)
     force_strong: float = Field(default=0.8)
     force_weak: float = Field(default=0.02)
+
+
+class EcosystemExperimentTick(SQLModel, table=True):
+    """Persistent record of force+mass evolution experiment ticks."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+
+    cycles: int = Field(default=120, index=True)
+    mutation_rate: float = Field(default=0.12)
+    selection_pressure: float = Field(default=1.35)
+    thermal_noise: float = Field(default=0.08)
+
+    seed_particles: int = Field(default=0)
+    n_species: int = Field(default=0, index=True)
+    emergent_stage: str = Field(default="infant", index=True)
+    novelty_index: float = Field(default=0.0, index=True)
+
+    # JSON blobs for richer replay in UI.
+    output_json: str = "{}"
+    best_species_json: str = "{}"
