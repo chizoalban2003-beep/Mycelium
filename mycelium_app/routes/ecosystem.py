@@ -104,10 +104,14 @@ def _experimental_force_evolution(
     steps = max(4, min(int(steps), 1000))
     timeline: list[dict] = []
     default_mutation = 0.08 + base_entropy * 0.07
-    mutation_rate = float(settings.ecosystem_experiment_mutation_rate) if mutation_rate is None else float(mutation_rate)
+    mutation_rate = (
+        float(getattr(settings, "ecosystem_experiment_mutation_rate", 0.12))
+        if mutation_rate is None
+        else float(mutation_rate)
+    )
     mutation_rate = max(0.01, min(0.90, mutation_rate if mutation_rate > 0 else default_mutation))
     selection_pressure = (
-        float(settings.ecosystem_experiment_selection_pressure)
+        float(getattr(settings, "ecosystem_experiment_selection_pressure", 1.35))
         if selection_pressure is None
         else float(selection_pressure)
     )
@@ -984,15 +988,17 @@ def run_force_experiment_tick(
     thermal_noise: float | None = None,
 ) -> dict:
     """Run one experiment cycle and persist the result for history/latest APIs."""
+    settings_mutation_default = float(getattr(settings, "ecosystem_experiment_mutation_rate", 0.12) or 0.12)
+    settings_thermal_default = float(getattr(settings, "ecosystem_experiment_thermal_noise", 0.08) or 0.08)
     resolved_cycles = max(4, min(int(cycles or 120), 1000))
     resolved_mutation = float(
-        mutation_rate if mutation_rate is not None else settings.ecosystem_experiment_mutation_rate or 0.12
+        mutation_rate if mutation_rate is not None else settings_mutation_default
     )
     resolved_mutation = max(0.01, min(0.9, resolved_mutation))
     resolved_thermal = float(
         thermal_noise
         if thermal_noise is not None
-        else getattr(settings, "ecosystem_experiment_thermal_noise", 0.08)
+        else settings_thermal_default
     )
     resolved_thermal = max(0.0, min(1.0, resolved_thermal))
     sel_ui = float(selection_pressure_ui if selection_pressure_ui is not None else 0.45)
@@ -1063,17 +1069,26 @@ def run_force_experiment(
 ):
     """Run experimental force+mass evolution with caller-supplied knobs."""
     user_id = int(current_user.id or 0)
-    return run_force_experiment_tick(
-        session,
-        user_id=user_id,
-        cycles=int(payload.cycles or 120),
-        mutation_rate=float(payload.mutation_rate or settings.ecosystem_experiment_mutation_rate or 0.12),
-        selection_pressure_ui=float(payload.selection_pressure or 0.45),
-        thermal_noise=float(
-            payload.thermal_noise
-            or getattr(settings, "ecosystem_experiment_thermal_noise", 0.08)
-        ),
-    )
+    try:
+        return run_force_experiment_tick(
+            session,
+            user_id=user_id,
+            cycles=int(payload.cycles or 120),
+            mutation_rate=float(
+                payload.mutation_rate
+                if payload.mutation_rate is not None
+                else getattr(settings, "ecosystem_experiment_mutation_rate", 0.12)
+            ),
+            selection_pressure_ui=float(payload.selection_pressure or 0.45),
+            thermal_noise=float(
+                payload.thermal_noise
+                if payload.thermal_noise is not None
+                else getattr(settings, "ecosystem_experiment_thermal_noise", 0.08)
+            ),
+        )
+    except Exception as exc:
+        # Return actionable error payload to avoid opaque "Experiment failed" UI.
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
 @router.get("/experiment/latest")

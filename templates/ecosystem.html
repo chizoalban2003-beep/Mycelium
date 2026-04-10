@@ -350,8 +350,9 @@
         body: JSON.stringify(payload),
       });
       const d = await r.json();
-      if (!d.ok) {
-        expIds.status.textContent = 'Experiment failed';
+      if (!r.ok || !d.ok) {
+        const detail = (d && (d.detail || d.message || d.error)) ? String(d.detail || d.message || d.error) : `HTTP ${r.status}`;
+        expIds.status.textContent = 'Experiment failed: ' + detail;
         return;
       }
       renderExperiment(d);
