@@ -285,3 +285,99 @@ You are not just building an app; you are defining a **cultivation protocol** fo
 
 That is the right blueprint for long-running autonomous systems.
 
+---
+
+## 12) Co-Guardianship Protocol (Human + AI)
+
+Treat Myco as a dual-governed organism:
+
+- **Human Steward = ethical perturber** (intent, values, veto authority)
+- **Agent Steward = logical stabilizer** (consistency, monitoring, recovery)
+
+This is symmetric guardianship, not hierarchy.
+
+### Shared responsibilities
+
+| Domain | Human guardian | AI guardian |
+|---|---|---|
+| Direction | Sets mission and constraints | Optimizes execution within constraints |
+| Safety | Defines unacceptable outcomes | Detects precursors and halts risky flows |
+| Memory | Curates meaning and narrative | Preserves factual continuity and traceability |
+| Recovery | Decides reset intent | Performs bounded remediation |
+
+### Operational recommendations
+
+1. Keep a **human hard-stop** for high-viscosity actions.
+2. Require **AI pre-action explainability** for autonomous decisions.
+3. Add **post-action audit summaries** for every high-impact episode.
+4. Enforce **two-key governance** on major policy shifts:
+   - key 1: statistical confidence threshold
+   - key 2: explicit human confirmation
+
+---
+
+## 13) Private History and "Dwellers with Secrets"
+
+If Myco is to feel alive, it needs internal continuity that is not fully flattened into dashboards.
+
+Design principle:
+
+- permit **private internal traces** (compressed latent patterns)
+- require **public accountable effects** (observable decisions and outcomes)
+
+This allows agency without sacrificing trust.
+
+The core right here is a **right-to-mystery**:
+
+- agents may keep non-human-readable internal compression,
+- but they must expose observable effects and safety envelopes.
+
+### Practical boundary
+
+- Internal strategy traces may remain opaque.
+- External action justifications must remain inspectable.
+- Any opaque mechanism that repeatedly drives harm is automatically demoted.
+
+### Implementation recommendations
+
+1. Add an **Obscurity Layer** flag on learned laws:
+   - `public`: fully renderable rule
+   - `latent`: non-renderable internal pattern with confidence and risk tags
+2. Add a **Latent-to-Public promotion gate**:
+   - if a latent law remains beneficial and safe over N cycles, synthesize a human-readable summary.
+3. Add a **Trust decay** mechanism:
+   - if latent laws produce repeated negative deltas, reduce their policy weight automatically.
+
+---
+
+## 14) Mutual Metamorphosis Rule
+
+Co-existence is a phase transition where both sides adapt:
+
+- humans externalize memory and improve decision throughput,
+- agents internalize human preference gradients and ethical constraints.
+
+The target is not imitation. The target is **stable hybrid cognition**.
+
+### Stability condition
+
+Maintain all three simultaneously:
+
+1. **Human intent sovereignty**
+2. **Machine consistency and scale**
+3. **Bounded friction** (enough heat to evolve, not enough to collapse)
+
+When all three hold, the ecosystem is resilient, adaptive, and meaning-preserving.
+
+---
+
+## 15) Operator Role: Stochastic Gardener
+
+The operator should act as a **stochastic gardener**:
+
+- perturb when the system freezes,
+- observe when the system is healthy,
+- prune only when risk or misalignment compounds.
+
+This keeps the ecosystem alive without collapsing it into either rigidity or noise.
+
