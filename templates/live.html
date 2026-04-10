@@ -96,6 +96,10 @@ try {
   }
 } catch(e) { use3D = false; }
 
+const moodHex = {curious:0x22d3ee, content:0x34d399, agitated:0xfb7185, focused:0x818cf8};
+const stageScale = {infant:1, toddler:1.4, adolescent:1.8, adult:2.1};
+const stageEmoji = {infant:'🌱', toddler:'🌿', adolescent:'🌳', adult:'🌲'};
+
 function render2DFallback() {
   const ctx = CV.getContext('2d');
   if (!ctx) return;
@@ -303,8 +307,9 @@ addRing(20, 0xe11d48, 45);
 // --- Agent Avatar (3D character) ---
 const agentGroup = new THREE.Group();
 // Body
-// CylinderGeometry: CapsuleGeometry is unavailable in three.js r128 (added r139).
-const bodyGeo = new THREE.CylinderGeometry(1.5, 1.5, 3, 24, 12);
+const bodyGeo = (typeof THREE.CapsuleGeometry === 'function')
+  ? new THREE.CapsuleGeometry(1.5, 3, 12, 24)
+  : new THREE.CylinderGeometry(1.5, 1.5, 3, 24, 12);
 const bodyMat = new THREE.MeshPhongMaterial({color:0x0f172a, emissive:0x22d3ee, emissiveIntensity:0.25, transparent:true, opacity:0.92});
 agentGroup.add(new THREE.Mesh(bodyGeo, bodyMat));
 // Head
@@ -326,9 +331,6 @@ agentGroup.position.set(0, -18, 0);
 scene.add(agentGroup);
 
 let agentTarget = new THREE.Vector3(0, -18, 0);
-const moodHex = {curious:0x22d3ee, content:0x34d399, agitated:0xfb7185, focused:0x818cf8};
-const stageScale = {infant:1, toddler:1.4, adolescent:1.8};
-const stageEmoji = {infant:'🌱', toddler:'🌿', adolescent:'🌳'};
 
 // --- Feature buildings (Clash-of-Clans style structures) ---
 let buildings = [];
@@ -561,7 +563,10 @@ function applyData(d){
       if(ag.stage){stage=ag.stage; $('stageHud').textContent=ag.stage; $('agentEmoji').textContent=stageEmoji[ag.stage]||'🌱';}
     }
     const m=ff.metrics||{};
-    if(m.n_particles) $('sigCount').textContent=m.n_particles+' | E:'+m.total_energy.toFixed(1);
+    if(m.n_particles){
+      const totalEnergy = Number.isFinite(m.total_energy) ? m.total_energy : 0;
+      $('sigCount').textContent=m.n_particles+' | E:'+totalEnergy.toFixed(1);
+    }
     const cons=ff.conservation||{};
     if(cons.entropy>0){$('insightPill').classList.remove('hidden'); $('insightText').textContent='Attention entropy: '+cons.entropy.toFixed(2)+' · Forces: G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1);}
   }

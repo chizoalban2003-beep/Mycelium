@@ -218,7 +218,7 @@ def build_mission_log(
                 interruptions = _float_from_payload(tabular, "trial_interruptions", "interruption_count")
             if interruptions is not None:
                 detail_bits.append(f"interruptions {int(interruptions)}")
-            detail = " • ".join(detail_bits) if detail_bits else f"{row.device_id or 'local'} • {row.source or 'signal'}"
+            detail = " • ".join(detail_bits) if detail_bits else f"{row.device_id or 'local'} • {row.signal_type or 'signal'}"
             drafts.append(
                 _MissionLogDraft(
                     created_at=row.created_at,
@@ -244,7 +244,7 @@ def build_mission_log(
                 mode="[FLOW]",
                 tier="S",
                 title=f"{signal_name} observed",
-                detail=f"{row.device_id or 'local'} • {row.source or 'signal'}",
+                detail=f"{row.device_id or 'local'} • {row.signal_type or 'signal'}",
                 delta=delta,
                 delta_text=_delta_text(delta),
             )
