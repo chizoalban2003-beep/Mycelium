@@ -4,6 +4,8 @@
   #world{position:relative;width:100%;height:70vh;min-height:420px;border-radius:12px;overflow:hidden;background:#020617;touch-action:none}
   #hud{position:absolute;top:0;left:0;right:0;z-index:10;pointer-events:none}
   #hud>*{pointer-events:auto}
+  #actionStatus{position:absolute;left:12px;bottom:10px;z-index:11;max-width:min(82vw,560px);font-size:12px;color:#d1fae5;background:rgba(2,6,23,0.75);border:1px solid rgba(52,211,153,0.35);padding:6px 10px;border-radius:10px;backdrop-filter:blur(4px);opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .2s ease}
+  #actionStatus.show{opacity:1;transform:translateY(0)}
   .hud-pill{backdrop-filter:blur(8px);background:rgba(2,6,23,0.7);border:1px solid rgba(34,211,238,0.2);border-radius:9999px;padding:4px 14px;font-size:11px;display:inline-flex;align-items:center;gap:6px}
   .signal-toast{animation:toastIn .4s ease;font-size:10px;padding:3px 10px;border-radius:6px;background:rgba(2,6,23,0.75);border:1px solid rgba(34,211,238,0.15);backdrop-filter:blur(4px)}
   @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
@@ -46,10 +48,11 @@
   <canvas id="c"></canvas>
   <!-- Signal toast feed -->
   <div id="toasts" class="absolute top-12 right-2 w-48 space-y-1 pointer-events-none" style="max-height:200px;overflow:hidden"></div>
+  <div id="actionStatus" aria-live="polite"></div>
   <!-- Layer labels in world -->
-  <div class="absolute left-3 text-[9px] uppercase tracking-widest font-medium pointer-events-none" style="top:8%;color:rgba(251,113,133,0.5)">Changing Signals</div>
-  <div class="absolute left-3 text-[9px] uppercase tracking-widest font-medium pointer-events-none" style="top:42%;color:rgba(34,211,238,0.5)">Active Patterns</div>
-  <div class="absolute left-3 text-[9px] uppercase tracking-widest font-medium pointer-events-none" style="top:76%;color:rgba(52,211,153,0.5)">Foundation</div>
+  <div class="absolute left-3 text-[9px] uppercase tracking-widest font-medium pointer-events-none" style="top:8%;color:rgba(251,113,133,0.5)">Gaseous Sky</div>
+  <div class="absolute left-3 text-[9px] uppercase tracking-widest font-medium pointer-events-none" style="top:42%;color:rgba(34,211,238,0.5)">Liquid Sea</div>
+  <div class="absolute left-3 text-[9px] uppercase tracking-widest font-medium pointer-events-none" style="top:76%;color:rgba(52,211,153,0.5)">Bedrock</div>
 </div>
 
 <!-- Layer cards -->
@@ -502,6 +505,22 @@ let chatHistory = [];
 
 function fmtCount(v){ const n=Number(v||0); return Number.isFinite(n)?String(Math.max(0,Math.round(n))):'0'; }
 function fmtFloat(v, d=2){ const n=Number(v||0); return Number.isFinite(n)?n.toFixed(d):'0.00'; }
+let statusTimer = null;
+function setActionStatus(msg, level='ok'){
+  const el = $('actionStatus');
+  if(!el) return;
+  el.textContent = String(msg||'');
+  const palette = level === 'warn'
+    ? { color:'#fef3c7', border:'rgba(251,191,36,0.45)' }
+    : level === 'error'
+      ? { color:'#fee2e2', border:'rgba(251,113,133,0.55)' }
+      : { color:'#d1fae5', border:'rgba(52,211,153,0.35)' };
+  el.style.color = palette.color;
+  el.style.borderColor = palette.border;
+  el.classList.add('show');
+  if (statusTimer) clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => el.classList.remove('show'), 4200);
+}
 
 async function poll(){
   try{
@@ -535,10 +554,10 @@ function applyData(d){
   const pup = d.puppeteer || {};
   const channels = Array.isArray(pup.channels) ? pup.channels : [];
   if (channels.length) {
-    const top = channels.slice().sort((a,b)=>Number(b.flow||0)-Number(a.flow||0))[0];
+    const top = channels.slice().sort((a,b)=>Number(b.throughput||0)-Number(a.throughput||0))[0];
     $('puppeteerPill').classList.remove('hidden');
-    $('puppeteerText').textContent = `Backend puppeteer: ${String(top.channel||'orchestrator')} flow ${fmtFloat(top.flow,2)}`;
-    if (top.channel === 'governance') {
+    $('puppeteerText').textContent = `Backend puppeteer: ${String(top.label||top.id||'orchestrator')} throughput ${fmtCount(top.throughput)}`;
+    if (String(top.id||'') === 'governance') {
       autoCollectEnabled = false;
       autoCollectMs = Math.max(autoCollectMs, 18000);
       if (toggleAutoCollectBtn) {
@@ -547,7 +566,8 @@ function applyData(d){
       restartAutoCollectLoop();
     } else {
       autoCollectEnabled = true;
-      autoCollectMs = Number(pup.poll_hint_ms || 12000) || 12000;
+      const rec = Number((((pup||{}).cadence||{}).recommended_collect_seconds || 12));
+      autoCollectMs = Math.max(4000, Math.min(45000, rec * 1000));
       if (toggleAutoCollectBtn) {
         toggleAutoCollectBtn.textContent = '⏸ Pause flow';
       }
@@ -614,7 +634,7 @@ function applyData(d){
       $('sigCount').textContent=m.n_particles+' | E:'+totalEnergy.toFixed(1);
     }
     const cons=ff.conservation||{};
-    if(cons.entropy>0){$('insightPill').classList.remove('hidden'); $('insightText').textContent='Attention entropy: '+cons.entropy.toFixed(2)+' · Forces: G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1);}
+    if(cons.entropy>0){$('insightPill').classList.remove('hidden'); $('insightText').textContent='System load entropy '+cons.entropy.toFixed(2)+' · Forces G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1);}
   }
 
   // Layer cards (prefer sedimentation features, fallback to force-field particles)
@@ -639,10 +659,10 @@ function applyData(d){
   const dwellers = (d.puppeteer && d.puppeteer.dwellers) || {};
   const collective = Number(dwellers.collective_fitness || 0);
   const mode = String(dwellers.autonomy_mode || 'observe');
+  $('insightPill').classList.remove('hidden');
   if (n.insight && n.insight.length > 10) {
     $('insightText').textContent = `${n.insight} · dwellers ${mode} · fitness ${fmtFloat(collective, 2)}`;
   } else {
-    $('insightPill').classList.remove('hidden');
     $('insightText').textContent = `Dwellers ${mode} · fitness ${fmtFloat(collective, 2)} · backend orchestration active`;
   }
 }
@@ -675,14 +695,35 @@ if (toggleAutoCollectBtn) {
     autoCollectEnabled = !autoCollectEnabled;
     toggleAutoCollectBtn.textContent = autoCollectEnabled ? '⏸ Pause flow' : '▶ Resume flow';
     restartAutoCollectLoop();
+    setActionStatus(autoCollectEnabled ? 'Flow resumed. Frontend is sending new signals to backend.' : 'Flow paused. Frontend feed is temporarily stopped.', autoCollectEnabled ? 'ok' : 'warn');
   };
 }
 
 $('btnCollect').onclick=async()=>{
-  try{const r=await fetch('/api/ecosystem/collect',{method:'POST',credentials:'same-origin'}); const d=await r.json(); setTimeout(poll,300);}catch(e){}
+  try{
+    const r=await fetch('/api/ecosystem/collect',{method:'POST',credentials:'same-origin'});
+    const d=await r.json();
+    if(r.ok && d && d.ok !== false){
+      setActionStatus(`Collected ${fmtCount(d.signals_collected||0)} new signals.`);
+    }else{
+      setActionStatus('Collect request reached backend, but returned partial data.', 'warn');
+    }
+    setTimeout(poll,300);
+  }catch(e){ setActionStatus('Collect failed. Backend is unreachable right now.', 'error'); }
 };
 $('btnLearn').onclick=async()=>{
-  try{const r=await fetch('/api/ecosystem/learn',{method:'POST',credentials:'same-origin'}); setTimeout(poll,300);}catch(e){}
+  try{
+    const r=await fetch('/api/ecosystem/learn',{method:'POST',credentials:'same-origin'});
+    const d=await r.json();
+    const actions = Array.isArray(d&&d.result&&d.result.actions) ? d.result.actions : [];
+    if(r.ok && d && d.ok !== false){
+      const explain = actions.length ? ` Actions: ${actions.slice(0,3).join(', ')}.` : '';
+      setActionStatus(`Learning cycle completed.${explain}`);
+    }else{
+      setActionStatus('Learning endpoint responded, but no usable result was produced.', 'warn');
+    }
+    setTimeout(poll,300);
+  }catch(e){ setActionStatus('Learning failed. Backend is unreachable right now.', 'error'); }
 };
 
 // --- JARVIS Chat ---

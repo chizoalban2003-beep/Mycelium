@@ -165,11 +165,25 @@ def generate_ecosystem_narrative(
     else:
         next_step = "Review my predictions and accept or reject them to refine my understanding."
 
+    # Add a plain-language companion track for users who want less jargon.
+    plain_lines: list[str] = []
+    plain_lines.append(f"Current stage: {stage}.")
+    plain_lines.append(f"I saw {n_signals} recent signals.")
+    if layers:
+        plain_lines.append(
+            f"Signal layers now: foundation {int(layers.get('bedrock', 0))}, "
+            f"active {int(layers.get('suspension', 0))}, changing {int(layers.get('turbulent', 0))}."
+        )
+    if pred_r2 is not None:
+        plain_lines.append(f"Prediction confidence signal (R²): {float(pred_r2):.2f}.")
+    plain_lines.append(f"What to do next: {next_step}")
+
     result = {
         "headline": headline,
         "body": body,
         "insight": insight,
         "next_step": next_step,
+        "plain_summary": " ".join(plain_lines),
         "stage": stage,
         "voice_tone": voice["tone"],
     }
