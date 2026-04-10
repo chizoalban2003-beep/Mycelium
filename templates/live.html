@@ -225,7 +225,6 @@ function render2DFallback() {
   window._update2DNodes = function(features) {
     nodes2D = (features||[]).map((f,i) => ({
       x: W*0.1 + (i/(features.length||1))*W*0.8,
-      y: f.layer==='turbulent'?H*0.17:f.layer==='suspension'?H*0.5:H*0.8,
       y: (f.layer==='turbulent'?H*0.12:f.layer==='suspension'?H*0.48:H*0.78) + (Math.random()-0.5)*H*0.08,
       r: Math.max(4,Math.min(14,Math.sqrt(f.density||1)*2.5)),
       layer: f.layer, label: (f.feature||'').slice(0,16), phase: Math.random()*6,
@@ -571,10 +570,12 @@ function applyData(d){
     if(cons.entropy>0){$('insightPill').classList.remove('hidden'); $('insightText').textContent='Attention entropy: '+cons.entropy.toFixed(2)+' · Forces: G:'+((m.forces||{}).gravity||0).toFixed(1)+' E:'+((m.forces||{}).electromagnetic||0).toFixed(1);}
   }
 
-  // Layer cards
-  const feats=(sed&&sed.features)||[];
+  // Layer cards (prefer sedimentation features, fallback to force-field particles)
+  const feats=(sed&&sed.features&&sed.features.length)
+    ? sed.features
+    : ffParticles.map((p)=>({layer:p.layer, feature:p.label||p.name||''}));
   const byL={bedrock:[],suspension:[],turbulent:[]};
-  feats.forEach(f=>{if(byL[f.layer])byL[f.layer].push(f.feature)});
+  feats.forEach(f=>{if(byL[f.layer])byL[f.layer].push(f.feature||'')});
   $('fCount').textContent=byL.bedrock.length; $('fList').textContent=byL.bedrock.slice(0,4).join(', ')||'—';
   $('aCount').textContent=byL.suspension.length; $('aList').textContent=byL.suspension.slice(0,4).join(', ')||'—';
   $('tCount').textContent=byL.turbulent.length; $('tList').textContent=byL.turbulent.slice(0,4).join(', ')||'—';
