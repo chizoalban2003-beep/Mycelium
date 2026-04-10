@@ -3,6 +3,72 @@
 {% block content %}
 <div class="space-y-4">
 
+  <!-- Experimental evolution lab -->
+  <div class="rounded-xl border border-fuchsia-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-fuchsia-950/30 p-5">
+    <div class="flex items-center justify-between gap-3">
+      <div>
+        <div class="text-xs uppercase tracking-[0.25em] text-fuchsia-300/80">Experimental Lab</div>
+        <h2 class="mt-1 text-lg font-semibold">Force + Mass Evolution (sandbox)</h2>
+        <p class="mt-1 text-sm text-slate-300">
+          Runs a miniature digital ecosystem where your current signal field seeds particles, then mutation + selection evolve agents over cycles.
+        </p>
+      </div>
+      <div class="text-xs text-slate-500">Grow with Data</div>
+    </div>
+
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <label class="text-xs text-slate-300">Cycles
+        <input id="expCycles" type="number" min="10" max="1000" value="120" class="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100" />
+      </label>
+      <label class="text-xs text-slate-300">Mutation rate
+        <input id="expMutation" type="number" min="0" max="1" step="0.01" value="0.12" class="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100" />
+      </label>
+      <label class="text-xs text-slate-300">Selection pressure
+        <input id="expSelection" type="number" min="0" max="1" step="0.01" value="0.45" class="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100" />
+      </label>
+      <label class="text-xs text-slate-300">Thermal noise
+        <input id="expThermal" type="number" min="0" max="1" step="0.01" value="0.08" class="mt-1 w-full rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-slate-100" />
+      </label>
+    </div>
+
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button id="btnExperiment" class="rounded bg-fuchsia-700 px-4 py-2 text-sm font-medium text-white hover:bg-fuchsia-600">Run Experiment</button>
+      <span id="expStatus" class="text-sm text-slate-400"></span>
+    </div>
+
+    <div id="expSection" class="mt-4 hidden rounded border border-slate-800 bg-slate-900 p-4">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Seed particles</div>
+          <div id="expSeed" class="mt-1 text-xl font-semibold text-fuchsia-200">0</div>
+        </div>
+        <div class="rounded border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Species</div>
+          <div id="expSpecies" class="mt-1 text-xl font-semibold text-fuchsia-200">0</div>
+        </div>
+        <div class="rounded border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Emergent stage</div>
+          <div id="expStage" class="mt-1 text-xl font-semibold text-fuchsia-200">nascent</div>
+        </div>
+        <div class="rounded border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Novelty index</div>
+          <div id="expNovelty" class="mt-1 text-xl font-semibold text-fuchsia-200">0.00</div>
+        </div>
+      </div>
+
+      <div class="mt-3 grid gap-3 lg:grid-cols-2">
+        <div class="rounded border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Best species</div>
+          <div id="expBest" class="mt-2 text-sm text-slate-200"></div>
+        </div>
+        <div class="rounded border border-slate-800 bg-slate-950 p-3">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Population trace</div>
+          <div id="expTrace" class="mt-2 text-sm text-slate-200"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Narrative hero -->
   <div id="narrativeHero" class="rounded-xl border border-cyan-900/60 bg-gradient-to-br from-slate-900 via-slate-900 to-cyan-950/30 p-6">
     <div class="flex items-center gap-3 mb-2">
@@ -216,6 +282,63 @@
   });
 
   document.getElementById('btnRefresh').addEventListener('click', fetchState);
+
+  const expIds = {
+    cycles: document.getElementById('expCycles'),
+    mutation: document.getElementById('expMutation'),
+    selection: document.getElementById('expSelection'),
+    thermal: document.getElementById('expThermal'),
+    button: document.getElementById('btnExperiment'),
+    status: document.getElementById('expStatus'),
+    section: document.getElementById('expSection'),
+    seed: document.getElementById('expSeed'),
+    species: document.getElementById('expSpecies'),
+    stage: document.getElementById('expStage'),
+    novelty: document.getElementById('expNovelty'),
+    best: document.getElementById('expBest'),
+    trace: document.getElementById('expTrace'),
+  };
+
+  function renderExperiment(data) {
+    if (!data || !data.ok) return;
+    const out = data.output || {};
+    const best = out.best_species || {};
+    expIds.section.classList.remove('hidden');
+    expIds.seed.textContent = String(out.seed_particles || 0);
+    expIds.species.textContent = String(out.n_species || 0);
+    expIds.stage.textContent = String(out.emergent_stage || 'nascent');
+    expIds.novelty.textContent = Number(out.novelty_index || 0).toFixed(3);
+    expIds.best.textContent = `id=${best.id || '—'} fitness=${Number(best.fitness || 0).toFixed(3)} cohesion=${Number(best.cohesion || 0).toFixed(3)} mutations=${best.mutations || 0}`;
+    const pop = Array.isArray(out.population_trace) ? out.population_trace : [];
+    expIds.trace.textContent = pop.length ? pop.map((v, i) => `${i}:${Number(v).toFixed(2)}`).join('  ') : 'No trace yet';
+  }
+
+  expIds.button.addEventListener('click', async () => {
+    expIds.status.textContent = 'Running experiment…';
+    try {
+      const payload = {
+        cycles: Number(expIds.cycles.value || 120),
+        mutation_rate: Number(expIds.mutation.value || 0.12),
+        selection_pressure: Number(expIds.selection.value || 0.45),
+        thermal_noise: Number(expIds.thermal.value || 0.08),
+      };
+      const r = await fetch(API + '/experiment/run', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (!d.ok) {
+        expIds.status.textContent = 'Experiment failed';
+        return;
+      }
+      renderExperiment(d);
+      expIds.status.textContent = 'Experiment complete';
+    } catch (e) {
+      expIds.status.textContent = 'Error: ' + e.message;
+    }
+  });
 
   fetchState();
 })();

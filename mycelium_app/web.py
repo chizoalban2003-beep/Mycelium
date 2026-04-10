@@ -305,7 +305,7 @@ def _compose_today_story(
     latest_nudge = recent_nudges[0] if recent_nudges else None
 
     signal_label = str(getattr(latest_signal, "signal_type", "signal") or "signal") if latest_signal else "signal"
-    signal_source = str(getattr(latest_signal, "source", None) or getattr(latest_signal, "origin", None) or "your device")
+    signal_source = str(getattr(latest_signal, "origin", None) or getattr(latest_signal, "device_id", None) or "your device")
     growth_label = str(getattr(latest_growth, "domain", "growth") or "growth") if latest_growth else "growth"
     growth_metric = str(getattr(latest_growth, "metric", None) or getattr(latest_growth, "name", None) or "outcome")
     nudge_label = str(getattr(latest_nudge, "nudge_type", None) or getattr(latest_nudge, "kind", None) or "next step")

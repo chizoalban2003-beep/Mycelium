@@ -419,6 +419,13 @@ class DigitalStimulusRecentResponse(BaseModel):
     events: list[DigitalStimulusEventPublic] = Field(default_factory=list)
 
 
+class EcosystemExperimentRunRequest(BaseModel):
+    cycles: int = 120
+    mutation_rate: float = 0.12
+    selection_pressure: float = 0.45
+    thermal_noise: float = 0.08
+
+
 class TelemetrySummaryResponse(BaseModel):
     ok: bool = True
     window_hours: int

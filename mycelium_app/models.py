@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import Optional
@@ -221,6 +222,30 @@ class SignalLedgerEvent(SQLModel, table=True):
     device_id: str = Field(default="", index=True)
     signal_type: str = Field(default="", index=True)  # e.g. screen,onoff,app,network,text_sample
     payload_json: str = "{}"  # JSON dict; must never contain raw secrets by policy
+
+    def _payload_obj(self) -> dict:
+        try:
+            obj = json.loads(str(self.payload_json or "{}"))
+            return obj if isinstance(obj, dict) else {}
+        except Exception:
+            return {}
+
+    @property
+    def source(self) -> str:
+        """Backward-compatible source accessor derived from payload metadata."""
+        payload = self._payload_obj()
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        tabular = payload.get("tabular") if isinstance(payload.get("tabular"), dict) else {}
+        value = meta.get("source") or tabular.get("source")
+        return str(value or self.signal_type or "stimulus")[:32]
+
+    @property
+    def modality(self) -> str:
+        """Best-effort modality accessor for web templates and APIs."""
+        payload = self._payload_obj()
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        tabular = payload.get("tabular") if isinstance(payload.get("tabular"), dict) else {}
+        return str(meta.get("modality") or tabular.get("modality") or "auto")[:32]
 
 
 class MissionLogLedgerEntry(SQLModel, table=True):

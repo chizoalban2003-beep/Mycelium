@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from datetime import datetime, timedelta
+from statistics import mean
+import random
+
+from fastapi import APIRouter, Depends, Body
 from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
@@ -13,11 +17,12 @@ from mycelium_app.learning_daemon import run_learning_tick, run_signal_collectio
 from mycelium_app.force_field import compute_force_field, serialize_force_field
 from mycelium_app.humanizer import humanize_app, humanize_apps_dict, humanize_feature, humanize_layer, humanize_signal
 from mycelium_app.jarvis import chat as jarvis_chat
-from mycelium_app.models import User
+from mycelium_app.models import EcosystemTimeSeries, User
 from mycelium_app.pattern_engine import analyze_patterns, generate_proactive_suggestions
 from mycelium_app.narrative import generate_ecosystem_narrative
 from mycelium_app.sedimentation import run_sedimentation
 from mycelium_app.signal_collector import CollectorState
+from mycelium_app.schemas import EcosystemExperimentRunRequest
 from mycelium_app.settings import settings
 
 
@@ -25,6 +30,202 @@ router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
 
 _shared_collector_state = CollectorState()
 _last_sedimentation_cache: dict[int, dict] = {}  # user_id → last result
+
+
+def _experimental_force_evolution(
+    session: Session,
+    *,
+    user_id: int,
+    steps: int = 12,
+    mutation_rate: float | None = None,
+    selection_pressure: float | None = None,
+    thermal_noise: float | None = None,
+) -> dict:
+    """Run a tiny in-memory evolution simulation seeded by recent ecosystem rows.
+
+    This is intentionally lightweight and deterministic enough for UI refreshes.
+    It models "signal species" as bodies with:
+      - mass (importance/load),
+      - charge (signed tendency),
+      - velocity (change),
+      - energy and fitness.
+    """
+    rows = session.exec(
+        select(EcosystemTimeSeries)
+        .where(EcosystemTimeSeries.user_id == int(user_id))
+        .order_by(EcosystemTimeSeries.created_at.desc())
+        .limit(240)
+    ).all()
+    history = list(reversed(rows))
+
+    if not history:
+        synthetic = EcosystemTimeSeries(
+            user_id=int(user_id),
+            n_signals_window=12,
+            coherence=0.25,
+            attention_entropy=0.40,
+            force_g=0.30,
+            force_em=0.50,
+            force_strong=0.80,
+            force_weak=0.02,
+        )
+        history = [synthetic]
+
+    # Seed force constants from observed averages.
+    g = max(0.05, float(mean([r.force_g for r in history if r.force_g is not None] or [0.3])))
+    em = max(0.05, float(mean([r.force_em for r in history if r.force_em is not None] or [0.5])))
+    strong = max(0.05, float(mean([r.force_strong for r in history if r.force_strong is not None] or [0.8])))
+    weak = max(0.001, float(mean([r.force_weak for r in history if r.force_weak is not None] or [0.02])))
+
+    last = history[-1]
+    base_mass = max(1.0, float(last.n_signals_window or 1))
+    base_entropy = max(0.01, float(last.attention_entropy or 0.1))
+    base_coherence = max(0.0, min(1.0, float(last.coherence or 0.0)))
+
+    stage_by_age = {0: "infant", 1: "toddler", 2: "adolescent", 3: "adult"}
+    species = []
+    for idx in range(4):
+        species.append(
+            {
+                "id": f"sp-{idx+1}",
+                "mass": max(0.4, base_mass / (idx + 2)),
+                "charge": random.uniform(-1.0, 1.0),
+                "velocity": random.uniform(-0.05, 0.05),
+                "energy": max(0.1, (base_coherence + 0.2) * random.uniform(0.5, 1.5)),
+                "stability": max(0.1, 1.0 - min(0.9, base_entropy / 4.0)),
+                "fitness": 0.0,
+                "age": 0,
+                "stage": "infant",
+                "mutations": 0,
+            }
+        )
+
+    steps = max(4, min(int(steps), 1000))
+    timeline: list[dict] = []
+    default_mutation = 0.08 + base_entropy * 0.07
+    mutation_rate = float(settings.ecosystem_experiment_mutation_rate) if mutation_rate is None else float(mutation_rate)
+    mutation_rate = max(0.01, min(0.90, mutation_rate if mutation_rate > 0 else default_mutation))
+    selection_pressure = (
+        float(settings.ecosystem_experiment_selection_pressure)
+        if selection_pressure is None
+        else float(selection_pressure)
+    )
+    selection_pressure = max(1.01, min(3.0, selection_pressure))
+    thermal_noise = float(thermal_noise) if thermal_noise is not None else 0.08
+    thermal_noise = max(0.0, min(1.0, thermal_noise))
+    carrying_capacity = max(8.0, base_mass * 1.8)
+
+    for tick in range(steps):
+        total_mass = sum(float(sp["mass"]) for sp in species)
+        population_pressure = max(0.0, (total_mass - carrying_capacity) / carrying_capacity)
+
+        for sp in species:
+            mass = float(sp["mass"])
+            charge = float(sp["charge"])
+            vel = float(sp["velocity"])
+            energy = float(sp["energy"])
+            stability = float(sp["stability"])
+
+            # Hybrid force: statistical correlation-like term + physics-like terms.
+            grav_pull = g * (mass / max(1.0, total_mass))
+            em_push = em * charge * (1.0 - stability)
+            strong_bind = strong * stability * 0.35
+            weak_decay = weak * (0.4 + population_pressure)
+            noise = random.uniform(-0.015, 0.015) * (1.0 + base_entropy + thermal_noise)
+
+            accel = grav_pull + em_push + strong_bind - weak_decay + noise
+            vel = max(-0.35, min(0.35, vel + accel))
+            mass = max(0.05, mass + vel * 0.15)
+            energy = max(0.01, energy + (abs(vel) * 0.3) - (population_pressure * 0.06))
+            stability = max(0.02, min(1.2, stability + (strong_bind - weak_decay) * 0.08))
+
+            # Fitness balances energy, stability, and manageable entropy pressure.
+            fitness = max(0.0, (energy * 0.45) + (stability * 0.45) - (base_entropy * 0.10))
+
+            # Mutation: occasionally perturb charge/velocity, inspired by entropy.
+            if random.random() < mutation_rate:
+                charge = max(-1.5, min(1.5, charge + random.uniform(-0.22, 0.22)))
+                vel = max(-0.4, min(0.4, vel + random.uniform(-0.05, 0.05)))
+                sp["mutations"] = int(sp["mutations"]) + 1
+
+            sp["mass"] = mass
+            sp["charge"] = charge
+            sp["velocity"] = vel
+            sp["energy"] = energy
+            sp["stability"] = stability
+            sp["fitness"] = fitness
+            sp["age"] = int(sp["age"]) + 1
+            age_band = min(3, int(sp["age"]) // max(1, steps // 4))
+            sp["stage"] = stage_by_age.get(age_band, "adult")
+
+        # Selection + reproduction (simple elitist strategy).
+        species.sort(key=lambda x: float(x["fitness"]), reverse=True)
+        survivors = species[: max(2, len(species) - 1)]
+        strongest = survivors[0]
+        weakest = survivors[-1]
+        if float(strongest["fitness"]) > float(weakest["fitness"]) * selection_pressure:
+            offspring = dict(strongest)
+            offspring["id"] = f"sp-{tick+100}"
+            offspring["age"] = 0
+            offspring["stage"] = "infant"
+            offspring["mutations"] = int(offspring.get("mutations", 0))
+            offspring["mass"] = max(0.05, float(offspring["mass"]) * random.uniform(0.55, 0.85))
+            offspring["charge"] = max(-1.5, min(1.5, float(offspring["charge"]) + random.uniform(-0.15, 0.15)))
+            offspring["velocity"] = float(offspring["velocity"]) * 0.5
+            offspring["energy"] = max(0.01, float(offspring["energy"]) * random.uniform(0.7, 0.95))
+            species = survivors + [offspring]
+        else:
+            species = survivors
+
+        timeline.append(
+            {
+                "tick": tick + 1,
+                "n_species": len(species),
+                "mean_fitness": round(float(mean([float(sp["fitness"]) for sp in species])), 4),
+                "mean_mass": round(float(mean([float(sp["mass"]) for sp in species])), 4),
+                "mean_energy": round(float(mean([float(sp["energy"]) for sp in species])), 4),
+                "mutation_rate": round(float(mutation_rate), 4),
+            }
+        )
+
+    # Stable ordering for UI and API consumers.
+    species.sort(key=lambda x: float(x["fitness"]), reverse=True)
+    pub_species = [
+        {
+            "id": str(sp["id"]),
+            "stage": str(sp["stage"]),
+            "age": int(sp["age"]),
+            "mass": round(float(sp["mass"]), 4),
+            "charge": round(float(sp["charge"]), 4),
+            "velocity": round(float(sp["velocity"]), 4),
+            "energy": round(float(sp["energy"]), 4),
+            "stability": round(float(sp["stability"]), 4),
+            "fitness": round(float(sp["fitness"]), 4),
+            "mutations": int(sp["mutations"]),
+        }
+        for sp in species[:8]
+    ]
+
+    return {
+        "ok": True,
+        "seed_points": len(history),
+        "seed_window_hours": 24,
+        "force_constants": {
+            "gravity": round(g, 4),
+            "electromagnetic": round(em, 4),
+            "strong_nuclear": round(strong, 4),
+            "weak_nuclear": round(weak, 4),
+        },
+        "carrying_capacity": round(float(carrying_capacity), 4),
+        "mutation_rate": round(float(mutation_rate), 4),
+        "steps": int(steps),
+        "species": pub_species,
+        "timeline": timeline,
+        "narrative": (
+            "Experimental mode: signals behave like evolving species under combined "
+            "statistical and physics-like forces. Track mass, charge, energy, and mutation drift."
+        ),
+    }
 
 
 @router.post("/collect")
@@ -761,7 +962,62 @@ def get_patterns(
     return result
 
 
-from fastapi import Body
+@router.get("/evolution")
+def ecosystem_evolution(
+    steps: int = 24,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Experimental evolution sandbox for force + mass theory."""
+    user_id = int(current_user.id or 0)
+    return _experimental_force_evolution(session, user_id=user_id, steps=steps)
+
+
+@router.post("/experiment/run")
+def run_force_experiment(
+    payload: EcosystemExperimentRunRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Run experimental force+mass evolution with caller-supplied knobs."""
+    user_id = int(current_user.id or 0)
+    cycles = int(payload.cycles or 120)
+    mutation_rate = float(payload.mutation_rate or settings.ecosystem_experiment_mutation_rate or 0.12)
+    thermal_noise = float(payload.thermal_noise or 0.08)
+    # UI submits 0..1, simulation uses multiplicative threshold 1.01..3.0
+    sel_ui = float(payload.selection_pressure or 0.45)
+    selection_pressure = 1.0 + max(0.01, min(2.0, sel_ui * 2.0))
+
+    raw = _experimental_force_evolution(
+        session,
+        user_id=user_id,
+        steps=cycles,
+        mutation_rate=mutation_rate,
+        selection_pressure=selection_pressure,
+        thermal_noise=thermal_noise,
+    )
+    species = raw.get("species") or []
+    timeline = raw.get("timeline") or []
+    best = species[0] if species else {}
+    stage_rank = {"infant": 0, "toddler": 1, "adolescent": 2, "adult": 3}
+    emergent_stage = max((sp.get("stage", "infant") for sp in species), key=lambda s: stage_rank.get(str(s), 0), default="infant")
+
+    output = {
+        "seed_particles": int(raw.get("seed_points", 0)),
+        "n_species": len(species),
+        "emergent_stage": str(emergent_stage),
+        "novelty_index": round(float(raw.get("mutation_rate", 0.0)) * max(1, len(species)) / 2.0, 4),
+        "best_species": {
+            "id": str(best.get("id", "—")),
+            "fitness": float(best.get("fitness", 0.0) or 0.0),
+            "cohesion": float(best.get("stability", 0.0) or 0.0),
+            "mutations": int(best.get("mutations", 0) or 0),
+        },
+        "population_trace": [float(item.get("mean_mass", 0.0) or 0.0) for item in timeline],
+        "force_constants": raw.get("force_constants", {}),
+        "message": raw.get("narrative", ""),
+    }
+    return {"ok": True, "output": output}
 
 @router.post("/chat")
 def ecosystem_chat(

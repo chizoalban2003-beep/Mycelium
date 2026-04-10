@@ -162,6 +162,10 @@ class Settings(BaseSettings):
     ecosystem_learning_tick_seconds: int = 120
     ecosystem_learning_window_hours: int = 6
     ecosystem_learning_bucket_minutes: int = 30
+    ecosystem_experiment_enabled: bool = True
+    ecosystem_experiment_tick_minutes: int = 30
+    ecosystem_experiment_mutation_rate: float = 0.06
+    ecosystem_experiment_selection_pressure: float = 1.35
 
     @field_validator("app_name", mode="before")
     @classmethod
