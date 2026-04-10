@@ -2183,6 +2183,94 @@ def list_pending_autonomy_actions(
     return {"ok": True, "count": len(pending), "pending": pending}
 
 
+@router.get("/autonomy/governance/report")
+def autonomy_governance_report(
+    window_days: int = 7,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Weekly governance report for heat, risk, and approval dynamics."""
+    user_id = int(current_user.id or 0)
+    days = max(1, min(int(window_days), 30))
+    since = datetime.utcnow() - timedelta(days=days)
+
+    episodes = session.exec(
+        select(AutonomyEpisode)
+        .where(AutonomyEpisode.user_id == user_id, AutonomyEpisode.created_at >= since)
+        .order_by(AutonomyEpisode.created_at.desc())
+        .limit(2000)
+    ).all()
+    pending_rows = session.exec(
+        select(AutonomyPendingAction)
+        .where(AutonomyPendingAction.user_id == user_id, AutonomyPendingAction.created_at >= since)
+        .order_by(AutonomyPendingAction.created_at.desc())
+        .limit(2000)
+    ).all()
+
+    heat_vals: list[float] = []
+    risk_vals: list[float] = []
+    deltas: list[float] = []
+    conf_vals: list[float] = []
+    high_risk_episodes = 0
+    governance_required = 0
+    for ep in episodes:
+        try:
+            state = json.loads(ep.state_json or "{}")
+        except Exception:
+            state = {}
+        try:
+            out = json.loads(ep.outcome_json or "{}")
+        except Exception:
+            out = {}
+        heat_vals.append(float((state if isinstance(state, dict) else {}).get("heat_score", 0.0) or 0.0))
+        risk = (out if isinstance(out, dict) else {}).get("risk") if isinstance(out, dict) else {}
+        if not isinstance(risk, dict):
+            risk = {}
+        rv = float(risk.get("risk_score", 0.0) or 0.0)
+        risk_vals.append(rv)
+        if rv >= float(getattr(settings, "ecosystem_autonomy_governance_risk_threshold", 0.72)):
+            high_risk_episodes += 1
+        gov = (out if isinstance(out, dict) else {}).get("governance") if isinstance(out, dict) else {}
+        if isinstance(gov, dict) and bool(gov.get("requires_confirmation", False)):
+            governance_required += 1
+        deltas.append(float((out if isinstance(out, dict) else {}).get("delta", 0.0) or 0.0))
+        conf_vals.append(float(ep.confidence or 0.0))
+
+    proposed = sum(1 for p in pending_rows if str(p.status or "") == "proposed")
+    approved = sum(1 for p in pending_rows if str(p.status or "") in {"approved", "executed"})
+    rejected = sum(1 for p in pending_rows if str(p.status or "") == "rejected")
+    executed = sum(1 for p in pending_rows if str(p.status or "") == "executed")
+    denom = max(1, approved + rejected)
+
+    def _avg(vals: list[float]) -> float:
+        return round(float(mean(vals)) if vals else 0.0, 4)
+
+    return {
+        "ok": True,
+        "window_days": days,
+        "project": {
+            "codename": str(getattr(settings, "project_codename", "Project Resonance")),
+            "tagline": str(getattr(settings, "project_tagline", "Where data settles into life.")),
+        },
+        "episodes": {
+            "count": len(episodes),
+            "mean_heat": _avg(heat_vals),
+            "mean_risk": _avg(risk_vals),
+            "mean_delta": _avg(deltas),
+            "mean_confidence": _avg(conf_vals),
+            "high_risk_count": int(high_risk_episodes),
+            "requires_confirmation_count": int(governance_required),
+        },
+        "approvals": {
+            "proposed": int(proposed),
+            "approved_or_executed": int(approved),
+            "executed": int(executed),
+            "rejected": int(rejected),
+            "approval_rate": round(float(approved) / float(denom), 4),
+        },
+    }
+
+
 @router.post("/autonomy/feedback")
 def autonomy_feedback(
     payload: dict = Body(...),
