@@ -220,3 +220,9 @@ If you want to reuse the diagram as documentation, this legend matches the visua
 - Runtime state helpers support serialization, pruning, homeostatic gain updates, and abstention-aware reruns.
 - The ENB2012 benchmark is tracked as a permanent regression/plane-sweep fixture.
 - The repository currently includes a small CrewAI starter script for demo runs and narrative summaries.
+
+## New: Digital Thermodynamics Manifesto
+
+For the full "signal as matter" framework — including the pulse/plateau loop, entropy budget, death-as-compost lifecycle, and a concrete implementation roadmap for Myco's autonomy ecosystem — see:
+
+- `docs/digital_thermodynamics_manifesto.md`
