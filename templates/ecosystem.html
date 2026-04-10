@@ -84,6 +84,7 @@
 
     <div class="mt-3 flex flex-wrap items-center gap-2">
       <button id="btnAutonomyTick" class="rounded bg-amber-700 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600">Run Autonomy Tick</button>
+      <button id="btnAutonomyConsolidate" class="rounded border border-amber-800 bg-slate-900 px-4 py-2 text-sm text-amber-200 hover:bg-slate-800">Consolidate Memory</button>
       <span id="autonomyStatus" class="text-sm text-slate-400"></span>
     </div>
 
@@ -114,6 +115,33 @@
       <div class="rounded border border-slate-800 bg-slate-950 p-3">
         <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Mutation delta</div>
         <pre id="autoMutation" class="mt-2 text-xs text-slate-200 whitespace-pre-wrap">none</pre>
+      </div>
+    </div>
+
+    <div class="mt-3 grid gap-3 lg:grid-cols-2">
+      <div class="rounded border border-slate-800 bg-slate-950 p-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Safety membrane</div>
+        <div id="autoSafety" class="mt-2 text-sm text-slate-200">risk=0.00, decision=allow</div>
+      </div>
+      <div class="rounded border border-slate-800 bg-slate-950 p-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Explainability</div>
+        <pre id="autoExplain" class="mt-2 text-xs text-slate-200 whitespace-pre-wrap">none</pre>
+      </div>
+    </div>
+
+    <div class="mt-3 grid gap-3 lg:grid-cols-2">
+      <div class="rounded border border-slate-800 bg-slate-950 p-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Weekly goals</div>
+        <pre id="autoGoals" class="mt-2 text-xs text-slate-200 whitespace-pre-wrap">none</pre>
+      </div>
+      <div class="rounded border border-slate-800 bg-slate-950 p-3">
+        <div class="text-xs uppercase tracking-[0.2em] text-slate-400">Recent nudge feedback</div>
+        <pre id="autoFeedback" class="mt-2 text-xs text-slate-200 whitespace-pre-wrap">none</pre>
+        <div class="mt-3 flex items-center gap-2">
+          <button id="btnAutonomyApprove" class="rounded border border-emerald-800 bg-emerald-950/40 px-3 py-1 text-xs text-emerald-200 hover:bg-emerald-900/50">Approve</button>
+          <button id="btnAutonomyReject" class="rounded border border-rose-800 bg-rose-950/40 px-3 py-1 text-xs text-rose-200 hover:bg-rose-900/50">Reject</button>
+          <span id="autoFeedbackStatus" class="text-xs text-slate-400"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -350,6 +378,9 @@
 
   const autoIds = {
     button: document.getElementById('btnAutonomyTick'),
+    consolidate: document.getElementById('btnAutonomyConsolidate'),
+    approve: document.getElementById('btnAutonomyApprove'),
+    reject: document.getElementById('btnAutonomyReject'),
     status: document.getElementById('autonomyStatus'),
     action: document.getElementById('autoAction'),
     score: document.getElementById('autoScore'),
@@ -357,24 +388,29 @@
     pressure: document.getElementById('autoPressure'),
     reason: document.getElementById('autoReason'),
     mutation: document.getElementById('autoMutation'),
+    safety: document.getElementById('autoSafety'),
+    explain: document.getElementById('autoExplain'),
+    goals: document.getElementById('autoGoals'),
+    feedback: document.getElementById('autoFeedback'),
+    feedbackStatus: document.getElementById('autoFeedbackStatus'),
   };
+  let latestEpisodeId = null;
 
   function renderAutonomy(d) {
     if (!d || !d.ok || !d.episode) return;
     const ep = d.episode || {};
-    const action = (ep.action && ep.action.action) ? ep.action.action : ep.action;
-    autoIds.action.textContent = String(action || '—');
-    autoIds.score.textContent = Number(ep.score_after || ep.outcome_score || 0).toFixed(3);
-    autoIds.reason.textContent = String((ep.action && ep.action.reason) || ep.outcome_note || ep.why || 'No rationale');
+    latestEpisodeId = Number(ep.id || 0) || null;
+    autoIds.action.textContent = String(ep.action || '—');
+    autoIds.score.textContent = Number(ep.outcome_score || 0).toFixed(3);
+    autoIds.reason.textContent = String(ep.why || ep.outcome_note || 'No rationale');
     autoIds.gen.textContent = String(ep.generation || ((ep.policy_genome || {}).generation || 0));
-    autoIds.pressure.textContent = Number(ep.confidence || ((ep.policy_genome || {}).selection_pressure || 0)).toFixed(2);
-    const md = {
-      score_before: ep.score_before,
-      score_after: ep.score_after,
-      utility_delta: ep.utility_delta,
-      confidence: ep.confidence,
-    };
-    autoIds.mutation.textContent = Object.keys(md).length ? JSON.stringify(md, null, 2) : 'none';
+    autoIds.pressure.textContent = Number(((ep.policy_genome || {}).selection_pressure || 0)).toFixed(2);
+    const mutation = ep.mutation_delta || {};
+    autoIds.mutation.textContent = Object.keys(mutation).length ? JSON.stringify(mutation, null, 2) : 'none';
+    const risk = ep.risk || {};
+    autoIds.safety.textContent = `risk=${Number(risk.risk_score || 0).toFixed(2)}, level=${String(risk.risk_level || 'safe')}, gate=${risk.safety_gate === false ? 'blocked' : 'allow'}`;
+    const explain = ep.explainability || {};
+    autoIds.explain.textContent = Object.keys(explain).length ? JSON.stringify(explain, null, 2) : 'none';
   }
 
   async function fetchAutonomyLatest() {
@@ -386,6 +422,50 @@
       const at = (d.episode || {}).created_at || '';
       if (at) autoIds.status.textContent = `Latest autonomy cycle loaded (${at.slice(0, 19).replace('T', ' ')} UTC)`;
     } catch (_e) {}
+  }
+
+  async function fetchAutonomyGoals() {
+    try {
+      const r = await fetch(API + '/autonomy/goals', { credentials: 'same-origin' });
+      const d = await r.json();
+      if (!d.ok || !d.goals) return;
+      autoIds.goals.textContent = JSON.stringify(d.goals, null, 2);
+    } catch (_e) {}
+  }
+
+  async function fetchAutonomyLaws() {
+    try {
+      const r = await fetch(API + '/autonomy/laws?limit=5', { credentials: 'same-origin' });
+      const d = await r.json();
+      if (!d.ok) return;
+      const laws = Array.isArray(d.laws) ? d.laws : [];
+      autoIds.feedback.textContent = laws.length ? JSON.stringify(laws, null, 2) : 'none';
+    } catch (_e) {}
+  }
+
+  async function sendAutonomyFeedback(decision) {
+    if (!latestEpisodeId) {
+      autoIds.feedbackStatus.textContent = 'Run one autonomy tick first';
+      return;
+    }
+    autoIds.feedbackStatus.textContent = 'Saving…';
+    try {
+      const r = await fetch(API + '/autonomy/feedback', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ episode_id: latestEpisodeId, decision }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        autoIds.feedbackStatus.textContent = 'Feedback failed';
+        return;
+      }
+      autoIds.feedbackStatus.textContent = `Saved: ${String(d.decision || decision)}`;
+      await fetchAutonomyLaws();
+    } catch (_e) {
+      autoIds.feedbackStatus.textContent = 'Feedback failed';
+    }
   }
 
   function selectionUiFromStored(v) {
@@ -466,15 +546,28 @@
       }
       renderAutonomy(d);
       autoIds.status.textContent = 'Autonomy tick complete';
+      fetchAutonomyGoals();
+      fetchAutonomyLaws();
       setTimeout(fetchState, 400);
     } catch (e) {
       autoIds.status.textContent = 'Error: ' + e.message;
     }
   });
 
+  autoIds.consolidate.addEventListener('click', async () => {
+    autoIds.status.textContent = 'Refreshing memory traces…';
+    await fetchAutonomyGoals();
+    await fetchAutonomyLaws();
+    autoIds.status.textContent = 'Memory traces refreshed';
+  });
+  autoIds.approve.addEventListener('click', () => sendAutonomyFeedback('approve'));
+  autoIds.reject.addEventListener('click', () => sendAutonomyFeedback('reject'));
+
   fetchState();
   fetchLatestExperiment();
   fetchAutonomyLatest();
+  fetchAutonomyGoals();
+  fetchAutonomyLaws();
 })();
 </script>
 {% endblock %}

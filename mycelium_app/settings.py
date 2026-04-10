@@ -173,6 +173,11 @@ class Settings(BaseSettings):
     ecosystem_autonomy_thermal_noise: float = 0.08
     ecosystem_autonomy_selection_threshold: float = 0.02
     ecosystem_autonomy_action_cooldown_minutes: int = 45
+    ecosystem_autonomy_min_confidence: float = 0.35
+    ecosystem_autonomy_high_risk_threshold: float = 0.72
+    ecosystem_autonomy_nudge_feedback_learning_rate: float = 0.08
+    ecosystem_autonomy_goal_weekly_refresh_hours: int = 24
+    ecosystem_autonomy_memory_consolidation_tick_minutes: int = 180
 
     @field_validator("app_name", mode="before")
     @classmethod

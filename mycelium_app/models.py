@@ -692,3 +692,51 @@ class AutonomyEpisode(SQLModel, table=True):
     action_candidates_json: str = "{}"
     state_json: str = "{}"
     outcome_json: str = "{}"
+
+
+class AutonomyGoalState(SQLModel, table=True):
+    """Long-horizon autonomy drives with rolling progress tracking."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True, unique=True)
+
+    focus_goal: float = Field(default=0.72)
+    recovery_goal: float = Field(default=0.68)
+    novelty_goal: float = Field(default=0.55)
+    consistency_goal: float = Field(default=0.70)
+
+    focus_progress: float = Field(default=0.0)
+    recovery_progress: float = Field(default=0.0)
+    novelty_progress: float = Field(default=0.0)
+    consistency_progress: float = Field(default=0.0)
+
+    last_7d_json: str = "{}"
+
+
+class AutonomyLaw(SQLModel, table=True):
+    """Compressed weekly memory laws derived from autonomy episodes."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+
+    law_name: str = Field(default="", index=True)
+    confidence: float = Field(default=0.0, index=True)
+    support_n: int = Field(default=0)
+    horizon_days: int = Field(default=7)
+    law_json: str = "{}"
+
+
+class AutonomyActionFeedback(SQLModel, table=True):
+    """User feedback on autonomy actions for closed-loop policy learning."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    episode_id: int = Field(foreign_key="autonomyepisode.id", index=True)
+    action_name: str = Field(default="", index=True)
+
+    decision: str = Field(default="approve", index=True)  # approve|reject|neutral
+    notes: str = Field(default="")
