@@ -70,6 +70,21 @@
     width: 0%;
     background: rgba(255, 255, 255, 0.25);
   }
+  .trace-list {
+    max-height: 220px;
+    overflow: auto;
+    border: 1px solid rgba(30, 41, 59, 0.9);
+    border-radius: 8px;
+    padding: 8px;
+    background: rgba(2, 6, 23, 0.55);
+  }
+  .trace-row {
+    border: 1px solid rgba(51, 65, 85, 0.8);
+    border-radius: 8px;
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: rgba(15, 23, 42, 0.7);
+  }
 </style>
 
 <div class="mb-3 panel">
@@ -118,6 +133,15 @@
   </div>
 </div>
 
+<div class="mt-3 panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-amber-300/90">Trace Explorer</div>
+  <div class="mt-2 text-xs text-slate-300">
+    Inspect recent Agent Trace fossils across mutation, dissolution, and sedimentation events.
+  </div>
+  <div id="traceMeta" class="mt-2 text-[11px] text-slate-400">Loading trace stream…</div>
+  <div id="traceList" class="trace-list mt-2"></div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (function() {
@@ -134,6 +158,8 @@
   const autonomySliderFill = document.getElementById('autonomySliderFill');
   const autonomySliderLabel = document.getElementById('autonomySliderLabel');
   const autonomySliderHint = document.getElementById('autonomySliderHint');
+  const traceMeta = document.getElementById('traceMeta');
+  const traceList = document.getElementById('traceList');
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x020617);
@@ -262,6 +288,23 @@
       autonomySliderHint.textContent = String(
         awe.message || 'Autonomy rises with resilient dwellers, stable bedrock, and balanced thermal load.'
       );
+      const trace = data.trace || {};
+      const recent = Array.isArray(trace.recent) ? trace.recent : [];
+      traceMeta.textContent = `Total events: ${Number(trace.events_total || 0)} · Last type: ${trace.last_event_type || 'none'}`;
+      if (!recent.length) {
+        traceList.innerHTML = '<div class="text-xs text-slate-500">No trace events yet.</div>';
+      } else {
+        traceList.innerHTML = recent.map((row) => {
+          const entity = row && row.entity ? row.entity : {};
+          const when = String(row.occurred_at || '').replace('T', ' ').replace('Z', ' UTC');
+          return `
+            <div class="trace-row">
+              <div class="text-[11px] text-amber-200">${String(row.event_type || 'event')}</div>
+              <div class="text-[11px] text-slate-300">${String(entity.name || entity.id || 'dweller')} · ${String(entity.role || 'generalist')}</div>
+              <div class="text-[10px] text-slate-500">${when}</div>
+            </div>`;
+        }).join('');
+      }
       setMetricGrid(data);
       spawn(groups.gas, particles.gas, Math.min(160, 10 + gas * 2), 0xe11d48, 16);
       spawn(groups.liquid, particles.liquid, Math.min(120, 8 + liquid * 3), 0x0ea5e9, 0);
