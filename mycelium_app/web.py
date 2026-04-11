@@ -818,6 +818,7 @@ def live_page(
     )
 
 
+@router.get("/resonance", response_class=HTMLResponse)
 @router.get("/resonance-nexus", response_class=HTMLResponse)
 def resonance_page(
     request: Request,

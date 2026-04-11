@@ -12,9 +12,6 @@ from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import (
     AutonomyEpisode,
-    AutonomyPendingAction,
-    GrowthLedgerEntry,
-    NexusNudge,
     SignalLedgerEvent,
     User,
 )
@@ -157,28 +154,10 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
             SignalLedgerEvent.created_at >= since,
         )
     ).all()
-    growth = session.exec(
-        select(GrowthLedgerEntry).where(
-            GrowthLedgerEntry.created_by_user_id == uid,
-            GrowthLedgerEntry.created_at >= since,
-        )
-    ).all()
-    nudges = session.exec(
-        select(NexusNudge).where(
-            NexusNudge.created_by_user_id == uid,
-            NexusNudge.created_at >= since,
-        )
-    ).all()
     episodes = session.exec(
         select(AutonomyEpisode).where(
             AutonomyEpisode.user_id == uid,
             AutonomyEpisode.created_at >= since,
-        )
-    ).all()
-    pending = session.exec(
-        select(AutonomyPendingAction).where(
-            AutonomyPendingAction.user_id == uid,
-            AutonomyPendingAction.status.in_(["proposed", "approved"]),
         )
     ).all()
 
@@ -206,8 +185,6 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
     if episodes:
         avg_heat = sum(float(getattr(ep, "novelty_index", 0.0) or 0.0) for ep in episodes) / len(episodes)
     avg_risk = 0.0
-    if pending:
-        avg_risk = sum(float(getattr(p, "risk_score", 0.0) or 0.0) for p in pending) / len(pending)
 
     layers = {
         "gaseous": {
@@ -262,19 +239,16 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
 
     summary = {
         "signals": len(signals),
-        "growth": len(growth),
-        "nudges": len(nudges),
         "episodes": len(episodes),
-        "pending_governance": len(pending),
         "retired_dwellers": len(retired),
         "avg_heat": round(avg_heat, 4),
         "avg_risk": round(avg_risk, 4),
     }
 
     recommendation = (
-        "Run one thermal cycle and inspect mutations before hardening."
+        "Run one thermal cycle to metabolize new noise into liquid candidates."
         if layers["liquid"]["count"] > layers["bedrock"]["count"]
-        else "Bedrock is dominant; inject one controlled mutation spike to preserve adaptability."
+        else "Inject one controlled mutation spike to preserve adaptive pressure."
     )
     heat_band = _heat_band(avg_heat)
     autonomy_slider = _autonomy_slider(
@@ -284,10 +258,10 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         immutable_count=len(immutables),
     )
     awe_state = "alive" if autonomy_slider >= 0.75 else "adapting" if autonomy_slider >= 0.45 else "forming"
-    headline = f"Resonance Nexus is in {heat_band} band"
+    headline = f"State of the Fluid: {heat_band}"
     story = (
-        f"{layers['liquid']['count']} active dwellers and {layers['bedrock']['count']} crystallized modules are "
-        f"processing {len(signals)} recent signals."
+        f"{layers['gaseous']['count']} gas artifacts feed {layers['liquid']['count']} liquid dwellers, "
+        f"with {layers['bedrock']['count']} bedrock modules stabilizing the cycle."
     )
 
     return {
@@ -302,7 +276,7 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
             "immutable_count": len(immutables),
             "last_selection_cycle_at": manifest.get("last_selection_cycle_at"),
         },
-        "guardian_recommendation": recommendation,
+        "architect_recommendation": recommendation,
         "heat": {"score": round(avg_heat, 4), "band": heat_band},
         "awe": {
             "autonomy_slider": autonomy_slider,
@@ -315,11 +289,16 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         "orchestration": _orchestration_profile(),
         "headline": headline,
         "story": story,
+        "recommendations": [
+            recommendation,
+            "Keep 24h thermal selection active and recycle tepid logic into `.noise` artifacts.",
+            "Only sediment modules that survive >=3 spikes and lower entropy per compute unit.",
+        ],
         "stats": {
-            "signals_24h": len(signals),
+            "signals_window": len(signals),
             "active_dwellers": len(active),
             "bedrock_immutables": len(immutables),
-            "unseen_nudges": len([n for n in nudges if getattr(n, "seen_at", None) is None]),
+            "autonomy_episodes": len(episodes),
         },
     }
 

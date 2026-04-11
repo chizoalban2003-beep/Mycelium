@@ -51,20 +51,6 @@
       "energy_spike_hits": 1,
       "last_perturbed_at": "1970-01-01T00:00:00+00:00",
       "requires_human_approval": true
-    },
-    {
-      "id": "dweller-test-candidate-01",
-      "name": "candidate-lava-01",
-      "role": "forager",
-      "status": "candidate",
-      "utility_signal": 0.92,
-      "metabolic_rate": 0.14,
-      "thermodynamic_tax": 0.09,
-      "volatility_score": 0.66,
-      "survival_cycles": 0,
-      "energy_spike_hits": 0,
-      "last_perturbed_at": "1970-01-01T00:00:00+00:00",
-      "requires_human_approval": true
     }
   ]
 }
