@@ -42,6 +42,7 @@ from mycelium_app.routes.nexus import router as nexus_router
 from mycelium_app.routes.nudges import router as nudges_router
 from mycelium_app.routes.ecosystem import router as ecosystem_router
 from mycelium_app.routes.predict import router as predict_router
+from mycelium_app.routes.resonance import router as resonance_router
 from mycelium_app.routes.sedimentation import router as sedimentation_router
 from mycelium_app.routes.projects import router as projects_router
 from mycelium_app.routes.reflection import router as reflection_router
@@ -577,6 +578,7 @@ app.include_router(tasks_router)
 app.include_router(reflection_router)
 app.include_router(ecosystem_router)
 app.include_router(predict_router)
+app.include_router(resonance_router)
 app.include_router(sedimentation_router)
 app.include_router(projects_router)
 app.include_router(tree_router)

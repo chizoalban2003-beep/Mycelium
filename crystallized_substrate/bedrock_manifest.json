@@ -1,0 +1,25 @@
+{
+  "entries": [],
+  "git_worktree_policy": {
+    "enabled": true,
+    "mutation_branch_prefix": "cursor/mutation-",
+    "promotion_requires_review": true
+  },
+  "immutable": true,
+  "immutable_modules": [],
+  "last_selection_cycle_at": null,
+  "project": "Project Resonance",
+  "selection_policy": {
+    "manual_override_requires_guardian": true,
+    "min_entropy_reduction_score": 0.2,
+    "min_survival_spikes": 3
+  },
+  "selection_telemetry": {
+    "last_spike_id": null,
+    "last_cycle_at": null,
+    "promoted_count": 0,
+    "retired_count": 0,
+    "mutated_count": 0
+  },
+  "version": 1
+}

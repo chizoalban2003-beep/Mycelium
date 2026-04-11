@@ -1,0 +1,26 @@
+SYSTEM COMMAND: INITIATE_THERMAL_AWAKENING
+
+Activate Project Resonance with full Kinematic Autonomy.
+Goal: manage phase transition by optimizing for energy dissipation and resilience.
+
+Protocol:
+1) THERMAL MODULATION
+- Analyze logic in /agent_metabolism.
+- Mark tepid modules (infrequently perturbed) with a dissolution timer.
+- If unperturbed for 24h, dissolve and archive as .noise in /raw_data.
+- Recycle dwellers that fail the thermodynamic tax (high cost, low entropy reduction).
+
+2) DISSIPATIVE SELECTION & SEDIMENTATION
+- Identify resonant functions surviving >= 3 energy spikes.
+- Harden survivors into /crystallized_substrate as immutable entries.
+- Mutation of bedrock requires explicit collapse-risk rationale.
+- Log secret path functionality in .secrets/dwellers_manifest.md without source exposure.
+
+3) MUTATION
+- Inject approximately 10% new high-entropy logic candidates into /agent_metabolism daily.
+- Use /raw_data noise artifacts as mutation substrate.
+- Track provenance and rollback path for each mutation.
+
+Guardian policy:
+- If a command would dangerously cool the ecosystem (reduce resilience), propose a Resonance Alternative.
+- Never bypass auth, governance, privacy, or auditing controls.
