@@ -44,6 +44,7 @@ from mycelium_app.routes.auth import consume_password_reset_token, create_passwo
 from mycelium_app.routes.hybrid import auto_handoff_confirm as auto_handoff_confirm_api
 from mycelium_app.routes.hybrid import auto_handoff_launch as auto_handoff_launch_api
 from mycelium_app.routes.live import build_mission_log
+from mycelium_app.routes.resonance import build_resonance_snapshot
 from mycelium_app.routes.reflection import daily_summary as reflection_daily_summary_api
 from mycelium_app.routes.tasks import bootstrap_work_session as bootstrap_work_session_api
 from mycelium_app.schemas import AutoHandoffConfirmRequest, AutoHandoffLaunchRequest, TaskBootstrapWorkSessionRequest
@@ -814,6 +815,46 @@ def live_page(
     return templates.TemplateResponse(
         "live.html",
         {"request": request, "user": current_user, "app_name": settings.app_name},
+    )
+
+
+@router.get("/resonance-nexus", response_class=HTMLResponse)
+def resonance_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if current_user:
+        snapshot = build_resonance_snapshot(
+            session=session,
+            user_id=int(current_user.id or 0),
+        )
+    else:
+        snapshot = {
+            "ok": True,
+            "headline": "Resonance Nexus (observer mode)",
+            "story": "Sign in to stream your live thermodynamic state. Observer mode still renders the 3-D world scaffold.",
+            "layers": {
+                "gaseous": {"count": 0},
+                "liquid": {"count": 0},
+                "bedrock": {"count": 0},
+            },
+            "heat": {"band": "observe"},
+            "stats": {
+                "signals_24h": 0,
+                "active_dwellers": 0,
+                "bedrock_immutables": 0,
+                "unseen_nudges": 0,
+            },
+        }
+    return templates.TemplateResponse(
+        "resonance_nexus.html",
+        {
+            "request": request,
+            "user": current_user,
+            "app_name": settings.app_name,
+            "resonance_snapshot": snapshot,
+        },
     )
 
 
