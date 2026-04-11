@@ -15,6 +15,9 @@ Protocol:
 2. Dissipative selection: promote logic that survives >=3 energy spikes into `crystallized_substrate/` and mark as immutable.
 3. Mutation: inject ~10% new high-entropy candidates each cycle from `raw_data/` into `agent_metabolism/`.
 4. Secrets: log secret functionality in `.secrets/dwellers_manifest.md`; never expose sensitive internals.
+5. Agent Trace: every mutation/dissolution/hardening event must append an ancestry edge in `.secrets/agent_trace.json`.
+6. Memory consolidation: every 10 cycles compact lessons into `agent_metabolism/resonance_memory.json` (no raw chat logs).
+7. Zero-downtime sedimentation: prefer Git worktrees for mutations and merge only DKS-verified survivors.
 
 Guardrails:
 - Never store credentials or private tokens.

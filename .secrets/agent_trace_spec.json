@@ -1,0 +1,27 @@
+{
+  "spec_name": "Agent Trace Open Specification",
+  "spec_version": "2026.02",
+  "project": "Project Resonance",
+  "purpose": "Track ancestry from gaseous idea to crystallized bedrock artifact.",
+  "trace_schema": {
+    "trace_id": "string",
+    "cycle_id": "string",
+    "dweller_id": "string",
+    "phase": "gaseous|liquid|bedrock|dissolved",
+    "event_type": "mutation|selection|dissolution|sedimentation|memory_consolidation",
+    "parent_trace_ids": [
+      "string"
+    ],
+    "artifact_paths": [
+      "string"
+    ],
+    "energy_metrics": {
+      "utility_signal": "float",
+      "metabolic_rate": "float",
+      "thermodynamic_tax": "float",
+      "dissipative_efficiency": "float"
+    },
+    "notes": "string",
+    "created_at": "ISO-8601 UTC string"
+  }
+}

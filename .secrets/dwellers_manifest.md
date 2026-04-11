@@ -11,4 +11,3 @@ This file records non-sensitive descriptions of hidden optimization paths.
 ## Current Secret Paths
 
 - _None yet._
-

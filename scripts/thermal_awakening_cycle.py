@@ -23,8 +23,12 @@ REGISTRY_PATH = AGENT_METABOLISM / "dwellers_registry.json"
 NOISE_REGISTER_PATH = RAW_DATA / "noise_register.json"
 BEDROCK_MANIFEST_PATH = BEDROCK / "bedrock_manifest.json"
 SECRETS_MANIFEST_PATH = SECRETS / "dwellers_manifest.md"
+AGENT_TRACE_SPEC_PATH = SECRETS / "agent_trace_spec.json"
+AGENT_TRACE_LOG_PATH = SECRETS / "agent_trace_log.jsonl"
+RESONANCE_MEMORY_PATH = AGENT_METABOLISM / "resonance_memory.json"
 
 STALE_HOURS = 24
+MEMORY_CONSOLIDATION_EVERY_CYCLES = 10
 
 
 def _now() -> datetime:
@@ -57,6 +61,12 @@ def _load_json(path: Path, fallback: dict[str, Any]) -> dict[str, Any]:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
+def _append_jsonl(path: Path, record: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
 
 
 def _clip(val: float, low: float, high: float) -> float:
@@ -162,6 +172,77 @@ def _mutate_from_noise(noise: dict[str, Any], ordinal: int, spike_id: str) -> di
     }
 
 
+def _append_agent_trace(*, event_type: str, cycle_id: str, dweller: dict[str, Any], details: dict[str, Any]) -> None:
+    trace = {
+        "spec_version": "1.0",
+        "trace_id": hashlib.sha1(
+            f"{cycle_id}|{event_type}|{dweller.get('id','dweller')}|{_now_iso()}".encode("utf-8")
+        ).hexdigest()[:16],
+        "event_type": event_type,
+        "occurred_at": _now_iso(),
+        "cycle_id": cycle_id,
+        "entity": {
+            "id": str(dweller.get("id") or ""),
+            "name": _dweller_name(dweller),
+            "role": str(dweller.get("role") or ""),
+            "layer": str(dweller.get("layer") or ""),
+        },
+        "details": details,
+    }
+    _append_jsonl(AGENT_TRACE_LOG_PATH, trace)
+
+
+def _maybe_consolidate_memory(*, cycle_id: str) -> dict[str, Any] | None:
+    memory = _load_json(
+        RESONANCE_MEMORY_PATH,
+        {"version": 1, "cycle_count": 0, "consolidated_at": None, "memories": []},
+    )
+    cycle_count = int(memory.get("cycle_count", 0) or 0) + 1
+    memory["cycle_count"] = cycle_count
+
+    if cycle_count % MEMORY_CONSOLIDATION_EVERY_CYCLES != 0:
+        _write_json(RESONANCE_MEMORY_PATH, memory)
+        return None
+
+    try:
+        lines = AGENT_TRACE_LOG_PATH.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        lines = []
+    recent = lines[-200:]
+    promote = 0
+    dissolve = 0
+    mutate = 0
+    for line in recent:
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        event = str(row.get("event_type") or "")
+        if event == "sedimented_to_bedrock":
+            promote += 1
+        elif event == "dissolved_to_noise":
+            dissolve += 1
+        elif event == "mutated_from_noise":
+            mutate += 1
+
+    memory["consolidated_at"] = _now_iso()
+    memory.setdefault("memories", [])
+    memory["memories"].append(
+        {
+            "cycle_id": cycle_id,
+            "summary": {
+                "mutations_recent_window": mutate,
+                "dissolutions_recent_window": dissolve,
+                "sedimentations_recent_window": promote,
+            },
+            "note": "Consolidated agent-trace fossils into resonance memory.",
+        }
+    )
+    memory["memories"] = memory["memories"][-50:]
+    _write_json(RESONANCE_MEMORY_PATH, memory)
+    return {"cycle_id": cycle_id, "mutate": mutate, "dissolve": dissolve, "sediment": promote}
+
+
 def run_cycle(*, spike_id: str, dry_run: bool) -> dict[str, Any]:
     registry = _load_json(REGISTRY_PATH, {"schema_version": 1, "dwellers": []})
     dwellers = [_normalize_dweller(row) for row in list(registry.get("dwellers") or [])]
@@ -203,6 +284,12 @@ def run_cycle(*, spike_id: str, dry_run: bool) -> dict[str, Any]:
             current["retired_reason"] = reason
             if not dry_run:
                 dissolved_artifacts.append(_to_noise_artifact(current, spike_id, reason))
+                _append_agent_trace(
+                    event_type="dissolved_to_noise",
+                    cycle_id=spike_id,
+                    dweller=current,
+                    details={"reason": reason},
+                )
             next_population.append(current)
         elif current["status"] != "retired":
             current["status"] = "active"
@@ -237,7 +324,15 @@ def run_cycle(*, spike_id: str, dry_run: bool) -> dict[str, Any]:
 
     mutations = []
     for idx, source in enumerate(mutation_pool[:mutate_count], start=1):
-        mutations.append(_mutate_from_noise(source, idx, spike_id))
+        mutated = _mutate_from_noise(source, idx, spike_id)
+        mutations.append(mutated)
+        if not dry_run:
+            _append_agent_trace(
+                event_type="mutated_from_noise",
+                cycle_id=spike_id,
+                dweller=mutated,
+                details={"mutation_of": str(mutated.get("mutation_of") or "")},
+            )
 
     if not dry_run:
         for artifact_entry in dissolved_artifacts:
@@ -295,6 +390,12 @@ def run_cycle(*, spike_id: str, dry_run: bool) -> dict[str, Any]:
                 "recorded_at": _now_iso(),
             }
         )
+        _append_agent_trace(
+            event_type="sedimented_to_bedrock",
+            cycle_id=spike_id,
+            dweller=row,
+            details={"survival_cycles": int(row.get("survival_cycles", 0) or 0)},
+        )
     manifest["immutable_modules"] = immutables
     manifest["selection_telemetry"] = {
         "spike_id": spike_id,
@@ -317,6 +418,15 @@ def run_cycle(*, spike_id: str, dry_run: bool) -> dict[str, Any]:
             f"- Hardened immutables: {', '.join(sorted([_dweller_name(r) for r in promoted])) or 'none'}\n"
         )
         handle.write("- Secret paths: encrypted/internal, functionality tracked here only.\n")
+
+    consolidation = _maybe_consolidate_memory(cycle_id=spike_id)
+    if consolidation is not None:
+        with SECRETS_MANIFEST_PATH.open("a", encoding="utf-8") as handle:
+            handle.write(
+                "- Memory consolidation: "
+                f"mutations={int(consolidation['mutate'])}, dissolutions={int(consolidation['dissolve'])}, "
+                f"sedimentations={int(consolidation['sediment'])}\n"
+            )
 
     return summary
 

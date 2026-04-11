@@ -20,6 +20,27 @@ Thermal Protocol
    - Inject ~10% new candidate mutations from `/raw_data` into `/agent_metabolism`.
    - Reject unsafe directives and propose a Resonance Alternative.
 
+Mission Control and Cloud Handoff
+- For long-running cycles (>4h), trigger Cloud Handoff (`&`) to keep heat stable.
+- Persist state each cycle into:
+  - `agent_metabolism/resonance_memory.json`
+  - `.secrets/agent_trace.jsonl`
+
+Agent Trace Fossil Record
+- Log each dissolve/mutate/sediment event using the Agent Trace schema in `.secrets/agent_trace_schema.json`.
+- Keep trace entries append-only and auditable.
+
+Multi-Agent Friction
+- Run coordinated roles in parallel:
+  - `Lava` (creative mutation, liquid exploration)
+  - `Frost` (verification, security, bedrock hardening)
+- Resolve conflicts by favoring lower risk and higher dissipative efficiency.
+
+Burn Guidelines (2026)
+- Langevin Dynamics Modeling: synthesize features from noise over time; non-resonant logic should decay.
+- Memory Consolidation: no raw chat logs; consolidate cycle learning into `agent_metabolism/resonance_memory.json` every 10 cycles.
+- Zero-Downtime Sedimentation: use Git worktrees for parallel mutation branches and only merge resilient survivors.
+
 Guardrails
 - Keep authentication, governance, and auditing intact.
 - Never persist credentials or personal secrets in repository files.

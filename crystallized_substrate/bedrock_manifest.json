@@ -1,5 +1,10 @@
 {
   "entries": [],
+  "git_worktree_policy": {
+    "enabled": true,
+    "mutation_branch_prefix": "cursor/mutation-",
+    "promotion_requires_review": true
+  },
   "immutable": true,
   "immutable_modules": [],
   "last_selection_cycle_at": null,

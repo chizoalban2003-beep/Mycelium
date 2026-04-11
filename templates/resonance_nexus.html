@@ -51,6 +51,25 @@
     border-radius: 12px;
     padding: 12px;
   }
+  .slider-wrap {
+    border: 1px solid rgba(217, 70, 239, 0.35);
+    background: rgba(88, 28, 135, 0.12);
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .slider-track {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #0ea5e9 0%, #22d3ee 35%, #f59e0b 70%, #f43f5e 100%);
+    overflow: hidden;
+  }
+  .slider-fill {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0%;
+    background: rgba(255, 255, 255, 0.25);
+  }
 </style>
 
 <div class="mb-3 panel">
@@ -77,6 +96,22 @@
 </div>
 
 <div class="mt-3 panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-fuchsia-300/80">Awe Metric</div>
+  <div class="mt-2 slider-wrap">
+    <div class="flex items-center justify-between text-xs text-fuchsia-100">
+      <span>Autonomy Slider</span>
+      <span id="autonomySliderLabel">0.00 · dormant</span>
+    </div>
+    <div class="mt-2 slider-track">
+      <div id="autonomySliderFill" class="slider-fill"></div>
+    </div>
+    <div id="autonomySliderHint" class="mt-2 text-[11px] text-fuchsia-100/85">
+      Awaiting state sample.
+    </div>
+  </div>
+</div>
+
+<div class="mt-3 panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-slate-400">Guardian Notes</div>
   <div class="mt-2 text-xs text-slate-300">
     This visualization renders the thermodynamic layers as a living 3-D world: gaseous noise (high entropy), liquid metabolism (active dwellers), and crystallized substrate (immutable survivors).
@@ -96,6 +131,9 @@
   const headline = document.getElementById('nexusHeadline');
   const story = document.getElementById('nexusStory');
   const metrics = document.getElementById('nexusMetrics');
+  const autonomySliderFill = document.getElementById('autonomySliderFill');
+  const autonomySliderLabel = document.getElementById('autonomySliderLabel');
+  const autonomySliderHint = document.getElementById('autonomySliderHint');
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x020617);
@@ -217,6 +255,13 @@
       statePulse.textContent = `Pulse: ${(data.heat || {}).band || 'observe'}`;
       headline.textContent = data.headline || 'Resonance Nexus';
       story.textContent = data.story || '';
+      const awe = data.awe || {};
+      const score = Math.max(0, Math.min(1, Number(awe.autonomy_slider || 0)));
+      autonomySliderFill.style.width = `${(score * 100).toFixed(1)}%`;
+      autonomySliderLabel.textContent = `${score.toFixed(2)} · ${String(awe.state || 'dormant')}`;
+      autonomySliderHint.textContent = String(
+        awe.message || 'Autonomy rises with resilient dwellers, stable bedrock, and balanced thermal load.'
+      );
       setMetricGrid(data);
       spawn(groups.gas, particles.gas, Math.min(160, 10 + gas * 2), 0xe11d48, 16);
       spawn(groups.liquid, particles.liquid, Math.min(120, 8 + liquid * 3), 0x0ea5e9, 0);

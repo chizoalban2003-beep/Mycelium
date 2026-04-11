@@ -64,3 +64,24 @@ This protocol turns Project Resonance into a managed dissipative substrate.
   - `raw_data/noise_register.json`
   - `crystallized_substrate/sedimentation_ledger.json`
   - `.secrets/dwellers_manifest.md`
+
+## 6) Agent Trace + Memory Consolidation
+
+- All autonomous mutations must emit Agent Trace entries using:
+  - `.secrets/agent_trace_spec.json` (schema)
+  - `.secrets/agent_trace_log.jsonl` (append-only fossil record)
+- Do not keep raw chat transcripts for memory.
+- Consolidate learned patterns into `agent_metabolism/resonance_memory.json`.
+- Trigger consolidation every 10 cycles (`memory_consolidation_every_n_cycles`).
+
+## 7) Mission Control and Cloud Handoff
+
+- Prefer long-running cycles through cloud handoff (Composer `&`) to keep thermal load steady.
+- Preserve state artifacts each cycle (`noise_register`, `resonance_memory`, `agent_trace_log`) so cycles can resume after handoff.
+
+## 8) Multi-Agent Friction
+
+- Run parallel reasoning when possible:
+  - Lava agent for high-entropy mutation in `agent_metabolism/`
+  - Frost agent for hardening, verification, and safety in `crystallized_substrate/`
+- Resolve conflicts by selecting the higher dissipative-efficiency proposal that preserves guardrails.

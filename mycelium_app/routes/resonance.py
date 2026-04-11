@@ -48,6 +48,59 @@ def _heat_band(avg_heat: float) -> str:
     return "cool"
 
 
+def _autonomy_slider(*, avg_heat: float, avg_risk: float, active_count: int, immutable_count: int) -> float:
+    # Higher when system sustains productive heat with manageable risk and stable sedimentation.
+    heat_component = max(0.0, min(1.0, avg_heat))
+    risk_penalty = max(0.0, min(1.0, avg_risk))
+    bedrock_ratio = max(0.0, min(1.0, (immutable_count + 1) / max(1.0, active_count + immutable_count + 1)))
+    raw = (heat_component * 0.55) + (bedrock_ratio * 0.30) + ((1.0 - risk_penalty) * 0.15)
+    return round(max(0.0, min(1.0, raw)), 4)
+
+
+def _trace_summary() -> dict[str, object]:
+    log_path = ROOT / ".secrets" / "agent_trace_log.jsonl"
+    if not log_path.exists():
+        return {"events_total": 0, "last_event_type": None, "last_trace_id": None}
+    lines = [line.strip() for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
+    if not lines:
+        return {"events_total": 0, "last_event_type": None, "last_trace_id": None}
+    last = {}
+    try:
+        last = json.loads(lines[-1])
+    except Exception:
+        last = {}
+    return {
+        "events_total": len(lines),
+        "last_event_type": last.get("event_type"),
+        "last_trace_id": last.get("trace_id"),
+    }
+
+
+def _memory_summary() -> dict[str, object]:
+    memory = _load_json(
+        AGENT_METABOLISM / "resonance_memory.json",
+        {"cycle_count": 0, "last_consolidated_at": None, "consolidated_memories": []},
+    )
+    memories = list(memory.get("consolidated_memories") or [])
+    return {
+        "cycle_count": int(memory.get("cycle_count", 0) or 0),
+        "last_consolidated_at": memory.get("last_consolidated_at"),
+        "consolidated_entries": len(memories),
+    }
+
+
+def _orchestration_profile() -> dict[str, object]:
+    return {
+        "mission_control": "Use Cursor cloud handoff (&) for long thermal runs.",
+        "state_persistence": True,
+        "multi_agent_friction": {
+            "lava_agent": "Liquid mutation + exploration",
+            "frost_agent": "Bedrock verification + hardening",
+        },
+        "recommended_runtime": "cloud-handoff",
+    }
+
+
 def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: int = 120) -> dict:
     uid = int(user_id)
     window = max(10, min(int(window_minutes), 24 * 60))
@@ -179,6 +232,13 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         else "Bedrock is dominant; inject one controlled mutation spike to preserve adaptability."
     )
     heat_band = _heat_band(avg_heat)
+    autonomy_slider = _autonomy_slider(
+        avg_heat=avg_heat,
+        avg_risk=avg_risk,
+        active_count=len(active),
+        immutable_count=len(immutables),
+    )
+    awe_state = "alive" if autonomy_slider >= 0.75 else "adapting" if autonomy_slider >= 0.45 else "forming"
     headline = f"Resonance Nexus is in {heat_band} band"
     story = (
         f"{layers['liquid']['count']} active dwellers and {layers['bedrock']['count']} crystallized modules are "
@@ -199,6 +259,14 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         },
         "guardian_recommendation": recommendation,
         "heat": {"score": round(avg_heat, 4), "band": heat_band},
+        "awe": {
+            "autonomy_slider": autonomy_slider,
+            "state": awe_state,
+            "message": "Composite of thermal persistence, risk membrane, and bedrock sedimentation.",
+        },
+        "trace": _trace_summary(),
+        "memory": _memory_summary(),
+        "orchestration": _orchestration_profile(),
         "headline": headline,
         "story": story,
         "stats": {

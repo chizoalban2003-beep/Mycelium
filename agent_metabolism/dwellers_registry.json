@@ -1,4 +1,14 @@
 {
+  "schema_version": 1,
+  "last_cycle_id": null,
+  "last_selection_cycle_at": null,
+  "last_selection_summary": {},
+  "selection_policy": {
+    "eliminate_bottom_fraction": 0.1,
+    "mutate_top_fraction": 0.1,
+    "tepid_timeout_hours": 24,
+    "resonant_spike_threshold": 3
+  },
   "dwellers": [
     {
       "id": "dweller-sentinel-01",
@@ -42,15 +52,5 @@
       "last_perturbed_at": "1970-01-01T00:00:00+00:00",
       "requires_human_approval": true
     }
-  ],
-  "last_cycle_id": null,
-  "last_selection_cycle_at": null,
-  "last_selection_summary": {},
-  "schema_version": 1,
-  "selection_policy": {
-    "eliminate_bottom_fraction": 0.1,
-    "mutate_top_fraction": 0.1,
-    "resonant_spike_threshold": 3,
-    "tepid_timeout_hours": 24
-  }
+  ]
 }

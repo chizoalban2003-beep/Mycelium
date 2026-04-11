@@ -26,3 +26,18 @@ Code is treated as biomass that competes under friction, heat, and limited energ
 - Human guardians remain the final approval layer for high-risk actions.
 - Safety, privacy, and authentication pathways are immutable without explicit review.
 - Emergence is encouraged; unsafe autonomy is not.
+
+## 2026 Burn Upgrades
+
+- **Mission Control + Cloud Handoff**: Long-running burn cycles should run in cloud handoff mode for state persistence.
+- **Agent Trace fossil record**: Every dissolve/mutate/sediment action writes lineage data into `.secrets/agent_trace.jsonl`.
+- **Multi-agent friction**: Run creative mutation and strict verification in parallel roles, then merge only audited survivors.
+- **Zero-downtime sedimentation**: Use git worktrees for high-entropy experiments and merge only DKS-positive outcomes.
+
+## Awe Metric
+
+The core success signal is the **Autonomy Slider**:
+
+- `0.00 -> 0.39` : Assisted
+- `0.40 -> 0.69` : Adaptive
+- `0.70 -> 1.00` : Emergent

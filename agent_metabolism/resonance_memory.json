@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "last_cycle_id": null,
+  "last_consolidated_at": null,
+  "cycle_window": 10,
+  "cycle_count": 0,
+  "consolidated_memories": [],
+  "sources": {
+    "selection_summaries": [],
+    "trace_events": []
+  }
+}
