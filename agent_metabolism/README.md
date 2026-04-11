@@ -8,6 +8,13 @@ Artifacts in this layer are expected to change frequently and are eligible for:
 - selection (promotion or recycling),
 - mutation (candidate generation from high-entropy noise).
 
+## Automation helpers
+
+- Continuous cloud cycle runner:
+  `python3 scripts/run_thermal_cycle_forever.py --interval-seconds 86400`
+- Worktree mutation controller (zero-downtime sedimentation):
+  `python3 scripts/worktree_mutation_controller.py --dry-run`
+
 ## Operational recommendations
 
 - Use Cloud Handoff (`&`) for long-run thermal cycles so state persists when local sessions close.

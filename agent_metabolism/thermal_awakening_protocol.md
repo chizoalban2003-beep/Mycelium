@@ -79,7 +79,14 @@ This protocol turns Project Resonance into a managed dissipative substrate.
 - Prefer long-running cycles through cloud handoff (Composer `&`) to keep thermal load steady.
 - Preserve state artifacts each cycle (`noise_register`, `resonance_memory`, `agent_trace_log`) so cycles can resume after handoff.
 
-## 8) Multi-Agent Friction
+## 8) Zero-Downtime Sedimentation
+
+- Use Git worktrees for mutation experiments and long burn cycles:
+  - `python3 scripts/worktree_mutation_controller.py --spike-id <id> --dry-run`
+- Keep bedrock stable while mutations evolve in isolated branches.
+- Merge back only after DKS pass (compile + cycle validation + governance checks).
+
+## 9) Multi-Agent Friction
 
 - Run parallel reasoning when possible:
   - Lava agent for high-entropy mutation in `agent_metabolism/`

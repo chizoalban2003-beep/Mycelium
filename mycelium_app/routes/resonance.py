@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 RAW_DATA = ROOT / "raw_data"
 AGENT_METABOLISM = ROOT / "agent_metabolism"
 BEDROCK = ROOT / "crystallized_substrate"
+TRACE_LOG_PATH = ROOT / ".secrets" / "agent_trace_log.jsonl"
 
 
 def _load_json(path: Path, fallback: dict) -> dict:
@@ -58,10 +59,9 @@ def _autonomy_slider(*, avg_heat: float, avg_risk: float, active_count: int, imm
 
 
 def _trace_summary() -> dict[str, object]:
-    log_path = ROOT / ".secrets" / "agent_trace_log.jsonl"
-    if not log_path.exists():
+    if not TRACE_LOG_PATH.exists():
         return {"events_total": 0, "last_event_type": None, "last_trace_id": None}
-    lines = [line.strip() for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
+    lines = [line.strip() for line in TRACE_LOG_PATH.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
     if not lines:
         return {"events_total": 0, "last_event_type": None, "last_trace_id": None}
     last = {}
@@ -74,6 +74,51 @@ def _trace_summary() -> dict[str, object]:
         "last_event_type": last.get("event_type"),
         "last_trace_id": last.get("trace_id"),
     }
+
+
+def _trace_events(limit: int = 25) -> list[dict[str, object]]:
+    if not TRACE_LOG_PATH.exists():
+        return []
+    lines = [line.strip() for line in TRACE_LOG_PATH.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
+    if not lines:
+        return []
+    events: list[dict[str, object]] = []
+    for line in lines[-max(1, int(limit)):]:
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(row, dict):
+            continue
+        entity = row.get("entity") if isinstance(row.get("entity"), dict) else {}
+        events.append(
+            {
+                "trace_id": row.get("trace_id"),
+                "cycle_id": row.get("cycle_id"),
+                "event_type": row.get("event_type"),
+                "occurred_at": row.get("occurred_at"),
+                "entity_id": entity.get("id"),
+                "entity_name": entity.get("name"),
+                "role": entity.get("role"),
+            }
+        )
+    return list(reversed(events))
+
+
+def _trace_recent(limit: int = 25) -> list[dict[str, object]]:
+    log_path = ROOT / ".secrets" / "agent_trace_log.jsonl"
+    if not log_path.exists():
+        return []
+    lines = [line.strip() for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
+    out: list[dict[str, object]] = []
+    for line in lines[-max(1, min(int(limit), 200)) :]:
+        try:
+            row = json.loads(line)
+            if isinstance(row, dict):
+                out.append(row)
+        except Exception:
+            continue
+    return out
 
 
 def _memory_summary() -> dict[str, object]:
@@ -265,6 +310,7 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
             "message": "Composite of thermal persistence, risk membrane, and bedrock sedimentation.",
         },
         "trace": _trace_summary(),
+        "trace_explorer": _trace_events(limit=25),
         "memory": _memory_summary(),
         "orchestration": _orchestration_profile(),
         "headline": headline,
@@ -320,3 +366,17 @@ def run_thermal_cycle(
         return payload
     except Exception as exc:
         return {"ok": False, "detail": f"thermal cycle error: {type(exc).__name__}: {exc}"}
+
+
+@router.get("/trace")
+def trace_explorer(
+    limit: int = 25,
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user  # auth gate
+    recent = _trace_recent(limit=max(1, min(int(limit), 200)))
+    return {
+        "ok": True,
+        "count": len(recent),
+        "recent": recent,
+    }
