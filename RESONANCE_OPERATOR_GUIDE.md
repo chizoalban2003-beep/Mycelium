@@ -7,7 +7,7 @@ Use this guide as the default operating loop for Myco under the Resonance model.
 - Primary route: `/resonance`
 - Canonical route: `/resonance-nexus`
 
-`/resonance` now permanently redirects to `/resonance-nexus` for compatibility.
+Both routes now render the same Resonance surface for compatibility.
 
 ### 2) Read the Three Layers
 
