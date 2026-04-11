@@ -841,11 +841,15 @@ def resonance_page(
                 "bedrock": {"count": 0},
             },
             "heat": {"band": "observe"},
+            "recommendations": [
+                "Sign in to enable active thermal cycle controls.",
+                "Use Gas -> Liquid -> Bedrock as the primary operator model.",
+            ],
             "stats": {
-                "signals_24h": 0,
+                "signals_window": 0,
                 "active_dwellers": 0,
                 "bedrock_immutables": 0,
-                "unseen_nudges": 0,
+                "autonomy_episodes": 0,
             },
         }
     return templates.TemplateResponse(
