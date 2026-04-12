@@ -1150,6 +1150,7 @@ def world_infrastructure(
 def world_replay(
     start_tick: int | None = None,
     end_tick: int | None = None,
+    window_ticks: int = 24,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -1163,15 +1164,27 @@ def world_replay(
     if not isinstance(open_world, dict):
         open_world = {}
     state = open_world.get("state") if isinstance(open_world.get("state"), dict) else {}
+    current_tick = int((state or {}).get("tick", 0) or 0)
+    replay_window = max(2, min(int(window_ticks or 24), 240))
+    resolved_start = start_tick
+    resolved_end = end_tick
+    if resolved_start is None and resolved_end is None and current_tick > 0:
+        resolved_end = current_tick
+        resolved_start = max(1, current_tick - replay_window + 1)
     replay = world_replay_summary(
         state=state if isinstance(state, dict) else {},
-        start_tick=start_tick,
-        end_tick=end_tick,
+        start_tick=resolved_start,
+        end_tick=resolved_end,
     )
     return {
         "ok": True,
         "phase": str((state or {}).get("phase") or "forming"),
-        "current_tick": int((state or {}).get("tick", 0) or 0),
+        "current_tick": current_tick,
+        "window_ticks": replay_window,
+        "resolved_window": {
+            "start_tick": int(resolved_start) if resolved_start is not None else None,
+            "end_tick": int(resolved_end) if resolved_end is not None else None,
+        },
         "world_health": snapshot.get("world_health") if isinstance(snapshot.get("world_health"), dict) else {},
         "replay": replay,
     }

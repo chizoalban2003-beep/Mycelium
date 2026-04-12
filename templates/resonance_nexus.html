@@ -200,6 +200,15 @@
   <div class="mt-2 text-xs text-slate-300">
     Real-time world state from force interactions: entities, infrastructure hubs, flow links, and recent emergence events.
   </div>
+  <div class="mt-2 rounded border border-sky-900/40 bg-sky-950/20 p-2 text-xs text-sky-100">
+    <div class="font-semibold">How to run and control</div>
+    <ol class="mt-1 list-decimal pl-5 space-y-1 text-[11px]">
+      <li>Click <span class="text-sky-200">Refresh World State</span> to load the current snapshot.</li>
+      <li>Click <span class="text-sky-200">Step World (+6 ticks)</span> to advance simulation time.</li>
+      <li>Click <span class="text-sky-200">Replay Last 24 Ticks</span> to inspect trend deltas.</li>
+      <li>Watch world health + SLO metrics; keep status in <span class="text-emerald-200">adapting/thriving</span>.</li>
+    </ol>
+  </div>
   <div class="mt-2 flex flex-wrap gap-2">
     <button id="btnWorldStep" class="pill cursor-pointer">Step World (+6 ticks)</button>
     <button id="btnWorldRefresh" class="pill cursor-pointer">Refresh World State</button>
@@ -605,13 +614,15 @@
         if (burnSafeStatus) burnSafeStatus.textContent = 'Running burn-safe protocol...';
         const res = await fetch('/api/resonance/run-burn-safely', { method: 'POST', credentials: 'same-origin' });
         const data = await res.json();
-        const outcome = data && data.outcome ? data.outcome : {};
+        const steps = (data && data.steps && typeof data.steps === 'object') ? data.steps : {};
+        const ignition = (steps.ignition && typeof steps.ignition === 'object') ? steps.ignition : {};
+        const revelation = (steps.revelation && typeof steps.revelation === 'object') ? steps.revelation : {};
         if (burnSafeStatus) {
           burnSafeStatus.textContent = [
-            `Phase: ${String(outcome.phase || 'unknown')}`,
-            `retired=${Number(outcome.retired_count || 0)}`,
-            `mutated=${Number(outcome.mutated_count || 0)}`,
-            `promoted=${Number(outcome.promoted_count || 0)}`,
+            `ok=${Boolean(data && data.ok)}`,
+            `burned=${Number(revelation.burned || ignition.retired_count || 0)}`,
+            `forged=${Number(revelation.forged || ignition.promoted_count || 0)}`,
+            `secrets=${Number(revelation.secrets_born || ignition.mutated_count || 0)}`,
           ].join(' · ');
         }
         setTimeout(pullState, 300);
@@ -688,7 +699,13 @@
           ].join(' · ');
         }
         if (payload && payload.world_health && typeof payload.world_health === 'object' && worldHealthSummary) {
-          worldHealthSummary.textContent = `World health ${Number(payload.world_health.score || 0).toFixed(3)} · ${String(payload.world_health.status || 'forming')}`;
+          const health = payload.world_health;
+          worldHealthSummary.textContent = [
+            `World health ${Number(health.score || 0).toFixed(3)}`,
+            String(health.status || 'forming'),
+            `density ${Number(health.infrastructure_density || 0).toFixed(3)}`,
+            `birth ${Number(health.event_birth_rate || 0).toFixed(3)}`,
+          ].join(' · ');
         }
       } catch (_e) {
         if (worldReplaySummary) worldReplaySummary.textContent = 'Replay unavailable.';
