@@ -149,7 +149,39 @@
   <div id="traceList" class="trace-list mt-2"></div>
 </div>
 
+<div class="mt-3 panel resonance-main-panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-rose-300/90">Secondary Force (Chaos Coefficient)</div>
+  <div class="mt-2 text-xs text-slate-300">
+    External adaptive stress stream (market/API/adversarial noise) applied as `Cs` to Liquid heat.
+  </div>
+  <div class="mt-2 slider-wrap">
+    <div class="flex items-center justify-between text-xs text-rose-100">
+      <span>Secondary force</span>
+      <span id="secondaryForceLabel">Cs 0.10 · low</span>
+    </div>
+    <input id="secondaryForceSlider" type="range" min="0" max="1" step="0.01" value="0.10" class="mt-2 w-full accent-rose-400" />
+    <div id="secondaryForceState" class="mt-2 text-[11px] text-rose-100/90">
+      Adaptive stress stream is stable.
+    </div>
+    <div id="secondaryForceHint" class="mt-2 text-[11px] text-slate-400">
+      Dwellers should self-heal under pressure spikes.
+    </div>
+  </div>
+</div>
+
+<div class="mt-3 panel resonance-main-panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/90">Explain Myco</div>
+  <div class="mt-2 text-xs text-slate-300">
+    Complete explanation of current architecture, active loops, and future updates.
+  </div>
+  <div id="explainMycoContent" class="mt-2 text-xs text-slate-200 whitespace-pre-wrap">Loading overview…</div>
+  <div class="mt-2 flex gap-2">
+    <button id="btnRefreshOverview" class="pill cursor-pointer">Refresh Overview</button>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/static/SecondaryForceStream.js"></script>
 <script>
 (function() {
   document.title = 'Resonance Nexus · Myco';
@@ -168,7 +200,18 @@
   const autonomySliderHint = document.getElementById('autonomySliderHint');
   const traceMeta = document.getElementById('traceMeta');
   const traceList = document.getElementById('traceList');
+  const secondaryForceLabel = document.getElementById('secondaryForceLabel');
+  const secondaryForceState = document.getElementById('secondaryForceState');
+  const secondaryForceHint = document.getElementById('secondaryForceHint');
+  const secondaryForceSlider = document.getElementById('secondaryForceSlider');
+  const explainMycoContent = document.getElementById('explainMycoContent');
+  const btnRefreshOverview = document.getElementById('btnRefreshOverview');
   const initialSnapshot = {{ resonance_snapshot | tojson }};
+  const secondaryForce = (window.SecondaryForceStream && window.SecondaryForceStream.create)
+    ? window.SecondaryForceStream.create({
+        baseCoefficient: Number((((initialSnapshot || {}).secondary_force || {}).coefficient || 0.1)),
+      })
+    : null;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x020617);
@@ -316,14 +359,65 @@
       }).join('');
     }
     setMetricGrid(data);
+
+    const sf = data.secondary_force || {};
+    const coeff = Math.max(0, Math.min(1, Number(sf.coefficient || 0)));
+    const level = String(sf.level || 'low');
+    if (secondaryForceLabel) secondaryForceLabel.textContent = `Cs ${coeff.toFixed(2)} · ${level}`;
+    if (secondaryForceState) secondaryForceState.textContent = String(sf.message || '');
+    if (secondaryForceHint) secondaryForceHint.textContent = String(
+      sf.stress_response || 'Secondary force tracks external volatility and adaptive stress response.'
+    );
+    if (secondaryForceSlider) secondaryForceSlider.value = String(coeff.toFixed(2));
     spawn(groups.gas, particles.gas, Math.min(160, 10 + gas * 2), 0xe11d48, 16);
     spawn(groups.liquid, particles.liquid, Math.min(120, 8 + liquid * 3), 0x0ea5e9, 0);
     spawn(groups.bedrock, particles.bedrock, Math.min(90, 6 + bedrock * 4), 0x059669, -18);
   }
 
+  async function loadOverview() {
+    if (!explainMycoContent) return;
+    try {
+      const r = await fetch('/api/resonance/explain/full', { credentials: 'same-origin' });
+      if (!r.ok) {
+        explainMycoContent.textContent = `Overview unavailable (${r.status}).`;
+        return;
+      }
+      const data = await r.json();
+      const architecture = (data && data.architecture) || {};
+      const current = Array.isArray(data && data.current_capabilities) ? data.current_capabilities : [];
+      const future = Array.isArray(data && data.future_updates) ? data.future_updates : [];
+      const redundancy = Array.isArray(data && data.redundancy_candidates) ? data.redundancy_candidates : [];
+      explainMycoContent.textContent = [
+        String((data && data.summary) || 'No summary available.'),
+        '',
+        'Current capabilities:',
+        ...(current.length ? current.map((x) => `- ${String(x)}`) : ['- none']),
+        '',
+        'Architecture:',
+        `- Gas: ${String(((architecture.gaseous || {}).description) || '')}`,
+        `- Liquid: ${String(((architecture.liquid || {}).description) || '')}`,
+        `- Bedrock: ${String(((architecture.bedrock || {}).description) || '')}`,
+        '',
+        'Future updates:',
+        ...(future.length ? future.map((x) => `- ${String(x)}`) : ['- none']),
+        '',
+        'Redundancy candidates:',
+        ...(redundancy.length ? redundancy.map((x) => `- ${String(x)}`) : ['- none']),
+      ].join('\n');
+    } catch (_e) {
+      explainMycoContent.textContent = 'Overview unavailable.';
+    }
+  }
+
   async function pullState() {
     try {
-      const res = await fetch('/api/resonance/state_of_fluid', { credentials: 'same-origin' });
+      const coeff = secondaryForce && typeof secondaryForce.currentCoefficient === 'function'
+        ? Number(secondaryForce.currentCoefficient())
+        : Number((secondaryForceSlider && secondaryForceSlider.value) || 0.1);
+      const clamped = Math.max(0, Math.min(1, coeff));
+      const source = `stream:${secondaryForce && typeof secondaryForce.currentSignal === 'function' ? secondaryForce.currentSignal() : 'manual'}`;
+      const endpoint = `/api/resonance/state_of_fluid?secondary_force=${clamped.toFixed(4)}&secondary_source=${encodeURIComponent(source)}`;
+      const res = await fetch(endpoint, { credentials: 'same-origin' });
       if (!res.ok) return;
       const data = await res.json();
       renderState(data);
@@ -338,11 +432,29 @@
       story.textContent = `Dry thermal cycle: dissolved ${data.retired_count || 0}, mutated ${data.mutated_count || 0}, sedimented ${data.promoted_count || 0}.`;
     } catch (_e) {}
   });
+  if (btnRefreshOverview) {
+    btnRefreshOverview.addEventListener('click', loadOverview);
+  }
 
   if (initialSnapshot && typeof initialSnapshot === 'object') {
     renderState(initialSnapshot);
   }
+  if (secondaryForce && typeof secondaryForce.subscribe === 'function') {
+    secondaryForce.subscribe((sample) => {
+      if (!secondaryForceSlider) return;
+      const coeff = Math.max(0, Math.min(1, Number(sample && sample.coefficient || 0.1)));
+      secondaryForceSlider.value = String(coeff.toFixed(2));
+    });
+  }
+  if (secondaryForceSlider) {
+    secondaryForceSlider.addEventListener('input', () => {
+      if (!secondaryForce || typeof secondaryForce.setCoefficient !== 'function') return;
+      const coeff = Math.max(0, Math.min(1, Number(secondaryForceSlider.value || 0.1)));
+      secondaryForce.setCoefficient(coeff, { source: 'manual' });
+    });
+  }
   pullState();
+  loadOverview();
   setInterval(pullState, 8000);
 })();
 </script>

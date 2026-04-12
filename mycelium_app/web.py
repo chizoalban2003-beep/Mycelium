@@ -863,6 +863,92 @@ def resonance_page(
     )
 
 
+@router.get("/system-overview", response_class=HTMLResponse)
+def system_overview_page(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if current_user:
+        snapshot = build_resonance_snapshot(
+            session=session,
+            user_id=int(current_user.id or 0),
+        )
+        overview_payload = snapshot.get("overview") if isinstance(snapshot, dict) else {}
+    else:
+        overview_payload = {
+            "name": "Project Resonance (observer mode)",
+            "category": "Agentic Ecosystem / Living Substrate",
+            "vision": "Turn entropy (signals) into adaptive logic and crystallized bedrock truths.",
+            "current_mode": "Observer mode (sign in for live operator telemetry)",
+            "operator_flow": [
+                "Open /resonance to inspect current state of the fluid.",
+                "Sign in to run thermal cycles and use deterministic operator tools.",
+                "Watch secondary force pressure before hardening modules.",
+                "Use weekly pruning protocol to keep noise bounded.",
+            ],
+            "layers": [
+                {
+                    "name": "Gas (raw_data/)",
+                    "purpose": "Noise intake and dissolved artifacts.",
+                    "functions": ["noise intake", "sediment packs", "mutation source"],
+                },
+                {
+                    "name": "Liquid (agent_metabolism/)",
+                    "purpose": "Active dwellers and adaptive stress behavior.",
+                    "functions": ["selection", "mutation", "stress adaptation"],
+                },
+                {
+                    "name": "Bedrock (crystallized_substrate/)",
+                    "purpose": "Hardened low-entropy modules that survived repeated spikes.",
+                    "functions": ["sedimentation", "immutables", "stability guardrails"],
+                },
+            ],
+            "feature_effects": [
+                {"feature": "Resonance-only mode", "status": "active", "effect": "Suppresses non-framework noise."},
+                {"feature": "Secondary Force stream", "status": "active", "effect": "Injects adaptive stress into liquid heat."},
+                {"feature": "Deterministic demo state", "status": "active", "effect": "Stable mock state for operator walkthroughs."},
+            ],
+            "future_updates": [
+                "Closed-loop self-healing on sustained high secondary force.",
+                "External volatility adapters for live API latency streams.",
+                "Automated pruning + metabolic summary shipping.",
+            ],
+        }
+    return templates.TemplateResponse(
+        "system_overview.html",
+        {
+            "request": request,
+            "user": current_user,
+            "app_name": settings.app_name,
+            "overview_payload": overview_payload,
+        },
+    )
+
+
+@router.get("/system-overview/demo-token", response_class=JSONResponse)
+def system_overview_demo_token(
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    current_user = _get_web_user(request, session)
+    if not current_user:
+        return JSONResponse({"ok": False, "detail": "auth_required"}, status_code=401)
+    token = create_access_token(
+        subject=str(current_user.id or 0),
+        extra={
+            "demo_mode": "resonance_operator",
+            "demo_issued_at": datetime.utcnow().isoformat() + "Z",
+        },
+    )
+    return {
+        "ok": True,
+        "token": token,
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "description": "Demo JWT for deterministic operator-view walkthroughs.",
+    }
+
+
 @router.get("/sedimentation", response_class=HTMLResponse)
 def sedimentation_page(
     request: Request,
