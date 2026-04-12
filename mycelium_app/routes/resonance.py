@@ -1,21 +1,19 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import hashlib
 import json
 import random
 from pathlib import Path
 import subprocess
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
 
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
-from mycelium_app.models import (
-    AutonomyEpisode,
-    SignalLedgerEvent,
-    User,
-)
+from mycelium_app.models import AutonomyEpisode, SignalLedgerEvent, User
 
 
 router = APIRouter(prefix="/api/resonance", tags=["resonance"])
@@ -29,6 +27,12 @@ UI_CONFIG_PATH = ROOT / "nexus_ui_config.json"
 MOCK_STATE_PATH = ROOT / "mock_nexus_state.json"
 ENTROPY_LOGS = ROOT / "entropy_logs"
 STRESS_TEST_LOG = ENTROPY_LOGS / "stress_tests.md"
+RECOVERY_EVENTS_LOG = ENTROPY_LOGS / "recovery_events.md"
+ACTUATOR_STATE_PATH = AGENT_METABOLISM / "actuator_state.json"
+REDUNDANCY_REGISTRY_PATH = AGENT_METABOLISM / "redundancy_registry.json"
+RUNTIME_STRESS_PATH = AGENT_METABOLISM / "runtime_stress_metrics.json"
+INGESTION_GUARD_PATH = AGENT_METABOLISM / "ingestion_guard.json"
+LEGACY_SNAPSHOT_DIR = RAW_DATA / "legacy_snapshots"
 
 
 def _load_json(path: Path, fallback: dict) -> dict:
@@ -39,6 +43,11 @@ def _load_json(path: Path, fallback: dict) -> dict:
         return value if isinstance(value, dict) else fallback
     except Exception:
         return fallback
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _heat_band(avg_heat: float) -> str:
@@ -52,7 +61,6 @@ def _heat_band(avg_heat: float) -> str:
 
 
 def _autonomy_slider(*, avg_heat: float, avg_risk: float, active_count: int, immutable_count: int) -> float:
-    # Higher when system sustains productive heat with manageable risk and stable sedimentation.
     heat_component = max(0.0, min(1.0, avg_heat))
     risk_penalty = max(0.0, min(1.0, avg_risk))
     bedrock_ratio = max(0.0, min(1.0, (immutable_count + 1) / max(1.0, active_count + immutable_count + 1)))
@@ -66,7 +74,6 @@ def _trace_summary() -> dict[str, object]:
     lines = [line.strip() for line in TRACE_LOG_PATH.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
     if not lines:
         return {"events_total": 0, "last_event_type": None, "last_trace_id": None}
-    last = {}
     try:
         last = json.loads(lines[-1])
     except Exception:
@@ -82,8 +89,6 @@ def _trace_events(limit: int = 25) -> list[dict[str, object]]:
     if not TRACE_LOG_PATH.exists():
         return []
     lines = [line.strip() for line in TRACE_LOG_PATH.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
-    if not lines:
-        return []
     events: list[dict[str, object]] = []
     for line in lines[-max(1, int(limit)):]:
         try:
@@ -108,12 +113,11 @@ def _trace_events(limit: int = 25) -> list[dict[str, object]]:
 
 
 def _trace_recent(limit: int = 25) -> list[dict[str, object]]:
-    log_path = ROOT / ".secrets" / "agent_trace_log.jsonl"
-    if not log_path.exists():
+    if not TRACE_LOG_PATH.exists():
         return []
-    lines = [line.strip() for line in log_path.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
+    lines = [line.strip() for line in TRACE_LOG_PATH.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip()]
     out: list[dict[str, object]] = []
-    for line in lines[-max(1, min(int(limit), 200)) :]:
+    for line in lines[-max(1, min(int(limit), 200)):]:
         try:
             row = json.loads(line)
             if isinstance(row, dict):
@@ -160,7 +164,6 @@ def _secondary_force_state() -> dict[str, object]:
         },
     )
     coefficient = float(state.get("coefficient", 0.1) or 0.1)
-    # Small bounded jitter to simulate exogenous volatility.
     coefficient = max(0.0, min(1.0, coefficient + random.uniform(-0.025, 0.08)))
     state["coefficient"] = round(coefficient, 4)
     if coefficient >= 0.6:
@@ -187,6 +190,380 @@ def _append_stress_log(*, baseline_heat: float, secondary_force: float, adaptive
             f"| {datetime.utcnow().isoformat()}Z | {baseline_heat:.4f} | "
             f"{secondary_force:.4f} | {adaptive_heat:.4f} | {response} |\n"
         )
+
+
+def _append_recovery_log(record: dict[str, Any]) -> None:
+    ENTROPY_LOGS.mkdir(parents=True, exist_ok=True)
+    if not RECOVERY_EVENTS_LOG.exists():
+        RECOVERY_EVENTS_LOG.write_text(
+            "# Recovery Events Log\n\n"
+            "| at | event_type | stress_level | action | details |\n"
+            "| --- | --- | --- | --- | --- |\n",
+            encoding="utf-8",
+        )
+    with RECOVERY_EVENTS_LOG.open("a", encoding="utf-8") as handle:
+        handle.write(
+            "| {at} | {event_type} | {stress_level} | {action} | {details} |\n".format(
+                at=str(record.get("at") or datetime.utcnow().isoformat() + "Z"),
+                event_type=str(record.get("event_type") or "actuator_event"),
+                stress_level=str(record.get("stress_level") or "unknown"),
+                action=str(record.get("action") or "none"),
+                details=str(record.get("details") or "").replace("|", "/"),
+            )
+        )
+
+
+def _runtime_metrics() -> dict[str, float]:
+    payload = _load_json(
+        RUNTIME_STRESS_PATH,
+        {
+            "latency_p95_ms": 240.0,
+            "error_rate": 0.04,
+            "queue_depth": 18.0,
+        },
+    )
+    latency_norm = max(0.0, min(1.0, float(payload.get("latency_p95_ms", 240.0) or 240.0) / 1000.0))
+    error_norm = max(0.0, min(1.0, float(payload.get("error_rate", 0.04) or 0.04)))
+    queue_norm = max(0.0, min(1.0, float(payload.get("queue_depth", 18.0) or 18.0) / 120.0))
+    return {
+        "latency": round(latency_norm, 4),
+        "error_rate": round(error_norm, 4),
+        "queue_depth": round(queue_norm, 4),
+    }
+
+
+def _blend_secondary_force(*, synthetic: float, runtime: dict[str, float]) -> dict[str, float]:
+    alpha, beta, gamma = 0.45, 0.35, 0.20
+    latency = float(runtime.get("latency", 0.0) or 0.0)
+    errors = float(runtime.get("error_rate", 0.0) or 0.0)
+    blended = max(0.0, min(1.0, (alpha * synthetic) + (beta * latency) + (gamma * errors)))
+    return {
+        "alpha": alpha,
+        "beta": beta,
+        "gamma": gamma,
+        "synthetic": round(synthetic, 4),
+        "latency": round(latency, 4),
+        "error_rate": round(errors, 4),
+        "value": round(blended, 4),
+    }
+
+
+def _current_actuator_state() -> dict[str, Any]:
+    return _load_json(
+        ACTUATOR_STATE_PATH,
+        {
+            "version": 1,
+            "stress_consecutive_high": 0,
+            "throttle_gaseous_ingestion": False,
+            "trigger_emergency_crystallization": False,
+            "metabolic_flush": False,
+            "last_recovery_at": None,
+            "last_action": "idle",
+            "last_action_details": "",
+            "high_stress_started_at": None,
+        },
+    )
+
+
+def _write_ingestion_guard(*, throttled: bool, reason: str, stress_level: str) -> dict[str, Any]:
+    guard = {
+        "throttled": bool(throttled),
+        "reason": str(reason or ""),
+        "stress_level": str(stress_level or "unknown"),
+        "updated_at": datetime.utcnow().isoformat() + "Z",
+    }
+    _write_json(INGESTION_GUARD_PATH, guard)
+    return guard
+
+
+def _dweller_efficiency(dweller: dict[str, Any]) -> float:
+    utility = float(dweller.get("utility_signal", 0.0) or 0.0)
+    metabolic = float(dweller.get("metabolic_rate", 0.2) or 0.2)
+    tax = float(dweller.get("thermodynamic_tax", 0.2) or 0.2)
+    return utility / max(0.01, metabolic + tax)
+
+
+def _append_trace_event(*, event_type: str, entity: dict[str, Any], details: dict[str, Any]) -> None:
+    payload = {
+        "spec_version": "1.0",
+        "trace_id": hashlib.sha1(
+            f"{event_type}|{entity.get('id')}|{datetime.utcnow().isoformat()}".encode("utf-8")
+        ).hexdigest()[:16],
+        "event_type": event_type,
+        "occurred_at": datetime.utcnow().isoformat() + "Z",
+        "cycle_id": "resonance-actuator",
+        "entity": {
+            "id": str(entity.get("id") or ""),
+            "name": str(entity.get("name") or entity.get("id") or ""),
+            "role": str(entity.get("role") or "generalist"),
+            "layer": str(entity.get("layer") or "liquid"),
+        },
+        "details": details,
+    }
+    TRACE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with TRACE_LOG_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def _promote_stable_dwellers(
+    *,
+    active_dwellers: list[dict[str, Any]],
+    manifest: dict[str, Any],
+    dry_run: bool,
+    reason: str,
+) -> list[str]:
+    ranked = sorted(active_dwellers, key=_dweller_efficiency, reverse=True)[:3]
+    immutable = list(manifest.get("immutable_modules") or [])
+    known = {str(row.get("id") or "") for row in immutable if isinstance(row, dict)}
+    promoted: list[str] = []
+    for row in ranked:
+        dweller_id = str(row.get("id") or "")
+        if not dweller_id or dweller_id in known:
+            continue
+        promoted.append(dweller_id)
+        immutable.append(
+            {
+                "id": dweller_id,
+                "name": str(row.get("name") or dweller_id),
+                "role": str(row.get("role") or "generalist"),
+                "immutable": True,
+                "hardened_after_spike": "actuator-emergency",
+                "survival_cycles": int(row.get("survival_cycles", 0) or 0),
+                "recorded_at": datetime.utcnow().isoformat() + "Z",
+                "reason": reason,
+            }
+        )
+        if not dry_run:
+            _append_trace_event(
+                event_type="emergency_crystallization",
+                entity={
+                    "id": dweller_id,
+                    "name": str(row.get("name") or dweller_id),
+                    "role": str(row.get("role") or "generalist"),
+                    "layer": "bedrock",
+                },
+                details={"reason": reason, "source": "resonance_actuator"},
+            )
+    if promoted:
+        manifest["immutable_modules"] = immutable
+        manifest["last_selection_cycle_at"] = datetime.utcnow().isoformat() + "Z"
+    return promoted
+
+
+def _metabolic_flush(
+    *,
+    registry: dict[str, Any],
+    manifest: dict[str, Any],
+    dry_run: bool,
+) -> dict[str, int]:
+    dwellers = list(registry.get("dwellers") or [])
+    immutable_ids = {
+        str(row.get("id") or "")
+        for row in list(manifest.get("immutable_modules") or [])
+        if isinstance(row, dict)
+    }
+    flushed = 0
+    for row in dwellers:
+        dweller_id = str(row.get("id") or "")
+        if dweller_id in immutable_ids:
+            row["status"] = "active"
+            continue
+        if str(row.get("status") or "") == "retired":
+            continue
+        flushed += 1
+        row["status"] = "retired"
+        row["retired_reason"] = "metabolic_flush"
+        row["retired_at"] = datetime.utcnow().isoformat() + "Z"
+        if not dry_run:
+            _append_trace_event(
+                event_type="metabolic_flush_retire",
+                entity={
+                    "id": dweller_id,
+                    "name": str(row.get("name") or dweller_id),
+                    "role": str(row.get("role") or "generalist"),
+                    "layer": "liquid",
+                },
+                details={"reason": "persistent_high_stress"},
+            )
+    return {"flushed": flushed, "retained": len(dwellers) - flushed}
+
+
+def _legacy_snapshot(*, feature_row: dict[str, Any], reason: str) -> str:
+    LEGACY_SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    feature_name = str(feature_row.get("feature") or "feature").replace("/", "-").replace(" ", "_").lower()
+    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    filename = f"{feature_name}_{ts}.json"
+    payload = {
+        "feature": feature_row.get("feature"),
+        "status": "deprecated",
+        "reason": reason,
+        "resonance_score": feature_row.get("resonance_score"),
+        "below_threshold_cycles": feature_row.get("below_threshold_cycles"),
+        "created_at": datetime.utcnow().isoformat() + "Z",
+        "learned": "Feature cost exceeded value under sustained Resonance pressure.",
+    }
+    (LEGACY_SNAPSHOT_DIR / filename).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return filename
+
+
+def _sunset_registry() -> dict[str, Any]:
+    baseline = {
+        "version": 1,
+        "cycles": [],
+        "features": [
+            {"feature": "legacy-chat-pane", "usage": 0.04, "cost": 0.71, "below_threshold_cycles": 1, "status": "candidate"},
+            {"feature": "old-device-inspector", "usage": 0.06, "cost": 0.58, "below_threshold_cycles": 2, "status": "candidate"},
+            {"feature": "duplicate-metric-widget", "usage": 0.02, "cost": 0.43, "below_threshold_cycles": 0, "status": "candidate"},
+        ],
+    }
+    return _load_json(REDUNDANCY_REGISTRY_PATH, baseline)
+
+
+def _run_sunset_protocol(*, dry_run: bool = False) -> dict[str, Any]:
+    registry = _sunset_registry()
+    features = [row for row in list(registry.get("features") or []) if isinstance(row, dict)]
+    deprecated: list[dict[str, Any]] = []
+    for row in features:
+        usage = max(0.0, min(1.0, float(row.get("usage", 0.0) or 0.0)))
+        cost = max(0.01, float(row.get("cost", 0.1) or 0.1))
+        score = usage / cost
+        row["resonance_score"] = round(score, 4)
+        if score < 0.10:
+            row["below_threshold_cycles"] = int(row.get("below_threshold_cycles", 0) or 0) + 1
+        else:
+            row["below_threshold_cycles"] = 0
+        if int(row.get("below_threshold_cycles", 0) or 0) >= 2 and str(row.get("status") or "") != "deprecated":
+            row["status"] = "deprecated"
+            snapshot_file = _legacy_snapshot(feature_row=row, reason="sunset_protocol_low_resonance")
+            row["legacy_snapshot"] = snapshot_file
+            deprecated.append({"feature": row.get("feature"), "snapshot": snapshot_file})
+    report = {
+        "ok": True,
+        "candidates": features,
+        "deprecated": deprecated,
+        "evaluated_at": datetime.utcnow().isoformat() + "Z",
+    }
+    if not dry_run:
+        registry["features"] = features
+        registry.setdefault("cycles", []).append(
+            {
+                "at": report["evaluated_at"],
+                "deprecated_count": len(deprecated),
+                "candidate_count": len(features),
+            }
+        )
+        registry["cycles"] = registry["cycles"][-32:]
+        _write_json(REDUNDANCY_REGISTRY_PATH, registry)
+    return report
+
+
+def _slo_health(*, actuation: dict[str, Any], liquid_count: int, bedrock_count: int) -> dict[str, Any]:
+    stress_high_count = int(actuation.get("stress_consecutive_high", 0) or 0)
+    high_stress_duration_min = stress_high_count * 2
+    conversion_ratio = 0.0
+    if liquid_count > 0:
+        conversion_ratio = bedrock_count / max(1.0, float(liquid_count))
+    mutation_yield = int(actuation.get("mutation_yield", 0) or 0)
+    status = "healthy"
+    if high_stress_duration_min >= 15 or conversion_ratio < 0.05 or mutation_yield < 2:
+        status = "degraded"
+    return {
+        "overall_status": status,
+        "metrics": {
+            "high_stress_duration_min": high_stress_duration_min,
+            "conversion_ratio": round(conversion_ratio, 4),
+            "mutation_yield": mutation_yield,
+        },
+        "targets": {
+            "high_stress_duration_min": "< 15",
+            "conversion_ratio": "> 0.05",
+            "mutation_yield": ">= 2",
+        },
+    }
+
+
+def _apply_self_healing_actuation(
+    *,
+    stress_level: str,
+    registry: dict[str, Any],
+    manifest: dict[str, Any],
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    state = _current_actuator_state()
+    high = stress_level == "high"
+    if high:
+        state["stress_consecutive_high"] = int(state.get("stress_consecutive_high", 0) or 0) + 1
+        if not state.get("high_stress_started_at"):
+            state["high_stress_started_at"] = datetime.utcnow().isoformat() + "Z"
+    else:
+        state["stress_consecutive_high"] = 0
+        state["high_stress_started_at"] = None
+        state["trigger_emergency_crystallization"] = False
+        state["metabolic_flush"] = False
+
+    active = [row for row in list(registry.get("dwellers") or []) if isinstance(row, dict) and str(row.get("status") or "active") != "retired"]
+    actions: list[str] = []
+    details: dict[str, Any] = {}
+
+    if int(state.get("stress_consecutive_high", 0) or 0) >= 5:
+        state["throttle_gaseous_ingestion"] = True
+        state["trigger_emergency_crystallization"] = True
+        actions.append("throttle_gaseous_ingestion")
+        promoted = _promote_stable_dwellers(
+            active_dwellers=active,
+            manifest=manifest,
+            dry_run=dry_run,
+            reason="high_stress_5_cycles",
+        )
+        details["promoted"] = promoted
+        actions.append("trigger_emergency_crystallization")
+        if int(state.get("stress_consecutive_high", 0) or 0) >= 8:
+            state["metabolic_flush"] = True
+            flush = _metabolic_flush(registry=registry, manifest=manifest, dry_run=dry_run)
+            details["flush"] = flush
+            actions.append("metabolic_flush")
+    else:
+        state["throttle_gaseous_ingestion"] = False
+        state["trigger_emergency_crystallization"] = False
+        state["metabolic_flush"] = False
+
+    if not actions:
+        state["last_action"] = "observe"
+        state["last_action_details"] = "No self-healing action required."
+    else:
+        state["last_action"] = ",".join(actions)
+        if len(details) == 1 and "promoted" in details:
+            promoted = details.get("promoted") or []
+            state["last_action_details"] = f"promoted={len(promoted)}"
+        elif len(details) == 2 and "promoted" in details and "flush" in details:
+            promoted = details.get("promoted") or []
+            flush = details.get("flush") if isinstance(details.get("flush"), dict) else {}
+            state["last_action_details"] = (
+                f"promoted={len(promoted)},flushed={int(flush.get('flushed', 0) or 0)}"
+            )
+        else:
+            state["last_action_details"] = json.dumps(details, sort_keys=True)
+        state["last_recovery_at"] = datetime.utcnow().isoformat() + "Z"
+        _append_recovery_log(
+            {
+                "at": state["last_recovery_at"],
+                "event_type": "self_healing",
+                "stress_level": stress_level,
+                "action": state["last_action"],
+                "details": state["last_action_details"],
+            }
+        )
+
+    guard = _write_ingestion_guard(
+        throttled=bool(state.get("throttle_gaseous_ingestion", False)),
+        reason=str(state.get("last_action_details") or "none"),
+        stress_level=stress_level,
+    )
+    state["ingestion_guard"] = guard
+    state["mutation_yield"] = max(2, len(actions))
+    if not dry_run:
+        _write_json(ACTUATOR_STATE_PATH, state)
+    return state
 
 
 def _ui_config() -> dict[str, object]:
@@ -238,7 +615,7 @@ def _build_overview_payload(*, secondary_descriptor: str) -> dict[str, object]:
         "operator_flow": [
             "Open /resonance and enable Resonance-only mode (Cmd/Ctrl+Shift+R).",
             "Watch Live Thermal Dashboard for heat and crystallization progress.",
-            "Run dry thermal cycle first, then full cycle if stress response is healthy.",
+            "Run Burn Safely for guarded dry-run + ignition + post-cycle diff.",
             "Review trace fossils and recommendations before any hardening decisions.",
         ],
         "layers": [
@@ -270,9 +647,14 @@ def _build_overview_payload(*, secondary_descriptor: str) -> dict[str, object]:
                 "effect": f"Injects adaptive stress ({secondary_descriptor}) into liquid heat dynamics.",
             },
             {
-                "feature": "Weekly pruning protocol",
+                "feature": "Closed-loop actuator dweller",
                 "status": "active",
-                "effect": "Compacts noise, prunes stale synthetic dwellers, and reinjects efficiency plateaus.",
+                "effect": "Throttles gaseous ingestion, forces emergency crystallization, and triggers flush under sustained stress.",
+            },
+            {
+                "feature": "Sunset protocol",
+                "status": "active",
+                "effect": "Auto-deprecates low resonance-score features with legacy snapshots for auditability.",
             },
             {
                 "feature": "Deterministic demo state",
@@ -314,18 +696,9 @@ def build_resonance_snapshot(
         )
     ).all()
 
-    registry = _load_json(
-        AGENT_METABOLISM / "dwellers_registry.json",
-        {"dwellers": [], "last_selection_summary": {}},
-    )
-    manifest = _load_json(
-        BEDROCK / "bedrock_manifest.json",
-        {"immutable_modules": [], "entries": []},
-    )
-    noise_register = _load_json(
-        RAW_DATA / "noise_register.json",
-        {"artifacts": []},
-    )
+    registry = _load_json(AGENT_METABOLISM / "dwellers_registry.json", {"dwellers": [], "last_selection_summary": {}})
+    manifest = _load_json(BEDROCK / "bedrock_manifest.json", {"immutable_modules": [], "entries": []})
+    noise_register = _load_json(RAW_DATA / "noise_register.json", {"artifacts": []})
 
     dwellers = list(registry.get("dwellers") or [])
     active = [d for d in dwellers if str(d.get("status", "active")) != "retired"]
@@ -358,7 +731,7 @@ def build_resonance_snapshot(
         },
     }
 
-    nodes = []
+    nodes: list[dict[str, Any]] = []
     for idx, dweller in enumerate(active[:80]):
         role = str(dweller.get("role") or "generalist")
         vol = float(dweller.get("volatility_score", 0.5) or 0.5)
@@ -403,16 +776,35 @@ def build_resonance_snapshot(
         if layers["liquid"]["count"] > layers["bedrock"]["count"]
         else "Inject one controlled mutation spike to preserve adaptive pressure."
     )
+
     secondary_force = _secondary_force_state()
+    runtime = _runtime_metrics()
     if secondary_force_override is not None:
-        secondary_force["coefficient"] = round(max(0.0, min(1.0, float(secondary_force_override))), 4)
+        synthetic = round(max(0.0, min(1.0, float(secondary_force_override))), 4)
+        secondary_force["coefficient"] = synthetic
         secondary_force["override_source"] = str(secondary_source or "api-override")
-    secondary_force_coefficient = max(0.0, min(1.0, float(secondary_force.get("coefficient", 0.0) or 0.0)))
+    synthetic = float(secondary_force.get("coefficient", 0.0) or 0.0)
+    if secondary_force_override is not None:
+        blend = {
+            "alpha": 1.0,
+            "beta": 0.0,
+            "gamma": 0.0,
+            "synthetic": round(synthetic, 4),
+            "latency": round(float(runtime.get("latency", 0.0) or 0.0), 4),
+            "error_rate": round(float(runtime.get("error_rate", 0.0) or 0.0), 4),
+            "value": round(synthetic, 4),
+            "mode": "override",
+        }
+    else:
+        blend = _blend_secondary_force(synthetic=synthetic, runtime=runtime)
+    c_s = float(blend["value"])
+
     secondary_force_level = "low"
-    if secondary_force_coefficient >= 0.7:
+    if c_s >= 0.7:
         secondary_force_level = "high"
-    elif secondary_force_coefficient >= 0.35:
+    elif c_s >= 0.35:
         secondary_force_level = "intermediate"
+
     secondary_force_message = (
         "External stress is low; dwellers should prioritize efficient growth."
         if secondary_force_level == "low"
@@ -427,13 +819,15 @@ def build_resonance_snapshot(
         if secondary_force_level == "intermediate"
         else "Self-healing: refactor critical paths and harden collapse-risk boundaries."
     )
-    secondary_force["coefficient"] = round(secondary_force_coefficient, 4)
+    secondary_force["coefficient"] = round(c_s, 4)
     secondary_force["level"] = secondary_force_level
     secondary_force["message"] = secondary_force_message
     secondary_force["stress_response"] = secondary_force_stress_response
     secondary_force["is_stressed"] = secondary_force_level in {"intermediate", "high"}
+    secondary_force["blend"] = blend
+    secondary_force["runtime"] = runtime
+
     base_heat_band = _heat_band(avg_heat)
-    c_s = secondary_force_coefficient
     adaptive_heat = round(max(0.0, min(1.0, (avg_heat * 0.82) + (c_s * 0.18))), 4)
     heat_band = _heat_band(adaptive_heat)
     _append_stress_log(
@@ -442,6 +836,23 @@ def build_resonance_snapshot(
         adaptive_heat=adaptive_heat,
         response=str(secondary_force.get("last_response") or "stable_flow"),
     )
+
+    actuation = _apply_self_healing_actuation(
+        stress_level=secondary_force_level,
+        registry=registry,
+        manifest=manifest,
+        dry_run=False,
+    )
+
+    if actuation.get("trigger_emergency_crystallization") or actuation.get("metabolic_flush"):
+        _write_json(BEDROCK / "bedrock_manifest.json", manifest)
+        _write_json(AGENT_METABOLISM / "dwellers_registry.json", registry)
+        immutables = list(manifest.get("immutable_modules") or immutables)
+        active = [d for d in list(registry.get("dwellers") or []) if str(d.get("status", "active")) != "retired"]
+        retired = [d for d in list(registry.get("dwellers") or []) if str(d.get("status", "")) == "retired"]
+        layers["liquid"]["count"] = len(active)
+        layers["bedrock"]["count"] = len(immutables)
+
     autonomy_slider = _autonomy_slider(
         avg_heat=adaptive_heat,
         avg_risk=avg_risk,
@@ -468,13 +879,13 @@ def build_resonance_snapshot(
     bedrock_progress = round(
         max(
             0.0,
-            min(
-                1.0,
-                layers["bedrock"]["count"] / max(1.0, layers["liquid"]["count"] + layers["bedrock"]["count"]),
-            ),
+            min(1.0, layers["bedrock"]["count"] / max(1.0, layers["liquid"]["count"] + layers["bedrock"]["count"])),
         ),
         4,
     )
+
+    sunset = _run_sunset_protocol(dry_run=False)
+    slo = _slo_health(actuation=actuation, liquid_count=layers["liquid"]["count"], bedrock_count=layers["bedrock"]["count"])
 
     return {
         "ok": True,
@@ -491,6 +902,9 @@ def build_resonance_snapshot(
         "architect_recommendation": recommendation,
         "heat": {"score": adaptive_heat, "band": heat_band, "baseline_band": base_heat_band},
         "secondary_force": secondary_force,
+        "actuation": actuation,
+        "sunset_protocol": sunset,
+        "slo_health": slo,
         "awe": {
             "autonomy_slider": autonomy_slider,
             "state": awe_state,
@@ -508,6 +922,7 @@ def build_resonance_snapshot(
                 "active_dwellers": layers["liquid"]["count"],
                 "throughput": layers["liquid"]["throughput"],
                 "secondary_force_coefficient": c_s,
+                "stress_level": secondary_force_level,
             },
             "bedrock": {
                 "path": "/bedrock",
@@ -523,6 +938,7 @@ def build_resonance_snapshot(
             recommendation,
             "Keep 24h thermal selection active and recycle tepid logic into `.noise` artifacts.",
             "Only sediment modules that survive >=3 spikes and lower entropy per compute unit.",
+            "Use Run Burn Safely when stress remains high for multiple cycles.",
         ],
         "stats": {
             "signals_window": len(signals),
@@ -557,7 +973,7 @@ def run_thermal_cycle(
     spike_id: str = "api",
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user  # auth gate
+    _ = current_user
     script_path = ROOT / "scripts" / "thermal_awakening_cycle.py"
     cmd = ["python3", str(script_path), "--spike-id", str(spike_id)]
     if dry_run:
@@ -581,18 +997,77 @@ def run_thermal_cycle(
         return {"ok": False, "detail": f"thermal cycle error: {type(exc).__name__}: {exc}"}
 
 
+@router.post("/run-burn-safely")
+def run_burn_safely(
+    secondary_force: float | None = None,
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    dry = run_thermal_cycle(dry_run=True, spike_id="burn-safe-dry", current_user=current_user)
+    manifest = _load_json(BEDROCK / "bedrock_manifest.json", {"immutable_modules": []})
+    bedrock_ok = bool(list(manifest.get("immutable_modules") or [])) or bool(manifest.get("immutable", False))
+    if not bedrock_ok:
+        return {
+            "ok": False,
+            "detail": "bedrock integrity check failed",
+            "steps": {"dry_run": dry, "bedrock_health": {"ok": False}},
+        }
+    ignition = run_thermal_cycle(dry_run=False, spike_id="burn-safe-ignite", current_user=current_user)
+    summary = {
+        "burned": int(ignition.get("retired_count", 0) or 0),
+        "forged": int(ignition.get("promoted_count", 0) or 0),
+        "secrets_born": int(ignition.get("mutated_count", 0) or 0),
+    }
+    return {
+        "ok": bool(ignition.get("ok", False)),
+        "steps": {
+            "dry_run": dry,
+            "bedrock_health": {"ok": True, "immutable_count": len(list(manifest.get("immutable_modules") or []))},
+            "ignition": ignition,
+            "revelation": summary,
+            "secondary_force_override": secondary_force,
+        },
+    }
+
+
+@router.get("/slo-health")
+@router.get("/slo_health")
+def slo_health(
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    actuation = _current_actuator_state()
+    registry = _load_json(AGENT_METABOLISM / "dwellers_registry.json", {"dwellers": []})
+    manifest = _load_json(BEDROCK / "bedrock_manifest.json", {"immutable_modules": []})
+    liquid = len([r for r in list(registry.get("dwellers") or []) if str(r.get("status", "active")) != "retired"])
+    bedrock = len(list(manifest.get("immutable_modules") or []))
+    return {"ok": True, "health": _slo_health(actuation=actuation, liquid_count=liquid, bedrock_count=bedrock)}
+
+
+@router.get("/sunset-report")
+@router.get("/sunset_report")
+def sunset_report(
+    dry_run: bool = True,
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    report = _run_sunset_protocol(dry_run=bool(dry_run))
+    return {
+        "ok": True,
+        "evaluated_at": report.get("evaluated_at"),
+        "candidates": report.get("candidates", []),
+        "deprecated": report.get("deprecated", []),
+    }
+
+
 @router.get("/trace")
 def trace_explorer(
     limit: int = 25,
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user  # auth gate
+    _ = current_user
     recent = _trace_recent(limit=max(1, min(int(limit), 200)))
-    return {
-        "ok": True,
-        "count": len(recent),
-        "recent": recent,
-    }
+    return {"ok": True, "count": len(recent), "recent": recent}
 
 
 @router.get("/ui-config")
@@ -600,11 +1075,8 @@ def trace_explorer(
 def ui_config(
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user  # auth gate
-    return {
-        "ok": True,
-        "config": _ui_config(),
-    }
+    _ = current_user
+    return {"ok": True, "config": _ui_config()}
 
 
 @router.get("/demo-state")
@@ -612,11 +1084,8 @@ def ui_config(
 def demo_state(
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user  # auth gate
-    return {
-        "ok": True,
-        "demo": _demo_state_payload(),
-    }
+    _ = current_user
+    return {"ok": True, "demo": _demo_state_payload()}
 
 
 @router.get("/explain")
@@ -624,7 +1093,7 @@ def demo_state(
 def explain_resonance(
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user  # auth gate
+    _ = current_user
     return {
         "ok": True,
         "as_of": datetime.utcnow().isoformat() + "Z",
@@ -633,29 +1102,22 @@ def explain_resonance(
             "Signals enter as entropy, dwellers metabolize them, and resilient logic crystallizes."
         ),
         "architecture": {
-            "gaseous": {
-                "path": "raw_data/",
-                "description": "Noise intake, dissolved modules, and sediment packs.",
-            },
-            "liquid": {
-                "path": "agent_metabolism/",
-                "description": "Active dwellers, secondary-force adaptation, and thermal selection.",
-            },
-            "bedrock": {
-                "path": "crystallized_substrate/",
-                "description": "Hardened low-entropy modules and immutable survivors.",
-            },
+            "gaseous": {"path": "raw_data/", "description": "Noise intake, dissolved modules, and sediment packs."},
+            "liquid": {"path": "agent_metabolism/", "description": "Active dwellers, secondary-force adaptation, and thermal selection."},
+            "bedrock": {"path": "crystallized_substrate/", "description": "Hardened low-entropy modules and immutable survivors."},
         },
         "current_capabilities": [
             "Collects live signals and runs thermal selection loops.",
             "Tracks trace fossils and memory consolidation.",
             "Supports Resonance-only operator mode and thermal dashboard visibility.",
             "Supports deterministic operator demo state with JWT-grant metadata.",
+            "Runs actuator-driven self-healing and sunset governance protocols.",
         ],
         "future_updates": [
             "Secondary force calibration with bounded stress windows.",
             "Expanded pruning automation with scheduled sediment compaction and efficiency audits.",
             "Force-aware adaptive stress policies for autonomous refactor triggers.",
+            "Live latency/error adapters from production telemetry providers.",
         ],
         "redundancy_candidates": [
             "Legacy non-Resonance pages that duplicate metrics already shown in Resonance dashboard.",

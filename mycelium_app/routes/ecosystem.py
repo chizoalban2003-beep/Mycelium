@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from statistics import mean
 import random
 import json
+from pathlib import Path
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Body
 from sqlmodel import Session, select
@@ -42,10 +44,27 @@ router = APIRouter(prefix="/api/ecosystem", tags=["ecosystem"])
 
 _shared_collector_state = CollectorState()
 _last_sedimentation_cache: dict[int, dict] = {}  # user_id → last result
+ROOT = Path(__file__).resolve().parent.parent.parent
+INGESTION_GUARD_PATH = ROOT / "agent_metabolism" / "ingestion_guard.json"
+ROOT = Path(__file__).resolve().parent.parent.parent
+ACTUATOR_STATE_PATH = ROOT / "agent_metabolism" / "resonance_actuator_state.json"
 
 
 def _bounded01(v: float) -> float:
     return max(0.0, min(1.0, float(v)))
+
+
+def _resonance_throttle_active() -> bool:
+    if not ACTUATOR_STATE_PATH.exists():
+        return False
+    try:
+        payload = json.loads(ACTUATOR_STATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    throttle = payload.get("throttle") if isinstance(payload.get("throttle"), dict) else {}
+    return bool(throttle.get("gaseous_ingestion_paused", False))
 
 
 def _autonomy_get_or_create_goal_state(session: Session, *, user_id: int) -> AutonomyGoalState:
@@ -1092,6 +1111,21 @@ def collect_signals(
     session: Session = Depends(get_session),
 ):
     """Trigger one signal collection tick (for manual testing or on-demand use)."""
+    guard = {}
+    try:
+        guard = json.loads(INGESTION_GUARD_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        guard = {}
+    if bool(guard.get("throttled", False)):
+        return {
+            "ok": False,
+            "throttled": True,
+            "signals_collected": 0,
+            "tick": int(_shared_collector_state.tick_count),
+            "reason": str(guard.get("reason") or "ingestion_throttled"),
+            "stress_level": str(guard.get("stress_level") or "unknown"),
+        }
+
     n = run_signal_collection_tick(
         _shared_collector_state,
         user_id=int(current_user.id or 0),

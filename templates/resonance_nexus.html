@@ -167,6 +167,32 @@
       Dwellers should self-heal under pressure spikes.
     </div>
   </div>
+  <div class="mt-3 rounded border border-rose-800/40 bg-rose-950/20 p-2 text-xs text-rose-100">
+    <div class="font-semibold">Actuator status</div>
+    <div id="actuatorState" class="mt-1 text-[11px] text-rose-100/90">Awaiting cycle data...</div>
+    <div id="actuatorActions" class="mt-1 text-[11px] text-slate-300"></div>
+  </div>
+</div>
+
+<div class="mt-3 panel resonance-main-panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-orange-300/90">Run Burn Safely</div>
+  <div class="mt-2 text-xs text-slate-300">
+    One-click guarded cycle: dry run -> bedrock health check -> ignition -> post-cycle revelation.
+  </div>
+  <div class="mt-2 flex flex-wrap gap-2">
+    <button id="btnRunBurnSafely" class="pill cursor-pointer">Run Burn Safely</button>
+    <button id="btnRefreshSlo" class="pill cursor-pointer">Refresh SLO Health</button>
+  </div>
+  <div id="burnSafeStatus" class="mt-2 text-xs text-slate-200">No burn-safe cycle yet.</div>
+  <div id="sloHealthSummary" class="mt-2 text-xs text-amber-100/90">SLO health not loaded.</div>
+</div>
+
+<div class="mt-3 panel resonance-main-panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-amber-300/90">Sunset Protocol</div>
+  <div class="mt-2 text-xs text-slate-300">
+    Redundancy governance tracks low resonance-score features and auto-deprecates after sustained underperformance.
+  </div>
+  <div id="sunsetSummary" class="mt-2 text-xs text-slate-200">Loading sunset governance status…</div>
 </div>
 
 <div class="mt-3 panel resonance-main-panel">
@@ -206,6 +232,11 @@
   const secondaryForceSlider = document.getElementById('secondaryForceSlider');
   const explainMycoContent = document.getElementById('explainMycoContent');
   const btnRefreshOverview = document.getElementById('btnRefreshOverview');
+  const btnRunBurnSafely = document.getElementById('btnRunBurnSafely');
+  const btnRefreshSlo = document.getElementById('btnRefreshSlo');
+  const burnSafeStatus = document.getElementById('burnSafeStatus');
+  const sloHealthSummary = document.getElementById('sloHealthSummary');
+  const sunsetSummary = document.getElementById('sunsetSummary');
   const initialSnapshot = {{ resonance_snapshot | tojson }};
   const secondaryForce = (window.SecondaryForceStream && window.SecondaryForceStream.create)
     ? window.SecondaryForceStream.create({
@@ -368,7 +399,28 @@
     if (secondaryForceHint) secondaryForceHint.textContent = String(
       sf.stress_response || 'Secondary force tracks external volatility and adaptive stress response.'
     );
+    const blend = (sf.blend || {});
+    if (secondaryForceHint && (blend.synthetic != null || blend.latency != null || blend.error != null)) {
+      const syn = Number(blend.synthetic || 0).toFixed(2);
+      const lat = Number(blend.latency || 0).toFixed(2);
+      const err = Number(blend.error || 0).toFixed(2);
+      secondaryForceHint.textContent = `${secondaryForceHint.textContent} | blend S:${syn} L:${lat} E:${err}`;
+    }
     if (secondaryForceSlider) secondaryForceSlider.value = String(coeff.toFixed(2));
+    const slo = data.slo || {};
+    if (sloHealthSummary) {
+      const h = Number(slo.health_score || 0).toFixed(2);
+      const hs = (slo.high_stress_duration_minutes == null) ? 'n/a' : String(slo.high_stress_duration_minutes);
+      const cr = Number(slo.conversion_ratio_weekly || 0).toFixed(3);
+      const my = Number(slo.mutation_yield_cycle || 0).toFixed(1);
+      sloHealthSummary.textContent = `Health ${h} · high stress ${hs}m · conversion ${cr} · mutation yield ${my}`;
+    }
+    const sunset = data.sunset_governance || {};
+    if (sunsetSummary) {
+      const cands = Number(sunset.candidates || 0);
+      const deprecated = Number(sunset.deprecated_total || 0);
+      sunsetSummary.textContent = `Candidates ${cands} · auto-deprecated ${deprecated}`;
+    }
     spawn(groups.gas, particles.gas, Math.min(160, 10 + gas * 2), 0xe11d48, 16);
     spawn(groups.liquid, particles.liquid, Math.min(120, 8 + liquid * 3), 0x0ea5e9, 0);
     spawn(groups.bedrock, particles.bedrock, Math.min(90, 6 + bedrock * 4), 0x059669, -18);
@@ -432,6 +484,30 @@
       story.textContent = `Dry thermal cycle: dissolved ${data.retired_count || 0}, mutated ${data.mutated_count || 0}, sedimented ${data.promoted_count || 0}.`;
     } catch (_e) {}
   });
+  if (btnRunBurnSafely) {
+    btnRunBurnSafely.addEventListener('click', async () => {
+      try {
+        if (burnSafeStatus) burnSafeStatus.textContent = 'Running burn-safe protocol...';
+        const res = await fetch('/api/resonance/run-burn-safely', { method: 'POST', credentials: 'same-origin' });
+        const data = await res.json();
+        const outcome = data && data.outcome ? data.outcome : {};
+        if (burnSafeStatus) {
+          burnSafeStatus.textContent = [
+            `Phase: ${String(outcome.phase || 'unknown')}`,
+            `retired=${Number(outcome.retired_count || 0)}`,
+            `mutated=${Number(outcome.mutated_count || 0)}`,
+            `promoted=${Number(outcome.promoted_count || 0)}`,
+          ].join(' · ');
+        }
+        setTimeout(pullState, 300);
+      } catch (_e) {
+        if (burnSafeStatus) burnSafeStatus.textContent = 'Run Burn Safely failed.';
+      }
+    });
+  }
+  if (btnRefreshSlo) {
+    btnRefreshSlo.addEventListener('click', pullState);
+  }
   if (btnRefreshOverview) {
     btnRefreshOverview.addEventListener('click', loadOverview);
   }
