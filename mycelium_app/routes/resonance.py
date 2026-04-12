@@ -24,6 +24,7 @@ RAW_DATA = ROOT / "raw_data"
 AGENT_METABOLISM = ROOT / "agent_metabolism"
 BEDROCK = ROOT / "crystallized_substrate"
 TRACE_LOG_PATH = ROOT / ".secrets" / "agent_trace_log.jsonl"
+UI_CONFIG_PATH = ROOT / "nexus_ui_config.json"
 
 
 def _load_json(path: Path, fallback: dict) -> dict:
@@ -141,6 +142,24 @@ def _orchestration_profile() -> dict[str, object]:
         },
         "recommended_runtime": "cloud-handoff",
     }
+
+
+def _ui_config() -> dict[str, object]:
+    fallback = {
+        "version": 1,
+        "resonance_only": {
+            "enabled_by_default": False,
+            "shortcut": "Mod+Shift+R",
+            "hide_navigation_aux": True,
+            "hide_notifications": True,
+            "show_live_thermal_dashboard": True,
+            "live_dashboard_refresh_ms": 10000,
+        },
+    }
+    payload = _load_json(UI_CONFIG_PATH, fallback)
+    if not isinstance(payload.get("resonance_only"), dict):
+        payload["resonance_only"] = dict(fallback["resonance_only"])
+    return payload
 
 
 def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: int = 120) -> dict:
@@ -263,6 +282,27 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         f"{layers['gaseous']['count']} gas artifacts feed {layers['liquid']['count']} liquid dwellers, "
         f"with {layers['bedrock']['count']} bedrock modules stabilizing the cycle."
     )
+    liquid_flow_heat = round(
+        max(
+            0.0,
+            min(
+                1.0,
+                (avg_heat * 0.65)
+                + (min(1.0, layers["liquid"]["throughput"] / max(1.0, layers["liquid"]["count"] + 2)) * 0.35),
+            ),
+        ),
+        4,
+    )
+    bedrock_progress = round(
+        max(
+            0.0,
+            min(
+                1.0,
+                layers["bedrock"]["count"] / max(1.0, layers["liquid"]["count"] + layers["bedrock"]["count"]),
+            ),
+        ),
+        4,
+    )
 
     return {
         "ok": True,
@@ -287,6 +327,21 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         "trace_explorer": _trace_events(limit=25),
         "memory": _memory_summary(),
         "orchestration": _orchestration_profile(),
+        "ui_config": _ui_config(),
+        "thermal_dashboard": {
+            "liquid_flow": {
+                "path": "/liquid_flow",
+                "heat_level": liquid_flow_heat,
+                "active_dwellers": layers["liquid"]["count"],
+                "throughput": layers["liquid"]["throughput"],
+            },
+            "bedrock": {
+                "path": "/bedrock",
+                "crystallization_progress": bedrock_progress,
+                "immutable_count": layers["bedrock"]["count"],
+                "stability": layers["bedrock"]["stability"],
+            },
+        },
         "headline": headline,
         "story": story,
         "recommendations": [
@@ -358,4 +413,16 @@ def trace_explorer(
         "ok": True,
         "count": len(recent),
         "recent": recent,
+    }
+
+
+@router.get("/ui-config")
+@router.get("/ui_config")
+def ui_config(
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user  # auth gate
+    return {
+        "ok": True,
+        "config": _ui_config(),
     }

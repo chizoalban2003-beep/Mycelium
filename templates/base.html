@@ -29,6 +29,61 @@
       .skip-link { position: absolute; left: 1rem; top: 0.5rem; transform: translateY(-200%); transition: transform 120ms ease; z-index: 60; }
       .skip-link:focus { transform: translateY(0); }
       .content-auto { content-visibility: auto; contain-intrinsic-size: 1px 900px; }
+      body.resonance-only-mode #nudgeBanner,
+      body.resonance-only-mode #notificationsPanel,
+      body.resonance-only-mode #notificationsToggle,
+      body.resonance-only-mode #identityBadge,
+      body.resonance-only-mode #organismBadge,
+      body.resonance-only-mode details {
+        display: none !important;
+      }
+      body.resonance-only-mode [data-nav-group="non-resonance"] {
+        display: none !important;
+      }
+      body.resonance-only-mode [data-nav-group="resonance"] {
+        font-size: 0.92rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      #resonanceModeIndicator {
+        display: none;
+      }
+      body.resonance-only-mode #resonanceModeIndicator {
+        display: inline-flex;
+      }
+      .thermal-dashboard {
+        margin-top: 10px;
+        border-radius: 10px;
+        border: 1px solid rgba(45, 212, 191, 0.45);
+        background: rgba(2, 6, 23, 0.75);
+        padding: 10px;
+      }
+      .thermal-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .thermal-bar {
+        margin-top: 6px;
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(15, 23, 42, 0.95);
+      }
+      .thermal-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #06b6d4 0%, #22d3ee 35%, #f59e0b 70%, #ef4444 100%);
+      }
+      .crystal-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #0891b2 0%, #2563eb 45%, #22c55e 100%);
+      }
+      @media (max-width: 720px) {
+        .thermal-grid { grid-template-columns: 1fr; }
+      }
       @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }
     </style>
   </head>
@@ -43,11 +98,11 @@
             <div class="text-[10px] uppercase tracking-[0.3em] text-slate-400">Your digital companion that grows with you</div>
           </div>
           {% if user %}
-            <a href="/live" class="text-sm text-emerald-300 hover:text-emerald-200 font-semibold">Live</a>
-            <a href="/resonance" class="text-sm text-fuchsia-300 hover:text-fuchsia-200 font-semibold">Resonance</a>
-            <a href="/chat" class="text-sm text-slate-300 hover:text-white">Chat</a>
-            <a href="/device" class="text-sm text-slate-300 hover:text-white">Device</a>
-            <a href="/ecosystem" class="text-sm text-slate-300 hover:text-white">Ecosystem</a>
+            <a href="/live" class="text-sm text-emerald-300 hover:text-emerald-200 font-semibold" data-nav-group="non-resonance">Live</a>
+            <a href="/resonance" class="text-sm text-fuchsia-300 hover:text-fuchsia-200 font-semibold" data-nav-group="resonance">Resonance</a>
+            <a href="/chat" class="text-sm text-slate-300 hover:text-white" data-nav-group="non-resonance">Chat</a>
+            <a href="/device" class="text-sm text-slate-300 hover:text-white" data-nav-group="non-resonance">Device</a>
+            <a href="/ecosystem" class="text-sm text-slate-300 hover:text-white" data-nav-group="non-resonance">Ecosystem</a>
             <details class="inline relative">
               <summary class="text-sm text-slate-400 hover:text-white cursor-pointer list-none">More ▾</summary>
               <div class="absolute left-0 top-6 z-50 rounded-lg border border-slate-800 bg-slate-900 p-2 space-y-1 min-w-[140px] shadow-xl">
@@ -62,10 +117,12 @@
             </details>
             <span id="identityBadge" class="text-xs px-2 py-1 rounded bg-slate-800 text-slate-200 border border-slate-700"></span>
             <span id="organismBadge" class="text-xs px-2 py-1 rounded bg-cyan-950 text-cyan-100 border border-cyan-900">η -- · booting</span>
+            <span id="resonanceModeIndicator" class="text-xs px-2 py-1 rounded bg-cyan-950 text-cyan-100 border border-cyan-800">Resonance-only mode</span>
           {% endif %}
         </div>
         {% if user %}
           <div class="flex items-center gap-2">
+            <button id="resonanceModeToggle" type="button" aria-label="Toggle resonance-only mode" class="rounded border border-cyan-700 bg-cyan-950/60 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-900">Resonance-only</button>
             <button id="themeToggle" type="button" aria-label="Switch theme" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">Theme</button>
             <button id="notificationsToggle" type="button" aria-label="Open notifications" aria-expanded="false" class="relative rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">
               🔔
@@ -140,6 +197,127 @@
       })();
 
       applyTheme(document.documentElement.dataset.theme || 'midnight');
+
+      const defaultUiConfig = {
+        resonance_only: {
+          default_enabled: false,
+          shortcut: 'Meta+Shift+R',
+          hide_non_framework_nav: true,
+          hide_standard_panels: true
+        },
+        thermal_dashboard: {
+          enabled: true,
+          source_endpoint: '/api/resonance/state_of_fluid',
+          refresh_seconds: 8
+        }
+      };
+      let runtimeUiConfig = defaultUiConfig;
+      let resonanceOnlyEnabled = false;
+
+      async function loadUiConfig() {
+        try {
+          const r = await fetch('/nexus_ui_config.json', { credentials: 'same-origin' });
+          if (!r.ok) return;
+          const data = await r.json();
+          if (!data || typeof data !== 'object') return;
+          runtimeUiConfig = {
+            ...defaultUiConfig,
+            ...data,
+            resonance_only: { ...defaultUiConfig.resonance_only, ...(data.resonance_only || {}) },
+            thermal_dashboard: { ...defaultUiConfig.thermal_dashboard, ...(data.thermal_dashboard || {}) },
+          };
+        } catch (e) {}
+      }
+
+      function applyResonanceOnlyMode(enabled) {
+        resonanceOnlyEnabled = !!enabled;
+        document.body.classList.toggle('resonance-only-mode', resonanceOnlyEnabled);
+        try { localStorage.setItem('myco-resonance-only', resonanceOnlyEnabled ? '1' : '0'); } catch (e) {}
+        const btn = document.getElementById('resonanceModeToggle');
+        if (btn) {
+          btn.textContent = resonanceOnlyEnabled ? 'Resonance-only: ON' : 'Resonance-only';
+          btn.setAttribute('aria-pressed', resonanceOnlyEnabled ? 'true' : 'false');
+        }
+      }
+
+      function bootResonanceOnlyMode() {
+        const btn = document.getElementById('resonanceModeToggle');
+        const saved = (() => {
+          try { return localStorage.getItem('myco-resonance-only'); } catch (e) { return null; }
+        })();
+        const defaultEnabled = !!(runtimeUiConfig.resonance_only && runtimeUiConfig.resonance_only.default_enabled);
+        applyResonanceOnlyMode(saved == null ? defaultEnabled : saved === '1');
+        if (btn) {
+          btn.addEventListener('click', () => applyResonanceOnlyMode(!resonanceOnlyEnabled));
+        }
+        document.addEventListener('keydown', (event) => {
+          const isCmd = event.metaKey || event.ctrlKey;
+          if (!isCmd || !event.shiftKey) return;
+          if (String(event.key || '').toLowerCase() !== 'r') return;
+          event.preventDefault();
+          applyResonanceOnlyMode(!resonanceOnlyEnabled);
+        });
+      }
+
+      function ensureThermalDashboard() {
+        if (!(runtimeUiConfig.thermal_dashboard && runtimeUiConfig.thermal_dashboard.enabled)) return;
+        if (document.getElementById('globalThermalDashboard')) return;
+        const main = document.getElementById('content');
+        if (!main) return;
+        const shell = document.createElement('section');
+        shell.id = 'globalThermalDashboard';
+        shell.className = 'thermal-dashboard';
+        shell.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-[10px] uppercase tracking-[0.25em] text-cyan-200/85">Live Thermal Dashboard</div>
+            <div id="thermalDashboardStatus" class="text-[11px] text-slate-400">Loading...</div>
+          </div>
+          <div class="thermal-grid mt-2">
+            <div class="rounded border border-slate-800 bg-slate-900/50 p-2">
+              <div class="text-[11px] text-slate-400">Liquid Heat</div>
+              <div id="thermalHeatLabel" class="text-sm font-semibold text-cyan-100">0.00 · cool</div>
+              <div class="thermal-bar"><div id="thermalHeatFill" class="thermal-fill"></div></div>
+            </div>
+            <div class="rounded border border-slate-800 bg-slate-900/50 p-2">
+              <div class="text-[11px] text-slate-400">Bedrock Crystallization</div>
+              <div id="thermalCrystalLabel" class="text-sm font-semibold text-emerald-100">0%</div>
+              <div class="thermal-bar"><div id="thermalCrystalFill" class="crystal-fill"></div></div>
+            </div>
+          </div>
+        `;
+        main.prepend(shell);
+      }
+
+      async function refreshThermalDashboard() {
+        const status = document.getElementById('thermalDashboardStatus');
+        const heatLabel = document.getElementById('thermalHeatLabel');
+        const heatFill = document.getElementById('thermalHeatFill');
+        const crystalLabel = document.getElementById('thermalCrystalLabel');
+        const crystalFill = document.getElementById('thermalCrystalFill');
+        if (!status || !heatLabel || !heatFill || !crystalLabel || !crystalFill) return;
+        try {
+          const source = (runtimeUiConfig.thermal_dashboard && runtimeUiConfig.thermal_dashboard.source_endpoint) || '/api/resonance/state_of_fluid';
+          const r = await fetch(source, { credentials: 'same-origin' });
+          if (!r.ok) {
+            status.textContent = `Unavailable (${r.status})`;
+            return;
+          }
+          const data = await r.json();
+          const heat = data && data.heat ? data.heat : {};
+          const score = Math.max(0, Math.min(1, Number(heat.score || 0)));
+          const band = String(heat.band || 'cool');
+          const bedrock = Number((((data || {}).layers || {}).bedrock || {}).count || 0);
+          const liquid = Number((((data || {}).layers || {}).liquid || {}).count || 0);
+          const progress = Math.max(0, Math.min(1, (bedrock + 1) / Math.max(1, bedrock + liquid + 1)));
+          heatLabel.textContent = `${score.toFixed(2)} · ${band}`;
+          heatFill.style.width = `${(score * 100).toFixed(1)}%`;
+          crystalLabel.textContent = `${(progress * 100).toFixed(1)}% (${bedrock} bedrock / ${liquid} liquid)`;
+          crystalFill.style.width = `${(progress * 100).toFixed(1)}%`;
+          status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (e) {
+          status.textContent = 'Unavailable';
+        }
+      }
 
       // Best-effort: request notification permission once.
       (function maybeAskNotif() {
@@ -520,6 +698,14 @@
       }
 
       const runWhenIdle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
+      runWhenIdle(async () => {
+        await loadUiConfig();
+        bootResonanceOnlyMode();
+        ensureThermalDashboard();
+        await refreshThermalDashboard();
+        const refreshSeconds = Math.max(5, Number((runtimeUiConfig.thermal_dashboard || {}).refresh_seconds || 8));
+        setInterval(refreshThermalDashboard, refreshSeconds * 1000);
+      });
       runWhenIdle(loadIdentityBadge);
       runWhenIdle(loadOrganismBadge);
       runWhenIdle(loadNotifications);

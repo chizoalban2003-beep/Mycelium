@@ -87,14 +87,14 @@
   }
 </style>
 
-<div class="mb-3 panel">
+<div id="resonanceMainPanels" class="mb-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/75">State of the Fluid</div>
   <div id="nexusHeadline" class="mt-1 text-sm text-slate-100">Resonance Nexus booting...</div>
   <div id="nexusStory" class="mt-2 text-xs text-slate-300"></div>
   <div id="nexusMetrics" class="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs"></div>
 </div>
 
-<div id="nexus-world">
+<div id="nexus-world" class="resonance-main-panel">
   <canvas id="nexus-canvas"></canvas>
   <div class="hud">
     <div class="stack">
@@ -110,7 +110,7 @@
   </div>
 </div>
 
-<div class="mt-3 panel">
+<div class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-fuchsia-300/80">Awe Metric</div>
   <div class="mt-2 slider-wrap">
     <div class="flex items-center justify-between text-xs text-fuchsia-100">
@@ -126,21 +126,21 @@
   </div>
 </div>
 
-<div class="mt-3 panel">
+<div class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-slate-400">Manifesto Alignment</div>
   <div class="mt-2 text-xs text-slate-300">
     Resonance tracks one path only: Noise (Gas) -> Life (Liquid) -> Truth (Bedrock). Tepid logic dissolves; resilient logic crystallizes.
   </div>
 </div>
 
-<div class="mt-3 panel">
+<div class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-emerald-300/80">Architect Recommendations</div>
   <ul id="recommendationList" class="mt-2 text-xs text-slate-300 list-disc pl-5 space-y-1">
     <li>Loading recommendations…</li>
   </ul>
 </div>
 
-<div class="mt-3 panel">
+<div class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-amber-300/90">Trace Explorer</div>
   <div class="mt-2 text-xs text-slate-300">
     Inspect recent Agent Trace fossils across mutation, dissolution, and sedimentation events.

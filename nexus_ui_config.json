@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "resonance_only_default": false,
+  "shortcut": {
+    "mac": "Meta+Shift+R",
+    "windows_linux": "Ctrl+Shift+R"
+  },
+  "hide_when_resonance_only": {
+    "top_nav_links": [
+      "/live",
+      "/chat",
+      "/device",
+      "/ecosystem",
+      "/predict",
+      "/sedimentation",
+      "/curiosity",
+      "/knowledge",
+      "/hive/health",
+      "/assistant/profile",
+      "/cinema"
+    ],
+    "ui_sections": [
+      "notifications",
+      "nudge_banner"
+    ]
+  },
+  "live_thermal_dashboard": {
+    "heat_source": "/api/resonance/state_of_fluid",
+    "refresh_seconds": 8
+  }
+}
