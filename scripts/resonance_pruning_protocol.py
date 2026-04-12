@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RAW_DATA = ROOT / "raw_data"
 AGENT_METABOLISM = ROOT / "agent_metabolism"
 SECRETS = ROOT / ".secrets"
+SUMMARY_LOG_PATH = AGENT_METABOLISM / "summary.log"
 
 NOISE_REGISTER_PATH = RAW_DATA / "noise_register.json"
 DWELLERS_REGISTRY_PATH = AGENT_METABOLISM / "dwellers_registry.json"
@@ -62,6 +63,12 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _append_trace(record: dict[str, Any]) -> None:
     TRACE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with TRACE_LOG_PATH.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def _append_summary_log(record: dict[str, Any]) -> None:
+    SUMMARY_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with SUMMARY_LOG_PATH.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True) + "\n")
 
 
@@ -262,7 +269,7 @@ def run_protocol(*, dry_run: bool, sediment_pack_size: int, prune_days: int, min
     compact = compact_noise(dry_run=dry_run, pack_size=sediment_pack_size)
     prune = prune_synthetic_dwellers(dry_run=dry_run, days=prune_days)
     audit = audit_efficiency_and_reinject(dry_run=dry_run, min_survival_spikes=min_survival_spikes)
-    return {
+    summary = {
         "ok": True,
         "dry_run": dry_run,
         "compaction": compact,
@@ -270,6 +277,19 @@ def run_protocol(*, dry_run: bool, sediment_pack_size: int, prune_days: int, min
         "efficiency_audit": audit,
         "ran_at": _now_iso(),
     }
+    if not dry_run:
+        _append_summary_log(
+            {
+                "kind": "weekly_pruning_protocol",
+                "ran_at": summary["ran_at"],
+                "packed_files": int(compact.get("packs_created", 0) or 0),
+                "artifacts_compacted": int(compact.get("artifacts_compacted", 0) or 0),
+                "pruned_synthetic": int(prune.get("pruned", 0) or 0),
+                "survivors": int(prune.get("survivors", 0) or 0),
+                "efficiency_reinjected": int(audit.get("reinjected", 0) or 0),
+            }
+        )
+    return summary
 
 
 def _parse_args() -> argparse.Namespace:

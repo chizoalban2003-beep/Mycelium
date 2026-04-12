@@ -51,6 +51,28 @@
       body.resonance-only-mode #resonanceModeIndicator {
         display: inline-flex;
       }
+      #mycoExplainDialog {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 80;
+        background: rgba(2, 6, 23, 0.72);
+      }
+      #mycoExplainDialog[aria-hidden="false"] {
+        display: flex;
+      }
+      .myco-explain-shell {
+        width: min(960px, 92vw);
+        max-height: 85vh;
+        overflow: auto;
+        border-radius: 14px;
+        border: 1px solid rgba(56, 189, 248, 0.32);
+        background: rgba(2, 6, 23, 0.94);
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.55);
+        padding: 14px;
+      }
       .thermal-dashboard {
         margin-top: 10px;
         border-radius: 10px;
@@ -123,6 +145,7 @@
         {% if user %}
           <div class="flex items-center gap-2">
             <button id="resonanceModeToggle" type="button" aria-label="Toggle resonance-only mode" class="rounded border border-cyan-700 bg-cyan-950/60 px-3 py-2 text-xs text-cyan-100 hover:bg-cyan-900">Resonance-only</button>
+            <button id="btnExplainMyco" type="button" aria-label="Explain Myco architecture" class="rounded border border-indigo-700 bg-indigo-950/50 px-3 py-2 text-xs text-indigo-100 hover:bg-indigo-900">Explain Myco</button>
             <button id="themeToggle" type="button" aria-label="Switch theme" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">Theme</button>
             <button id="notificationsToggle" type="button" aria-label="Open notifications" aria-expanded="false" class="relative rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-200 hover:bg-slate-800">
               🔔
@@ -162,6 +185,20 @@
       <main id="content" tabindex="-1">
       {% block content %}{% endblock %}
       </main>
+    </div>
+    <div id="mycoExplainDialog" aria-hidden="true">
+      <div class="myco-explain-shell">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <div class="text-[10px] uppercase tracking-[0.25em] text-indigo-300/80">System Explainer</div>
+            <div class="text-sm text-slate-100">Myco Today + Future Resonance Roadmap</div>
+          </div>
+          <button id="btnCloseExplainMyco" type="button" class="rounded border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Close</button>
+        </div>
+        <div id="mycoExplainBody" class="mt-3 text-sm text-slate-200 leading-relaxed">
+          Loading system explainer…
+        </div>
+      </div>
     </div>
 
     {% if user %}
@@ -216,15 +253,16 @@
 
       async function loadUiConfig() {
         try {
-          const r = await fetch('/nexus_ui_config.json', { credentials: 'same-origin' });
+          const r = await fetch('/api/resonance/ui-config', { credentials: 'same-origin' });
           if (!r.ok) return;
           const data = await r.json();
           if (!data || typeof data !== 'object') return;
+          const config = (data && typeof data.config === 'object') ? data.config : data;
           runtimeUiConfig = {
             ...defaultUiConfig,
-            ...data,
-            resonance_only: { ...defaultUiConfig.resonance_only, ...(data.resonance_only || {}) },
-            thermal_dashboard: { ...defaultUiConfig.thermal_dashboard, ...(data.thermal_dashboard || {}) },
+            ...config,
+            resonance_only: { ...defaultUiConfig.resonance_only, ...(config.resonance_only || {}) },
+            thermal_dashboard: { ...defaultUiConfig.thermal_dashboard, ...(config.thermal_dashboard || {}) },
           };
         } catch (e) {}
       }
@@ -316,6 +354,43 @@
           status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
         } catch (e) {
           status.textContent = 'Unavailable';
+        }
+      }
+
+      async function loadMycoExplainer() {
+        const body = document.getElementById('mycoExplainBody');
+        if (!body) return;
+        try {
+          const r = await fetch('/api/resonance/explain?mode=operator', { credentials: 'same-origin' });
+          if (!r.ok) {
+            body.textContent = `Explainer unavailable (${r.status}).`;
+            return;
+          }
+          const data = await r.json();
+          const now = String(data && data.as_of ? data.as_of : '');
+          const architecture = (data && data.architecture) || {};
+          const future = Array.isArray(data && data.future_updates) ? data.future_updates : [];
+          const redundancy = Array.isArray(data && data.redundancy_candidates) ? data.redundancy_candidates : [];
+          body.innerHTML = `
+            <div class="text-[11px] text-slate-400">As of ${now || 'now'}</div>
+            <div class="mt-2"><span class="text-cyan-200 font-semibold">Purpose:</span> ${(data && data.summary) ? String(data.summary) : 'No summary available.'}</div>
+            <div class="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-400">Architecture</div>
+            <ul class="mt-1 list-disc pl-5 space-y-1">
+              <li><span class="text-rose-200">Gas:</span> ${String(((architecture.gaseous||{}).description)||'')}</li>
+              <li><span class="text-cyan-200">Liquid:</span> ${String(((architecture.liquid||{}).description)||'')}</li>
+              <li><span class="text-emerald-200">Bedrock:</span> ${String(((architecture.bedrock||{}).description)||'')}</li>
+            </ul>
+            <div class="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-400">Planned Updates</div>
+            <ul class="mt-1 list-disc pl-5 space-y-1">
+              ${(future.length ? future.map((item) => `<li>${String(item)}</li>`).join('') : '<li>No queued updates.</li>')}
+            </ul>
+            <div class="mt-3 text-[10px] uppercase tracking-[0.2em] text-slate-400">Redundancy Candidates</div>
+            <ul class="mt-1 list-disc pl-5 space-y-1">
+              ${(redundancy.length ? redundancy.map((item) => `<li>${String(item)}</li>`).join('') : '<li>No candidates flagged.</li>')}
+            </ul>
+          `;
+        } catch (_e) {
+          body.textContent = 'Explainer unavailable.';
         }
       }
 
@@ -696,6 +771,27 @@
           applyTheme(nextTheme(document.documentElement.dataset.theme || 'midnight'));
         });
       }
+      const explainBtn = document.getElementById('btnExplainMyco');
+      const explainDialog = document.getElementById('mycoExplainDialog');
+      const explainClose = document.getElementById('btnCloseExplainMyco');
+      if (explainBtn && explainDialog) {
+        explainBtn.addEventListener('click', async () => {
+          explainDialog.setAttribute('aria-hidden', 'false');
+          await loadMycoExplainer();
+        });
+      }
+      if (explainClose && explainDialog) {
+        explainClose.addEventListener('click', () => {
+          explainDialog.setAttribute('aria-hidden', 'true');
+        });
+      }
+      if (explainDialog) {
+        explainDialog.addEventListener('click', (event) => {
+          if (event.target === explainDialog) {
+            explainDialog.setAttribute('aria-hidden', 'true');
+          }
+        });
+      }
 
       const runWhenIdle = window.requestIdleCallback || ((fn) => window.setTimeout(fn, 200));
       runWhenIdle(async () => {
@@ -709,6 +805,7 @@
       runWhenIdle(loadIdentityBadge);
       runWhenIdle(loadOrganismBadge);
       runWhenIdle(loadNotifications);
+      runWhenIdle(loadMycoExplainer);
       loadNudgeBanner();
       // Poll nudges periodically so the assistant feels alive.
       setInterval(loadNudgeBanner, 20000);

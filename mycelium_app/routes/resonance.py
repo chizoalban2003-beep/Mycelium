@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 import json
+import random
 from pathlib import Path
 import subprocess
 
@@ -25,6 +26,9 @@ AGENT_METABOLISM = ROOT / "agent_metabolism"
 BEDROCK = ROOT / "crystallized_substrate"
 TRACE_LOG_PATH = ROOT / ".secrets" / "agent_trace_log.jsonl"
 UI_CONFIG_PATH = ROOT / "nexus_ui_config.json"
+MOCK_STATE_PATH = ROOT / "mock_nexus_state.json"
+ENTROPY_LOGS = ROOT / "entropy_logs"
+STRESS_TEST_LOG = ENTROPY_LOGS / "stress_tests.md"
 
 
 def _load_json(path: Path, fallback: dict) -> dict:
@@ -144,6 +148,47 @@ def _orchestration_profile() -> dict[str, object]:
     }
 
 
+def _secondary_force_state() -> dict[str, object]:
+    state = _load_json(
+        AGENT_METABOLISM / "secondary_force_state.json",
+        {
+            "enabled": True,
+            "coefficient": 0.1,
+            "seed": 42,
+            "last_spike_at": None,
+            "last_response": "idle",
+        },
+    )
+    coefficient = float(state.get("coefficient", 0.1) or 0.1)
+    # Small bounded jitter to simulate exogenous volatility.
+    coefficient = max(0.0, min(1.0, coefficient + random.uniform(-0.025, 0.08)))
+    state["coefficient"] = round(coefficient, 4)
+    if coefficient >= 0.6:
+        state["last_response"] = "critical_refactor"
+        state["last_spike_at"] = datetime.utcnow().isoformat() + "Z"
+    elif coefficient >= 0.35:
+        state["last_response"] = "latency_trim"
+    else:
+        state["last_response"] = "stable_flow"
+    return state
+
+
+def _append_stress_log(*, baseline_heat: float, secondary_force: float, adaptive_heat: float, response: str) -> None:
+    ENTROPY_LOGS.mkdir(parents=True, exist_ok=True)
+    if not STRESS_TEST_LOG.exists():
+        STRESS_TEST_LOG.write_text(
+            "# Adaptive Stress Response Log\n\n"
+            "| at | baseline_heat | secondary_force | adaptive_heat | response |\n"
+            "| --- | ---: | ---: | ---: | --- |\n",
+            encoding="utf-8",
+        )
+    with STRESS_TEST_LOG.open("a", encoding="utf-8") as handle:
+        handle.write(
+            f"| {datetime.utcnow().isoformat()}Z | {baseline_heat:.4f} | "
+            f"{secondary_force:.4f} | {adaptive_heat:.4f} | {response} |\n"
+        )
+
+
 def _ui_config() -> dict[str, object]:
     fallback = {
         "version": 1,
@@ -162,7 +207,96 @@ def _ui_config() -> dict[str, object]:
     return payload
 
 
-def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: int = 120) -> dict:
+def _demo_state_payload() -> dict[str, object]:
+    return _load_json(
+        MOCK_STATE_PATH,
+        {
+            "mode": "molten",
+            "headline": "Demo Mode: Molten Flux",
+            "story": "Deterministic state for authenticated operator walkthroughs.",
+            "layers": {
+                "gaseous": {"count": 18},
+                "liquid": {"count": 12},
+                "bedrock": {"count": 6},
+            },
+            "heat": {"score": 0.72, "band": "metabolize"},
+            "awe": {"autonomy_slider": 0.68, "state": "adapting"},
+            "recommendations": [
+                "Run dry thermal cycle to validate stress handling.",
+                "Observe secondary force drift before full burn.",
+            ],
+        },
+    )
+
+
+def _build_overview_payload(*, secondary_descriptor: str) -> dict[str, object]:
+    return {
+        "name": "Project Resonance",
+        "category": "Agentic Ecosystem / Living Substrate",
+        "vision": "Turn entropy (signals) into adaptive logic and crystallized bedrock truths.",
+        "current_mode": "Thermodynamic burn with human governance membrane",
+        "operator_flow": [
+            "Open /resonance and enable Resonance-only mode (Cmd/Ctrl+Shift+R).",
+            "Watch Live Thermal Dashboard for heat and crystallization progress.",
+            "Run dry thermal cycle first, then full cycle if stress response is healthy.",
+            "Review trace fossils and recommendations before any hardening decisions.",
+        ],
+        "layers": [
+            {
+                "name": "Gas (raw_data/)",
+                "purpose": "Ingests noisy stimuli and stores dissolved artifacts for reuse.",
+                "functions": ["noise intake", "sediment packs", "mutation source"],
+            },
+            {
+                "name": "Liquid (agent_metabolism/)",
+                "purpose": "Runs active dwellers under thermal pressure and adaptive stress.",
+                "functions": ["selection", "mutation", "secondary-force response"],
+            },
+            {
+                "name": "Bedrock (crystallized_substrate/)",
+                "purpose": "Stores hardened low-entropy logic that survived repeated spikes.",
+                "functions": ["sedimentation", "immutables", "stability guardrails"],
+            },
+        ],
+        "feature_effects": [
+            {
+                "feature": "Resonance-only mode",
+                "status": "active",
+                "effect": "Hides non-framework UI noise and centers operator focus.",
+            },
+            {
+                "feature": "Secondary Force stream",
+                "status": "active",
+                "effect": f"Injects adaptive stress ({secondary_descriptor}) into liquid heat dynamics.",
+            },
+            {
+                "feature": "Weekly pruning protocol",
+                "status": "active",
+                "effect": "Compacts noise, prunes stale synthetic dwellers, and reinjects efficiency plateaus.",
+            },
+            {
+                "feature": "Deterministic demo state",
+                "status": "active",
+                "effect": "Provides stable operator walkthrough visuals with JWT-based demo grant metadata.",
+            },
+        ],
+        "future_updates": [
+            "Closed-loop self-healing latency trims when secondary force remains high.",
+            "Secondary force plugins for real API latency and market-volatility streams.",
+            "Automated pruning + summary log shipping to external observability sink.",
+            "Policy-based removal of redundant dashboards from operator default routes.",
+        ],
+    }
+
+
+def build_resonance_snapshot(
+    *,
+    session: Session,
+    user_id: int,
+    window_minutes: int = 120,
+    secondary_force_override: float | None = None,
+    secondary_source: str | None = None,
+) -> dict:
     uid = int(user_id)
     window = max(10, min(int(window_minutes), 24 * 60))
     since = datetime.utcnow() - timedelta(minutes=window)
@@ -269,9 +403,47 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
         if layers["liquid"]["count"] > layers["bedrock"]["count"]
         else "Inject one controlled mutation spike to preserve adaptive pressure."
     )
-    heat_band = _heat_band(avg_heat)
+    secondary_force = _secondary_force_state()
+    if secondary_force_override is not None:
+        secondary_force["coefficient"] = round(max(0.0, min(1.0, float(secondary_force_override))), 4)
+        secondary_force["override_source"] = str(secondary_source or "api-override")
+    secondary_force_coefficient = max(0.0, min(1.0, float(secondary_force.get("coefficient", 0.0) or 0.0)))
+    secondary_force_level = "low"
+    if secondary_force_coefficient >= 0.7:
+        secondary_force_level = "high"
+    elif secondary_force_coefficient >= 0.35:
+        secondary_force_level = "intermediate"
+    secondary_force_message = (
+        "External stress is low; dwellers should prioritize efficient growth."
+        if secondary_force_level == "low"
+        else "External stress is moderate; dwellers should trim latency and rebalance heat."
+        if secondary_force_level == "intermediate"
+        else "External stress is high; trigger self-healing and protect bedrock paths."
+    )
+    secondary_force_stress_response = (
+        "No emergency response needed."
+        if secondary_force_level == "low"
+        else "Adaptive trim: reduce liquid-path latency and recycle noisy branches."
+        if secondary_force_level == "intermediate"
+        else "Self-healing: refactor critical paths and harden collapse-risk boundaries."
+    )
+    secondary_force["coefficient"] = round(secondary_force_coefficient, 4)
+    secondary_force["level"] = secondary_force_level
+    secondary_force["message"] = secondary_force_message
+    secondary_force["stress_response"] = secondary_force_stress_response
+    secondary_force["is_stressed"] = secondary_force_level in {"intermediate", "high"}
+    base_heat_band = _heat_band(avg_heat)
+    c_s = secondary_force_coefficient
+    adaptive_heat = round(max(0.0, min(1.0, (avg_heat * 0.82) + (c_s * 0.18))), 4)
+    heat_band = _heat_band(adaptive_heat)
+    _append_stress_log(
+        baseline_heat=round(avg_heat, 4),
+        secondary_force=c_s,
+        adaptive_heat=adaptive_heat,
+        response=str(secondary_force.get("last_response") or "stable_flow"),
+    )
     autonomy_slider = _autonomy_slider(
-        avg_heat=avg_heat,
+        avg_heat=adaptive_heat,
         avg_risk=avg_risk,
         active_count=len(active),
         immutable_count=len(immutables),
@@ -287,7 +459,7 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
             0.0,
             min(
                 1.0,
-                (avg_heat * 0.65)
+                (adaptive_heat * 0.65)
                 + (min(1.0, layers["liquid"]["throughput"] / max(1.0, layers["liquid"]["count"] + 2)) * 0.35),
             ),
         ),
@@ -317,7 +489,8 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
             "last_selection_cycle_at": manifest.get("last_selection_cycle_at"),
         },
         "architect_recommendation": recommendation,
-        "heat": {"score": round(avg_heat, 4), "band": heat_band},
+        "heat": {"score": adaptive_heat, "band": heat_band, "baseline_band": base_heat_band},
+        "secondary_force": secondary_force,
         "awe": {
             "autonomy_slider": autonomy_slider,
             "state": awe_state,
@@ -334,6 +507,7 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
                 "heat_level": liquid_flow_heat,
                 "active_dwellers": layers["liquid"]["count"],
                 "throughput": layers["liquid"]["throughput"],
+                "secondary_force_coefficient": c_s,
             },
             "bedrock": {
                 "path": "/bedrock",
@@ -342,6 +516,7 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
                 "stability": layers["bedrock"]["stability"],
             },
         },
+        "overview": _build_overview_payload(secondary_descriptor=f"{secondary_force_level} ({c_s:.2f})"),
         "headline": headline,
         "story": story,
         "recommendations": [
@@ -362,6 +537,8 @@ def build_resonance_snapshot(*, session: Session, user_id: int, window_minutes: 
 @router.get("/state_of_fluid")
 def state_of_fluid(
     window_minutes: int = 120,
+    secondary_force: float | None = None,
+    secondary_source: str | None = None,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -369,6 +546,8 @@ def state_of_fluid(
         session=session,
         user_id=int(current_user.id or 0),
         window_minutes=window_minutes,
+        secondary_force_override=secondary_force,
+        secondary_source=secondary_source,
     )
 
 
@@ -425,4 +604,62 @@ def ui_config(
     return {
         "ok": True,
         "config": _ui_config(),
+    }
+
+
+@router.get("/demo-state")
+@router.get("/demo_state")
+def demo_state(
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user  # auth gate
+    return {
+        "ok": True,
+        "demo": _demo_state_payload(),
+    }
+
+
+@router.get("/explain")
+@router.get("/explain/full")
+def explain_resonance(
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user  # auth gate
+    return {
+        "ok": True,
+        "as_of": datetime.utcnow().isoformat() + "Z",
+        "summary": (
+            "Myco is an agentic ecosystem with Gas->Liquid->Bedrock flow. "
+            "Signals enter as entropy, dwellers metabolize them, and resilient logic crystallizes."
+        ),
+        "architecture": {
+            "gaseous": {
+                "path": "raw_data/",
+                "description": "Noise intake, dissolved modules, and sediment packs.",
+            },
+            "liquid": {
+                "path": "agent_metabolism/",
+                "description": "Active dwellers, secondary-force adaptation, and thermal selection.",
+            },
+            "bedrock": {
+                "path": "crystallized_substrate/",
+                "description": "Hardened low-entropy modules and immutable survivors.",
+            },
+        },
+        "current_capabilities": [
+            "Collects live signals and runs thermal selection loops.",
+            "Tracks trace fossils and memory consolidation.",
+            "Supports Resonance-only operator mode and thermal dashboard visibility.",
+            "Supports deterministic operator demo state with JWT-grant metadata.",
+        ],
+        "future_updates": [
+            "Secondary force calibration with bounded stress windows.",
+            "Expanded pruning automation with scheduled sediment compaction and efficiency audits.",
+            "Force-aware adaptive stress policies for autonomous refactor triggers.",
+        ],
+        "redundancy_candidates": [
+            "Legacy non-Resonance pages that duplicate metrics already shown in Resonance dashboard.",
+            "Old one-off monitoring widgets replaced by thermal dashboard + overview panel.",
+            "Dormant pathways not mapped to Gas->Liquid->Bedrock lifecycle.",
+        ],
     }
