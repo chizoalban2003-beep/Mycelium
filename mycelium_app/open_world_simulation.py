@@ -7,7 +7,7 @@ import random
 from typing import Any
 
 
-WORLD_VERSION = 1
+WORLD_VERSION = 2
 WORLD_BOUNDS = 96.0
 
 
@@ -40,6 +40,7 @@ def _empty_world(seed: int) -> dict[str, Any]:
         "entities": [],
         "infrastructure": {"nodes": [], "links": []},
         "events": [],
+        "timeline": [],
         "metrics": {
             "entity_count": 0,
             "mean_energy": 0.0,
@@ -48,6 +49,11 @@ def _empty_world(seed: int) -> dict[str, Any]:
             "link_count": 0,
             "life_index": 0.0,
             "stability": 0.0,
+            "infrastructure_density": 0.0,
+            "event_birth_rate": 0.0,
+            "specialization_balance": 0.0,
+            "world_health_score": 0.0,
+            "world_health_status": "forming",
         },
         "as_of": _now_iso(),
     }
@@ -207,11 +213,23 @@ def _infrastructure_from_entities(
         age = int(prev.get("age_ticks", 0) or 0) + 1
         integrity = _clip((sum(cohesions) / len(cohesions)) * 0.65 + (sum(energies) / len(energies)) * 0.35, 0.0, 1.0)
         throughput = int(len(members) + round(sum(energies)))
+        prev_role = str(prev.get("role") or "")
+        if avg_y <= -7:
+            role = "defense_sentinel"
+        elif throughput >= 8:
+            role = "knowledge_hub"
+        elif integrity >= 0.58:
+            role = "energy_node"
+        elif prev_role:
+            role = prev_role
+        else:
+            role = "energy_node"
         nodes.append(
             {
                 "id": node_id,
                 "kind": "hub",
                 "layer": layer,
+                "role": role,
                 "x": round(sum(xs) / len(xs), 3),
                 "y": round(avg_y, 3),
                 "z": round(sum(zs) / len(zs), 3),
@@ -228,9 +246,23 @@ def _infrastructure_from_entities(
                     "event_type": "infrastructure_birth",
                     "node_id": node_id,
                     "layer": layer,
+                    "role": role,
                     "throughput": throughput,
                 }
             )
+        else:
+            prev_role = str(prev.get("role") or role)
+            if prev_role != role:
+                events.append(
+                    {
+                        "at_tick": tick,
+                        "event_type": "infrastructure_speciation",
+                        "node_id": node_id,
+                        "from_role": prev_role,
+                        "to_role": role,
+                        "throughput": throughput,
+                    }
+                )
 
     # Connect nearby hubs with flow links.
     for i in range(len(nodes)):
@@ -365,7 +397,7 @@ def _tick_entities(
         entity["age_ticks"] = int(entity.get("age_ticks", 0) or 0) + 1
 
 
-def _world_metrics(entities: list[dict[str, Any]], infrastructure: dict[str, Any]) -> dict[str, float | int]:
+def _world_metrics(entities: list[dict[str, Any]], infrastructure: dict[str, Any], recent_events: list[dict[str, Any]]) -> dict[str, float | int | str]:
     if not entities:
         return {
             "entity_count": 0,
@@ -375,6 +407,11 @@ def _world_metrics(entities: list[dict[str, Any]], infrastructure: dict[str, Any
             "link_count": 0,
             "life_index": 0.0,
             "stability": 0.0,
+            "infrastructure_density": 0.0,
+            "event_birth_rate": 0.0,
+            "specialization_balance": 0.0,
+            "world_health_score": 0.0,
+            "world_health_status": "forming",
         }
     energies = [float(row.get("energy", 0.0) or 0.0) for row in entities]
     cohesions = [float(row.get("cohesion", 0.0) or 0.0) for row in entities]
@@ -394,6 +431,34 @@ def _world_metrics(entities: list[dict[str, Any]], infrastructure: dict[str, Any
     turbulence = _clip((sum(speeds) / max(1.0, len(speeds))) / 2.8, 0.0, 1.0)
     life_index = _clip((mean_energy * 0.34) + (mean_cohesion * 0.41) + (infra_density * 0.25), 0.0, 1.0)
     stability = _clip((mean_cohesion * 0.62) + ((1.0 - turbulence) * 0.38), 0.0, 1.0)
+    birth_events = [row for row in recent_events if str(row.get("event_type") or "") == "infrastructure_birth"]
+    event_birth_rate = _clip(len(birth_events) / 8.0, 0.0, 1.0)
+    role_counts: dict[str, int] = {}
+    for node in list((infrastructure or {}).get("nodes") or []):
+        if not isinstance(node, dict):
+            continue
+        role = str(node.get("role") or "energy_node")
+        role_counts[role] = int(role_counts.get(role, 0) or 0) + 1
+    if role_counts and node_count > 0:
+        role_share = [count / max(1, node_count) for count in role_counts.values()]
+        specialization_balance = _clip(1.0 - max(role_share), 0.0, 1.0)
+    else:
+        specialization_balance = 0.0
+    world_health_score = _clip(
+        (life_index * 0.35)
+        + (stability * 0.30)
+        + (infra_density * 0.20)
+        + (event_birth_rate * 0.10)
+        + (specialization_balance * 0.05),
+        0.0,
+        1.0,
+    )
+    if world_health_score >= 0.72:
+        world_health_status = "thriving"
+    elif world_health_score >= 0.48:
+        world_health_status = "adapting"
+    else:
+        world_health_status = "fragile"
     return {
         "entity_count": len(entities),
         "mean_energy": round(mean_energy, 5),
@@ -402,6 +467,11 @@ def _world_metrics(entities: list[dict[str, Any]], infrastructure: dict[str, Any
         "link_count": link_count,
         "life_index": round(life_index, 5),
         "stability": round(stability, 5),
+        "infrastructure_density": round(infra_density, 5),
+        "event_birth_rate": round(event_birth_rate, 5),
+        "specialization_balance": round(specialization_balance, 5),
+        "world_health_score": round(world_health_score, 5),
+        "world_health_status": world_health_status,
     }
 
 
@@ -423,6 +493,7 @@ def evolve_world_state(
     state.setdefault("entities", [])
     state.setdefault("infrastructure", {"nodes": [], "links": []})
     state.setdefault("events", [])
+    state.setdefault("timeline", [])
 
     entities = list(state.get("entities") or [])
     if not entities:
@@ -449,9 +520,25 @@ def evolve_world_state(
         state["tick"] = current_tick
 
     state["entities"] = entities[:260]
-    state["metrics"] = _world_metrics(state["entities"], state.get("infrastructure", {}))
     state["events"] = (list(state.get("events") or []) + new_events)[-40:]
+    state["metrics"] = _world_metrics(state["entities"], state.get("infrastructure", {}), list(state.get("events") or []))
     state["as_of"] = _now_iso()
+    metrics = state.get("metrics") if isinstance(state.get("metrics"), dict) else {}
+    timeline = list(state.get("timeline") or [])
+    timeline.append(
+        {
+            "tick": int(state.get("tick", 0) or 0),
+            "phase": str(state.get("phase") or "forming"),
+            "life_index": float(metrics.get("life_index", 0.0) or 0.0),
+            "stability": float(metrics.get("stability", 0.0) or 0.0),
+            "world_health_score": float(metrics.get("world_health_score", 0.0) or 0.0),
+            "world_health_status": str(metrics.get("world_health_status") or "forming"),
+            "node_count": int(metrics.get("node_count", 0) or 0),
+            "link_count": int(metrics.get("link_count", 0) or 0),
+            "as_of": state["as_of"],
+        }
+    )
+    state["timeline"] = timeline[-120:]
 
     life_idx = float(state.get("metrics", {}).get("life_index", 0.0) or 0.0)
     if life_idx >= 0.75:
@@ -462,3 +549,56 @@ def evolve_world_state(
         phase = "forming"
     state["phase"] = phase
     return state
+
+
+def world_replay_summary(
+    *,
+    state: dict[str, Any],
+    start_tick: int | None = None,
+    end_tick: int | None = None,
+) -> dict[str, Any]:
+    timeline = [row for row in list(state.get("timeline") or []) if isinstance(row, dict)]
+    if not timeline:
+        return {
+            "window": {"start_tick": 0, "end_tick": 0, "points": 0},
+            "series": [],
+            "delta": {
+                "life_index": 0.0,
+                "stability": 0.0,
+                "world_health_score": 0.0,
+                "node_count": 0,
+                "link_count": 0,
+            },
+        }
+    s_tick = int(start_tick) if start_tick is not None else int(timeline[0].get("tick", 0) or 0)
+    e_tick = int(end_tick) if end_tick is not None else int(timeline[-1].get("tick", 0) or 0)
+    if s_tick > e_tick:
+        s_tick, e_tick = e_tick, s_tick
+    points = [
+        row for row in timeline
+        if s_tick <= int(row.get("tick", 0) or 0) <= e_tick
+    ]
+    if not points:
+        points = [timeline[-1]]
+        s_tick = e_tick = int(points[0].get("tick", 0) or 0)
+    first = points[0]
+    last = points[-1]
+    delta = {
+        "life_index": round(float(last.get("life_index", 0.0) or 0.0) - float(first.get("life_index", 0.0) or 0.0), 5),
+        "stability": round(float(last.get("stability", 0.0) or 0.0) - float(first.get("stability", 0.0) or 0.0), 5),
+        "world_health_score": round(
+            float(last.get("world_health_score", 0.0) or 0.0) - float(first.get("world_health_score", 0.0) or 0.0),
+            5,
+        ),
+        "node_count": int(last.get("node_count", 0) or 0) - int(first.get("node_count", 0) or 0),
+        "link_count": int(last.get("link_count", 0) or 0) - int(first.get("link_count", 0) or 0),
+    }
+    return {
+        "window": {
+            "start_tick": s_tick,
+            "end_tick": e_tick,
+            "points": len(points),
+        },
+        "series": points,
+        "delta": delta,
+    }

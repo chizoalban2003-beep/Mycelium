@@ -133,7 +133,7 @@
   </div>
 </div>
 
-<div id="open-world-panel" class="mt-3 panel resonance-main-panel">
+<div class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-emerald-300/80">Architect Recommendations</div>
   <ul id="recommendationList" class="mt-2 text-xs text-slate-300 list-disc pl-5 space-y-1">
     <li>Loading recommendations…</li>
@@ -203,9 +203,13 @@
   <div class="mt-2 flex flex-wrap gap-2">
     <button id="btnWorldStep" class="pill cursor-pointer">Step World (+6 ticks)</button>
     <button id="btnWorldRefresh" class="pill cursor-pointer">Refresh World State</button>
+    <button id="btnWorldReplay" class="pill cursor-pointer">Replay Last 24 Ticks</button>
   </div>
   <div id="worldStatus" class="mt-2 text-xs text-slate-200">World status pending…</div>
+  <div id="worldHealthSummary" class="mt-2 text-xs text-emerald-100/90">World health pending…</div>
   <div id="worldMetrics" class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs"></div>
+  <div id="worldSloMetrics" class="mt-2 grid grid-cols-2 md:grid-cols-5 gap-2 text-xs"></div>
+  <div id="worldReplaySummary" class="mt-2 text-xs text-slate-300">Replay summary pending…</div>
   <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
     <div class="rounded border border-slate-800 bg-slate-900/70 p-2">
       <div class="text-[10px] uppercase tracking-[0.2em] text-sky-200/80">Hubs</div>
@@ -266,8 +270,12 @@
   const sunsetSummary = document.getElementById('sunsetSummary');
   const btnWorldStep = document.getElementById('btnWorldStep');
   const btnWorldRefresh = document.getElementById('btnWorldRefresh');
+  const btnWorldReplay = document.getElementById('btnWorldReplay');
   const worldStatus = document.getElementById('worldStatus');
+  const worldHealthSummary = document.getElementById('worldHealthSummary');
   const worldMetrics = document.getElementById('worldMetrics');
+  const worldSloMetrics = document.getElementById('worldSloMetrics');
+  const worldReplaySummary = document.getElementById('worldReplaySummary');
   const worldNodesList = document.getElementById('worldNodesList');
   const worldLinksList = document.getElementById('worldLinksList');
   const worldEventsList = document.getElementById('worldEventsList');
@@ -397,6 +405,11 @@
     if (worldStatus) {
       worldStatus.textContent = `World ${phase} · tick ${tick} · entities ${Number(metricsPayload.entity_count || 0)} · +${ticksApplied} ticks`;
     }
+    if (worldHealthSummary) {
+      const hs = String(metricsPayload.world_health_status || 'forming');
+      const score = Number(metricsPayload.world_health_score || 0).toFixed(3);
+      worldHealthSummary.textContent = `World health ${score} · ${hs}`;
+    }
     if (worldMetrics) {
       const rows = [
         ['Life index', Number(metricsPayload.life_index || 0).toFixed(3)],
@@ -408,12 +421,25 @@
         .map(([k, v]) => `<div class="rounded bg-slate-900/70 border border-slate-800 px-2 py-1"><span class="text-slate-400">${k}</span><div class="text-slate-100 font-semibold">${v}</div></div>`)
         .join('');
     }
+    if (worldSloMetrics) {
+      const rows = [
+        ['Infra density', Number(metricsPayload.infrastructure_density || 0).toFixed(3)],
+        ['Birth rate', Number(metricsPayload.event_birth_rate || 0).toFixed(3)],
+        ['Speciation', Number(metricsPayload.specialization_balance || 0).toFixed(3)],
+        ['Health score', Number(metricsPayload.world_health_score || 0).toFixed(3)],
+        ['Health status', String(metricsPayload.world_health_status || 'forming')],
+      ];
+      worldSloMetrics.innerHTML = rows
+        .map(([k, v]) => `<div class="rounded bg-slate-900/60 border border-slate-800 px-2 py-1"><span class="text-slate-400">${k}</span><div class="text-slate-100 font-semibold">${v}</div></div>`)
+        .join('');
+    }
     if (worldNodesList) {
       worldNodesList.innerHTML = nodes.length
         ? nodes.slice(0, 8).map((node) => {
             const layer = String(node.layer || 'liquid');
             const thr = Number(node.throughput || 0);
-            return `<div class="mb-1">${String(node.id || 'hub')} · ${layer} · throughput ${thr}</div>`;
+            const role = String(node.role || 'energy_node');
+            return `<div class="mb-1">${String(node.id || 'hub')} · ${role} · ${layer} · throughput ${thr}</div>`;
           }).join('')
         : 'No hubs yet.';
     }
@@ -428,7 +454,10 @@
     if (worldEventsList) {
       worldEventsList.innerHTML = events.length
         ? events.slice(-8).reverse().map((evt) => {
-            return `<div class="mb-1">${String(evt.event_type || 'event')} · ${String(evt.node_id || '')} · tick ${Number(evt.at_tick || 0)}</div>`;
+            const roleDelta = (evt.from_role || evt.to_role)
+              ? ` · ${String(evt.from_role || '')}${evt.to_role ? ` -> ${String(evt.to_role)}` : ''}`
+              : '';
+            return `<div class="mb-1">${String(evt.event_type || 'event')} · ${String(evt.node_id || '')}${roleDelta} · tick ${Number(evt.at_tick || 0)}</div>`;
           }).join('')
         : 'No recent events.';
     }
@@ -635,6 +664,37 @@
       }
     });
   }
+  if (btnWorldReplay) {
+    btnWorldReplay.addEventListener('click', async () => {
+      try {
+        if (worldReplaySummary) worldReplaySummary.textContent = 'Loading replay window...';
+        const endpoint = '/api/resonance/world-replay?window_ticks=24';
+        const res = await fetch(endpoint, { credentials: 'same-origin' });
+        if (!res.ok) {
+          if (worldReplaySummary) worldReplaySummary.textContent = `Replay unavailable (${res.status}).`;
+          return;
+        }
+        const payload = await res.json();
+        const replay = (payload && payload.replay && typeof payload.replay === 'object') ? payload.replay : {};
+        const windowInfo = (replay.window && typeof replay.window === 'object') ? replay.window : {};
+        const delta = (replay.delta && typeof replay.delta === 'object') ? replay.delta : {};
+        if (worldReplaySummary) {
+          worldReplaySummary.textContent = [
+            `Replay ${Number(windowInfo.start_tick || 0)} -> ${Number(windowInfo.end_tick || 0)}`,
+            `points ${Number(windowInfo.points || 0)}`,
+            `Δ life ${Number(delta.life_index || 0).toFixed(3)}`,
+            `Δ stability ${Number(delta.stability || 0).toFixed(3)}`,
+            `Δ health ${Number(delta.world_health_score || 0).toFixed(3)}`,
+          ].join(' · ');
+        }
+        if (payload && payload.world_health && typeof payload.world_health === 'object' && worldHealthSummary) {
+          worldHealthSummary.textContent = `World health ${Number(payload.world_health.score || 0).toFixed(3)} · ${String(payload.world_health.status || 'forming')}`;
+        }
+      } catch (_e) {
+        if (worldReplaySummary) worldReplaySummary.textContent = 'Replay unavailable.';
+      }
+    });
+  }
 
   if (initialSnapshot && typeof initialSnapshot === 'object') {
     renderState(initialSnapshot);
@@ -664,6 +724,24 @@
       }
       const payload = await res.json();
       renderWorld(payload && payload.world ? payload.world : {});
+      const replayRes = await fetch('/api/resonance/world-replay?window_ticks=24', { credentials: 'same-origin' });
+      if (replayRes.ok) {
+        const replayPayload = await replayRes.json();
+        const replay = (replayPayload && replayPayload.replay && typeof replayPayload.replay === 'object')
+          ? replayPayload.replay
+          : {};
+        const windowInfo = (replay.window && typeof replay.window === 'object') ? replay.window : {};
+        const delta = (replay.delta && typeof replay.delta === 'object') ? replay.delta : {};
+        if (worldReplaySummary) {
+          worldReplaySummary.textContent = [
+            `Replay ${Number(windowInfo.start_tick || 0)} -> ${Number(windowInfo.end_tick || 0)}`,
+            `points ${Number(windowInfo.points || 0)}`,
+            `Δ life ${Number(delta.life_index || 0).toFixed(3)}`,
+            `Δ stability ${Number(delta.stability || 0).toFixed(3)}`,
+            `Δ health ${Number(delta.world_health_score || 0).toFixed(3)}`,
+          ].join(' · ');
+        }
+      }
     } catch (_e) {
       worldStatus.textContent = 'Open-world bootstrap unavailable.';
     }
