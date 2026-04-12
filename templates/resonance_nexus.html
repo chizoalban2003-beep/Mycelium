@@ -133,7 +133,7 @@
   </div>
 </div>
 
-<div class="mt-3 panel resonance-main-panel">
+<div id="open-world-panel" class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-emerald-300/80">Architect Recommendations</div>
   <ul id="recommendationList" class="mt-2 text-xs text-slate-300 list-disc pl-5 space-y-1">
     <li>Loading recommendations…</li>
@@ -196,6 +196,33 @@
 </div>
 
 <div class="mt-3 panel resonance-main-panel">
+  <div class="text-[10px] uppercase tracking-[0.3em] text-sky-300/90">Open World Simulation</div>
+  <div class="mt-2 text-xs text-slate-300">
+    Real-time world state from force interactions: entities, infrastructure hubs, flow links, and recent emergence events.
+  </div>
+  <div class="mt-2 flex flex-wrap gap-2">
+    <button id="btnWorldStep" class="pill cursor-pointer">Step World (+6 ticks)</button>
+    <button id="btnWorldRefresh" class="pill cursor-pointer">Refresh World State</button>
+  </div>
+  <div id="worldStatus" class="mt-2 text-xs text-slate-200">World status pending…</div>
+  <div id="worldMetrics" class="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs"></div>
+  <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+    <div class="rounded border border-slate-800 bg-slate-900/70 p-2">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-sky-200/80">Hubs</div>
+      <div id="worldNodesList" class="mt-1 text-slate-300 max-h-24 overflow-y-auto">No hubs yet.</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-900/70 p-2">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-indigo-200/80">Links</div>
+      <div id="worldLinksList" class="mt-1 text-slate-300 max-h-24 overflow-y-auto">No links yet.</div>
+    </div>
+    <div class="rounded border border-slate-800 bg-slate-900/70 p-2">
+      <div class="text-[10px] uppercase tracking-[0.2em] text-emerald-200/80">Recent events</div>
+      <div id="worldEventsList" class="mt-1 text-slate-300 max-h-24 overflow-y-auto">No recent events.</div>
+    </div>
+  </div>
+</div>
+
+<div class="mt-3 panel resonance-main-panel">
   <div class="text-[10px] uppercase tracking-[0.3em] text-cyan-300/90">Explain Myco</div>
   <div class="mt-2 text-xs text-slate-300">
     Complete explanation of current architecture, active loops, and future updates.
@@ -237,6 +264,13 @@
   const burnSafeStatus = document.getElementById('burnSafeStatus');
   const sloHealthSummary = document.getElementById('sloHealthSummary');
   const sunsetSummary = document.getElementById('sunsetSummary');
+  const btnWorldStep = document.getElementById('btnWorldStep');
+  const btnWorldRefresh = document.getElementById('btnWorldRefresh');
+  const worldStatus = document.getElementById('worldStatus');
+  const worldMetrics = document.getElementById('worldMetrics');
+  const worldNodesList = document.getElementById('worldNodesList');
+  const worldLinksList = document.getElementById('worldLinksList');
+  const worldEventsList = document.getElementById('worldEventsList');
   const initialSnapshot = {{ resonance_snapshot | tojson }};
   const secondaryForce = (window.SecondaryForceStream && window.SecondaryForceStream.create)
     ? window.SecondaryForceStream.create({
@@ -349,6 +383,57 @@
     metrics.innerHTML = rows.map(([k, v]) => `<div class="rounded bg-slate-900/70 border border-slate-800 px-2 py-1"><span class="text-slate-400">${k}</span><div class="text-slate-100 font-semibold">${v}</div></div>`).join('');
   }
 
+  function renderWorld(openWorld) {
+    const payload = (openWorld && typeof openWorld === 'object') ? openWorld : {};
+    const state = (payload.state && typeof payload.state === 'object') ? payload.state : {};
+    const metricsPayload = (state.metrics && typeof state.metrics === 'object') ? state.metrics : {};
+    const infra = (state.infrastructure && typeof state.infrastructure === 'object') ? state.infrastructure : {};
+    const nodes = Array.isArray(infra.nodes) ? infra.nodes : [];
+    const links = Array.isArray(infra.links) ? infra.links : [];
+    const events = Array.isArray(state.events) ? state.events : [];
+    const phase = String(state.phase || payload.phase || 'forming');
+    const tick = Number(state.tick || 0);
+    const ticksApplied = Number(payload.ticks_applied || 0);
+    if (worldStatus) {
+      worldStatus.textContent = `World ${phase} · tick ${tick} · entities ${Number(metricsPayload.entity_count || 0)} · +${ticksApplied} ticks`;
+    }
+    if (worldMetrics) {
+      const rows = [
+        ['Life index', Number(metricsPayload.life_index || 0).toFixed(3)],
+        ['Stability', Number(metricsPayload.stability || 0).toFixed(3)],
+        ['Hubs', String(nodes.length)],
+        ['Links', String(links.length)],
+      ];
+      worldMetrics.innerHTML = rows
+        .map(([k, v]) => `<div class="rounded bg-slate-900/70 border border-slate-800 px-2 py-1"><span class="text-slate-400">${k}</span><div class="text-slate-100 font-semibold">${v}</div></div>`)
+        .join('');
+    }
+    if (worldNodesList) {
+      worldNodesList.innerHTML = nodes.length
+        ? nodes.slice(0, 8).map((node) => {
+            const layer = String(node.layer || 'liquid');
+            const thr = Number(node.throughput || 0);
+            return `<div class="mb-1">${String(node.id || 'hub')} · ${layer} · throughput ${thr}</div>`;
+          }).join('')
+        : 'No hubs yet.';
+    }
+    if (worldLinksList) {
+      worldLinksList.innerHTML = links.length
+        ? links.slice(0, 8).map((link) => {
+            const flow = Number(link.flow || 0);
+            return `<div class="mb-1">${String(link.source || '?')} -> ${String(link.target || '?')} · flow ${flow}</div>`;
+          }).join('')
+        : 'No links yet.';
+    }
+    if (worldEventsList) {
+      worldEventsList.innerHTML = events.length
+        ? events.slice(-8).reverse().map((evt) => {
+            return `<div class="mb-1">${String(evt.event_type || 'event')} · ${String(evt.node_id || '')} · tick ${Number(evt.at_tick || 0)}</div>`;
+          }).join('')
+        : 'No recent events.';
+    }
+  }
+
   function renderState(data) {
     const layers = data.layers || {};
     const gas = Number((layers.gaseous || {}).count || 0);
@@ -424,6 +509,7 @@
     spawn(groups.gas, particles.gas, Math.min(160, 10 + gas * 2), 0xe11d48, 16);
     spawn(groups.liquid, particles.liquid, Math.min(120, 8 + liquid * 3), 0x0ea5e9, 0);
     spawn(groups.bedrock, particles.bedrock, Math.min(90, 6 + bedrock * 4), 0x059669, -18);
+    renderWorld(data.open_world);
   }
 
   async function loadOverview() {
@@ -511,6 +597,44 @@
   if (btnRefreshOverview) {
     btnRefreshOverview.addEventListener('click', loadOverview);
   }
+  if (btnWorldRefresh) {
+    btnWorldRefresh.addEventListener('click', pullState);
+  }
+  if (btnWorldStep) {
+    btnWorldStep.addEventListener('click', async () => {
+      try {
+        if (worldStatus) worldStatus.textContent = 'Stepping world simulation...';
+        const coeff = secondaryForce && typeof secondaryForce.currentCoefficient === 'function'
+          ? Number(secondaryForce.currentCoefficient())
+          : Number((secondaryForceSlider && secondaryForceSlider.value) || 0.1);
+        const clamped = Math.max(0, Math.min(1, coeff));
+        const res = await fetch(`/api/resonance/world-step?ticks=6&secondary_force=${clamped.toFixed(4)}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+        });
+        if (!res.ok) {
+          if (worldStatus) worldStatus.textContent = `World step failed (${res.status}).`;
+          return;
+        }
+        const data = await res.json();
+        const wrapped = {
+          state: {
+            tick: Number(data.tick || 0),
+            phase: String(data.phase || 'forming'),
+            metrics: (data.metrics && typeof data.metrics === 'object') ? data.metrics : {},
+            infrastructure: (data.infrastructure && typeof data.infrastructure === 'object') ? data.infrastructure : {},
+            events: Array.isArray(data.recent_events) ? data.recent_events : [],
+          },
+          ticks_applied: Number(data.ticks_applied || 0),
+          phase: String(data.phase || 'forming'),
+        };
+        renderWorld(wrapped);
+        setTimeout(pullState, 250);
+      } catch (_e) {
+        if (worldStatus) worldStatus.textContent = 'World step failed.';
+      }
+    });
+  }
 
   if (initialSnapshot && typeof initialSnapshot === 'object') {
     renderState(initialSnapshot);
@@ -529,7 +653,23 @@
       secondaryForce.setCoefficient(coeff, { source: 'manual' });
     });
   }
+  async function primeOpenWorldPanel() {
+    if (!worldStatus) return;
+    worldStatus.textContent = 'Loading open-world state...';
+    try {
+      const res = await fetch('/api/resonance/world-state?ticks=2', { credentials: 'same-origin' });
+      if (!res.ok) {
+        worldStatus.textContent = `Open-world bootstrap unavailable (${res.status}).`;
+        return;
+      }
+      const payload = await res.json();
+      renderWorld(payload && payload.world ? payload.world : {});
+    } catch (_e) {
+      worldStatus.textContent = 'Open-world bootstrap unavailable.';
+    }
+  }
   pullState();
+  primeOpenWorldPanel();
   loadOverview();
   setInterval(pullState, 8000);
 })();
