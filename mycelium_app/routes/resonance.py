@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import AutonomyEpisode, SignalLedgerEvent, User
-from mycelium_app.open_world_simulation import evolve_world_state
+from mycelium_app.open_world_simulation import evolve_world_state, world_replay_summary
 
 
 router = APIRouter(prefix="/api/resonance", tags=["resonance"])
@@ -926,7 +926,7 @@ def build_resonance_snapshot(
         ),
         4,
     )
-    prev_world = _load_json(WORLD_STATE_PATH, {"version": 1, "entities": [], "infrastructure": {"nodes": [], "links": []}})
+    prev_world = _load_json(WORLD_STATE_PATH, {"version": 2, "entities": [], "infrastructure": {"nodes": [], "links": []}})
     world_tick_budget = max(1, min(int(world_ticks or (2 if secondary_force_level == "high" else 1)), 24))
     world_state = evolve_world_state(
         existing_state=prev_world,
@@ -947,6 +947,14 @@ def build_resonance_snapshot(
             "nodes": len(list(((world_state.get("infrastructure") or {}).get("nodes") or []))),
             "links": len(list(((world_state.get("infrastructure") or {}).get("links") or []))),
         },
+    }
+    world_metrics = world_state.get("metrics") if isinstance(world_state.get("metrics"), dict) else {}
+    world_health = {
+        "score": float((world_metrics.get("world_health_score", 0.0) or 0.0)),
+        "status": str((world_metrics.get("world_health_status") or "forming")),
+        "infrastructure_density": float((world_metrics.get("infrastructure_density", 0.0) or 0.0)),
+        "event_birth_rate": float((world_metrics.get("event_birth_rate", 0.0) or 0.0)),
+        "specialization_balance": float((world_metrics.get("specialization_balance", 0.0) or 0.0)),
     }
 
     sunset = _run_sunset_protocol(dry_run=False)
@@ -1018,12 +1026,14 @@ def build_resonance_snapshot(
         "headline": headline,
         "story": story,
         "open_world": open_world,
+        "world_health": world_health,
         "recommendations": [
             recommendation,
             "Keep 24h thermal selection active and recycle tepid logic into `.noise` artifacts.",
             "Only sediment modules that survive >=3 spikes and lower entropy per compute unit.",
             "Use Run Burn Safely when stress remains high for multiple cycles.",
             "Use `/api/resonance/world-step?ticks=3` during stress spikes to observe infrastructure adaptation in real time.",
+            "Use `/api/resonance/world-replay` to compare world-health deltas across tick windows.",
         ],
         "stats": {
             "signals_window": len(signals),
@@ -1132,6 +1142,38 @@ def world_infrastructure(
         "phase": str(state.get("phase") or "forming"),
         "nodes": list(infra.get("nodes") or []),
         "links": list(infra.get("links") or []),
+    }
+
+
+@router.get("/world-replay")
+@router.get("/world_replay")
+def world_replay(
+    start_tick: int | None = None,
+    end_tick: int | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    snapshot = build_resonance_snapshot(
+        session=session,
+        user_id=int(current_user.id or 0),
+        window_minutes=180,
+        secondary_source="world-replay",
+    )
+    open_world = snapshot.get("open_world") if isinstance(snapshot, dict) else {}
+    if not isinstance(open_world, dict):
+        open_world = {}
+    state = open_world.get("state") if isinstance(open_world.get("state"), dict) else {}
+    replay = world_replay_summary(
+        state=state if isinstance(state, dict) else {},
+        start_tick=start_tick,
+        end_tick=end_tick,
+    )
+    return {
+        "ok": True,
+        "phase": str((state or {}).get("phase") or "forming"),
+        "current_tick": int((state or {}).get("tick", 0) or 0),
+        "world_health": snapshot.get("world_health") if isinstance(snapshot.get("world_health"), dict) else {},
+        "replay": replay,
     }
 
 
