@@ -14,6 +14,7 @@ from sqlmodel import Session, select
 from mycelium_app.db import get_session
 from mycelium_app.deps import get_current_user
 from mycelium_app.models import AutonomyEpisode, SignalLedgerEvent, User
+from mycelium_app.open_world_simulation import evolve_world_state
 
 
 router = APIRouter(prefix="/api/resonance", tags=["resonance"])
@@ -33,6 +34,7 @@ REDUNDANCY_REGISTRY_PATH = AGENT_METABOLISM / "redundancy_registry.json"
 RUNTIME_STRESS_PATH = AGENT_METABOLISM / "runtime_stress_metrics.json"
 INGESTION_GUARD_PATH = AGENT_METABOLISM / "ingestion_guard.json"
 LEGACY_SNAPSHOT_DIR = RAW_DATA / "legacy_snapshots"
+WORLD_STATE_PATH = AGENT_METABOLISM / "open_world_state.json"
 
 
 def _load_json(path: Path, fallback: dict) -> dict:
@@ -667,8 +669,48 @@ def _build_overview_payload(*, secondary_descriptor: str) -> dict[str, object]:
             "Secondary force plugins for real API latency and market-volatility streams.",
             "Automated pruning + summary log shipping to external observability sink.",
             "Policy-based removal of redundant dashboards from operator default routes.",
+            "Open-world deterministic simulation with infrastructure emergence and replay-ready ticks.",
         ],
     }
+
+
+def _dwellers_for_world(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in list(registry.get("dwellers") or []):
+        if not isinstance(row, dict):
+            continue
+        out.append(
+            {
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "status": row.get("status", "active"),
+                "role": row.get("role", "generalist"),
+                "volatility_score": row.get("volatility_score", 0.5),
+                "utility_signal": row.get("utility_signal", row.get("fitness", 0.5)),
+                "survival_cycles": row.get("survival_cycles", 0),
+                "metabolic_rate": row.get("metabolic_rate", 0.25),
+            }
+        )
+    return out
+
+
+def _signals_for_world(signals: list[SignalLedgerEvent]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for row in signals[-220:]:
+        payload: dict[str, Any] = {}
+        try:
+            payload = json.loads(getattr(row, "payload_json", "") or "{}")
+        except Exception:
+            payload = {}
+        surface = payload.get("surface") if isinstance(payload.get("surface"), dict) else payload
+        out.append(
+            {
+                "signal_type": str(getattr(row, "signal_type", "") or ""),
+                "app_name": str(surface.get("app_name") or surface.get("stimulus") or ""),
+                "session_seconds": float(surface.get("session_seconds", 0.0) or 0.0),
+            }
+        )
+    return out
 
 
 def build_resonance_snapshot(
@@ -678,6 +720,7 @@ def build_resonance_snapshot(
     window_minutes: int = 120,
     secondary_force_override: float | None = None,
     secondary_source: str | None = None,
+    world_ticks: int | None = None,
 ) -> dict:
     uid = int(user_id)
     window = max(10, min(int(window_minutes), 24 * 60))
@@ -883,6 +926,28 @@ def build_resonance_snapshot(
         ),
         4,
     )
+    prev_world = _load_json(WORLD_STATE_PATH, {"version": 1, "entities": [], "infrastructure": {"nodes": [], "links": []}})
+    world_tick_budget = max(1, min(int(world_ticks or (2 if secondary_force_level == "high" else 1)), 24))
+    world_state = evolve_world_state(
+        existing_state=prev_world,
+        dwellers=_dwellers_for_world(registry),
+        signals=_signals_for_world(signals),
+        seed_key=f"{uid}:{window}:{len(signals)}:{len(active)}",
+        secondary_force=c_s,
+        adaptive_heat=adaptive_heat,
+        ticks=world_tick_budget,
+    )
+    _write_json(WORLD_STATE_PATH, world_state)
+    open_world = {
+        "state": world_state,
+        "ticks_applied": int(world_tick_budget),
+        "phase": str(world_state.get("phase") or "forming"),
+        "metrics": world_state.get("metrics") if isinstance(world_state.get("metrics"), dict) else {},
+        "infrastructure_counts": {
+            "nodes": len(list(((world_state.get("infrastructure") or {}).get("nodes") or []))),
+            "links": len(list(((world_state.get("infrastructure") or {}).get("links") or []))),
+        },
+    }
 
     sunset = _run_sunset_protocol(dry_run=False)
     slo = _slo_health(actuation=actuation, liquid_count=layers["liquid"]["count"], bedrock_count=layers["bedrock"]["count"])
@@ -904,7 +969,25 @@ def build_resonance_snapshot(
         "secondary_force": secondary_force,
         "actuation": actuation,
         "sunset_protocol": sunset,
+        "sunset_governance": {
+            "candidates": len(list(sunset.get("candidates") or [])),
+            "deprecated_total": len(list(sunset.get("deprecated") or [])),
+            "evaluated_at": sunset.get("evaluated_at"),
+        },
         "slo_health": slo,
+        "slo": {
+            "health_score": (
+                1.0
+                if str(slo.get("overall_status") or "") == "healthy"
+                else 0.55
+                if str(slo.get("overall_status") or "") == "degraded"
+                else 0.0
+            ),
+            "high_stress_duration_minutes": (slo.get("metrics") or {}).get("high_stress_duration_min"),
+            "conversion_ratio_weekly": (slo.get("metrics") or {}).get("conversion_ratio"),
+            "mutation_yield_cycle": (slo.get("metrics") or {}).get("mutation_yield"),
+            "status": slo.get("overall_status"),
+        },
         "awe": {
             "autonomy_slider": autonomy_slider,
             "state": awe_state,
@@ -934,11 +1017,13 @@ def build_resonance_snapshot(
         "overview": _build_overview_payload(secondary_descriptor=f"{secondary_force_level} ({c_s:.2f})"),
         "headline": headline,
         "story": story,
+        "open_world": open_world,
         "recommendations": [
             recommendation,
             "Keep 24h thermal selection active and recycle tepid logic into `.noise` artifacts.",
             "Only sediment modules that survive >=3 spikes and lower entropy per compute unit.",
             "Use Run Burn Safely when stress remains high for multiple cycles.",
+            "Use `/api/resonance/world-step?ticks=3` during stress spikes to observe infrastructure adaptation in real time.",
         ],
         "stats": {
             "signals_window": len(signals),
@@ -965,6 +1050,89 @@ def state_of_fluid(
         secondary_force_override=secondary_force,
         secondary_source=secondary_source,
     )
+
+
+@router.get("/world-state")
+@router.get("/world_state")
+def world_state(
+    ticks: int = 1,
+    secondary_force: float | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    ticks = max(1, min(int(ticks or 1), 24))
+    snapshot = build_resonance_snapshot(
+        session=session,
+        user_id=int(current_user.id or 0),
+        window_minutes=180,
+        secondary_force_override=secondary_force,
+        secondary_source="world-state",
+        world_ticks=ticks,
+    )
+    world = snapshot.get("open_world") if isinstance(snapshot, dict) else {}
+    if not isinstance(world, dict):
+        world = {}
+    ticks_applied = int(world.get("ticks_applied", ticks) or ticks)
+    return {"ok": True, "ticks_applied": ticks_applied, "world": world}
+
+
+@router.post("/world-step")
+@router.post("/world_step")
+def world_step(
+    ticks: int = 4,
+    secondary_force: float | None = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    ticks = max(1, min(int(ticks or 4), 24))
+    snapshot = build_resonance_snapshot(
+        session=session,
+        user_id=int(current_user.id or 0),
+        window_minutes=180,
+        secondary_force_override=secondary_force,
+        secondary_source="world-step",
+        world_ticks=ticks,
+    )
+    open_world = snapshot.get("open_world") if isinstance(snapshot, dict) else {}
+    if not isinstance(open_world, dict):
+        open_world = {}
+    current = open_world.get("state") if isinstance(open_world.get("state"), dict) else {}
+    return {
+        "ok": True,
+        "tick": int(current.get("tick", 0) or 0),
+        "phase": str(current.get("phase") or "forming"),
+        "ticks_applied": int(open_world.get("ticks_applied", ticks) or ticks),
+        "metrics": current.get("metrics") if isinstance(current.get("metrics"), dict) else {},
+        "infrastructure": current.get("infrastructure") if isinstance(current.get("infrastructure"), dict) else {"nodes": [], "links": []},
+        "recent_events": list(current.get("events") or [])[-8:],
+    }
+
+
+@router.get("/world-infrastructure")
+@router.get("/world_infrastructure")
+def world_infrastructure(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    snapshot = build_resonance_snapshot(
+        session=session,
+        user_id=int(current_user.id or 0),
+        window_minutes=180,
+        secondary_source="world-infrastructure",
+    )
+    open_world = snapshot.get("open_world") if isinstance(snapshot, dict) else {}
+    if not isinstance(open_world, dict):
+        open_world = {}
+    state = open_world.get("state") if isinstance(open_world.get("state"), dict) else {}
+    infra = state.get("infrastructure") if isinstance(state.get("infrastructure"), dict) else {"nodes": [], "links": []}
+    return {
+        "ok": True,
+        "as_of": state.get("as_of"),
+        "tick": int(state.get("tick", 0) or 0),
+        "phase": str(state.get("phase") or "forming"),
+        "nodes": list(infra.get("nodes") or []),
+        "links": list(infra.get("links") or []),
+    }
 
 
 @router.post("/thermal_cycle")
