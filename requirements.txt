@@ -1,2 +1,10 @@
-# Convenience wrapper for tooling that expects a top-level requirements.txt
--r requirements/base.txt
+# PhysML — core dependencies
+numpy>=1.26,<3
+pandas>=2.2,<3
+scipy>=1.12,<2
+
+# Prediction core (required)
+scikit-learn>=1.4,<2
+
+# Optional: richer outlier handling
+feature-engine>=1.7,<2

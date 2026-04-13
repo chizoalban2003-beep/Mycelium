@@ -1,7 +1,0 @@
-# Optional analytics dependencies
-#
-# These improve some statistical diagnostics and enable the optional
-# outlier backend `cleaning_outlier_strategy=feature_engine`.
-
-scipy>=1.12,<2
-feature-engine>=1.7,<2

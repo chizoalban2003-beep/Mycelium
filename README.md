@@ -1,228 +1,154 @@
-# Myco — Grow with Data
+# PhysML — Physics-Inspired Machine Learning for Tabular Data
 
-A local-first, physics-inspired prediction engine and digital companion for tabular, sensor, and electricity data.
+A standalone ML model that frames supervised learning as a **gel electrophoresis simulation**.
+Features are treated as charged particles migrating through a viscous medium; their "charge"
+is their statistical association with the target, and "viscosity" is modulated by collinearity,
+distribution shape, and iterative PCR-style amplification.
 
-It frames feature selection as a physical system: strong signals migrate, weak signals slow down, correlated features bond, and noisy measurements are cleaned without erasing real transients.
+## How It Works
 
-## At a Glance
-
-- **Explainable** feature scoring and selection
-- **Transient-aware** cleaning for noisy signal streams
-- **Memory-friendly** dataclasses with `slots=True`
-- **Diagnostics-rich** output for debugging and visualization
-- **Local-first** workflow that runs comfortably in VS Code
-
-## Architecture
-
-```mermaid
-flowchart LR
-    A[Raw electricity / sensor data] --> B[_clean_dataframe_for_prediction()]
-    B --> C[Rolling sedimentation\nmedian + MAD + cadence inference]
-    C --> D[Feature scoring\nWeightInfo + KL divergence]
-    D --> E[Migration field\nviscosity + mass + terminal velocity]
-    E --> F[Bonding + complexes\nBondInfo + EquilibriumZone]
-    F --> G[PCR amplification\n_pcr_amplification_factor()]
-    G --> H[PredictionResult]
-    H --> I[Diagnostics + visualization]
-
-    C --> C1[Warm-up backfill\nfirst stable median]
-    C --> C2[Cadence inference\nDatetimeIndex or time column]
-    E --> E1[Viscosity field\n_calculate_viscosity_field()]
-    G --> G1[Selective amplification\nstable features only when enabled]
+```
+Raw tabular data
+      │
+      ▼
+  Cleaning & imputation  (rolling median, MAD, winsorize, …)
+      │
+      ▼
+  Feature scoring        (Pearson/Spearman/Cramér-V / KL-divergence)
+      │
+      ▼
+  Electrophoresis        (n_cycles × learning_rate updates, viscosity field)
+      │
+      ▼
+  Bonding & complexes    (multicollinearity suppression)
+      │
+      ▼
+  PCR amplification      (boost statistically significant features)
+      │
+      ▼
+  PredictionResult       (test accuracy/R², feature weights, diagnostics)
 ```
 
-## Code Map
+## Install
 
-The diagram maps directly to these implementation points in `mycelium_app/physics_predictor.py`:
-
-- **Fluid / cleaning layer**
-  - `_clean_dataframe_for_prediction(...)`
-  - rolling-window sedimentation helper
-  - cadence inference diagnostics in `PredictionResult.diagnostics`
-
-- **Gravity / weighting layer**
-  - `WeightInfo`
-  - feature scoring inside `run_physics_prediction(...)`
-
-- **Viscosity / migration layer**
-  - `_calculate_viscosity_field(...)`
-  - `_migration_state(...)`
-  - `MigrationInfo`
-
-- **Bonding / manifold layer**
-  - `BondInfo`
-  - `EquilibriumZone`
-  - `_build_bonding_map(...)`
-  - `_collinearity_complexes(...)`
-  - `_build_equilibrium_zones(...)`
-
-- **PCR / amplification layer**
-  - `_pcr_amplification_factor(...)`
-  - PCR logic inside `run_physics_prediction(...)`
-  - `MigrationInfo.terminal_velocity`
-  - `PredictionMetrics.gel_band_sharpness`
-  - `PredictionMetrics.gel_smearing`
-
-## Workflow
-
-The engine follows a simple sequence:
-
-- **Clean** the stream without destroying transients.
-- **Score** each feature against the target.
-- **Move** features through the viscosity field.
-- **Group** correlated features into complexes.
-- **Amplify** statistically useful signals with PCR.
-- **Report** the result with diagnostics for visualization.
-
-## Data Cleaning Strategy
-
-The cleaner supports two modes:
-
-- **Static outlier handling**
-  - winsorize
-  - IQR
-  - Gaussian
-  - MAD
-  - arbitrary clipping
-
-- **Rolling-window sedimentation**
-  - rolling median + rolling MAD
-  - preserves clustered transients
-  - clips isolated spikes
-  - infers cadence from datetime-like data when rolling mode is enabled
-  - uses a stable warm-up backfill at the start of the stream
-
-This is especially useful for electricity data, where startup spikes and device on/off events should often be preserved rather than treated as noise.
-
-### High-Rate Knobs
-
-When rolling mode infers cadence automatically, the cleaner uses sensible defaults:
-
-- **High-rate / waveform data:** short transient window by default
-- **Low-rate / telemetry data:** longer stability window by default
-
-These defaults are exposed through the cleaning parameters, so you can tune them without manually converting cadence into a window size.
-
-## Configuration Reference
-
-The most useful knobs for day-to-day runs are:
-
-### Cleaning
-
-- `cleaning_outlier_strategy` — `winsorize`, `iqr`, `gaussian`, `mad`, `arbitrary`, `feature_engine`, `rolling`, or `none`
-- `cleaning_rolling_window` — explicit rolling window size when you already know the cadence
-- `cleaning_rolling_window_cadence_hz` — inferred cadence override for rolling mode
-- `cleaning_rolling_window_seconds` — time span used when cadence is inferred automatically
-- `cleaning_rolling_mad_fold` — robust clipping strength for rolling median/MAD filtering
-- `cleaning_rolling_cluster_min_size` — minimum cluster size before a deviation is preserved as a transient
-
-### PCR / Amplification
-
-- `pcr_enabled` — turns selective amplification on or off
-- `pcr_cycles` — number of amplification cycles to apply
-- `pcr_pvalue_threshold` — primer-binding threshold for target affinity
-- `pcr_gain` — amplification strength per cycle
-- `pcr_require_stable` — gates amplification to stable features only
-
-### Practical Defaults
-
-- Use `rolling` for electricity or sensor streams with timestamps.
-- Use `winsorize` if you want simple, global clipping.
-- Keep `pcr_enabled=False` until you want selective amplification of high-affinity features.
-- Start with a short rolling window for waveform data and a longer one for telemetry.
-
-## Hardware-Friendly Design
-
-The core dataclasses use `slots=True` to reduce per-instance memory overhead:
-
-- `WeightInfo`
-- `MigrationInfo`
-- `PredictionMetrics`
-- `BondInfo`
-- `IterationInfo`
-- `EquilibriumZone`
-- `PredictionResult`
-
-That makes the feature-tracking layer lighter when you have many harmonics, phases, or derived signal features.
+```bash
+pip install numpy pandas scipy scikit-learn
+# optional: richer outlier cleaning
+pip install feature-engine
+```
 
 ## Quick Start
 
-Run the demo starter:
+### scikit-learn API
 
-```bash
-/home/chizoalban2003/Mycelium/.venv/bin/python crew_ai_starter.py
+```python
+from physml import PhysicsPredictor
+from sklearn.datasets import load_wine
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
+
+wine = load_wine(as_frame=False)
+X_train, X_test, y_train, y_test = train_test_split(
+    wine.data, wine.target, test_size=0.25, random_state=42, stratify=wine.target
+)
+
+clf = PhysicsPredictor(plane="liquid", n_cycles=20)
+clf.fit(X_train, y_train)
+print(accuracy_score(y_test, clf.predict(X_test)))
 ```
 
-Or call the engine directly from Python:
+### Low-level functional API
 
 ```python
 import pandas as pd
-from mycelium_app.physics_predictor import PhysicsPlane, run_physics_prediction
+from physml import run_physics_prediction, PhysicsPlane
 
-df = pd.DataFrame(
-    {
-        "study_hours": [1.0, 2.5, 3.5, 4.0, 5.5, 6.0],
-        "sleep_hours": [6.0, 6.5, 7.0, 7.5, 8.0, 8.5],
-        "target": [52, 58, 63, 68, 74, 79],
-    }
+df = pd.read_csv("my_data.csv")
+result = run_physics_prediction(
+    df,
+    target_col="price",          # or any classification column
+    plane=PhysicsPlane.solid,
+    n_cycles=30,
+    return_predictions=True,
 )
+print(f"R²={result.metrics.rmse:.4f}  features={len(result.weights)}")
+```
+
+### Explicit train/test control
+
+```python
+import numpy as np
+
+n = len(df)
+mask = np.zeros(n, dtype=bool)
+mask[:int(0.8*n)] = True           # first 80 % → train
 
 result = run_physics_prediction(
     df,
-    target_col="target",
-    plane=PhysicsPlane.solid,
-    train_fraction=0.67,
-    random_seed=42,
-    n_cycles=5,
+    target_col="label",
+    explicit_train_mask=mask,      # bypass random split
+    n_cycles=25,
+    return_predictions=True,
 )
-
-print(result.metrics)
 ```
 
-## Benchmarking
+## Benchmark / Evaluation
 
-Run the built-in benchmark suite to compare the physics predictor against ensemble baselines and unsupervised clustering models:
+Run the comprehensive benchmark to compare PhysML against RF, GBT, MLP, KNN, SVM, and more:
 
 ```bash
-/home/chizoalban2003/Mycelium/.venv/bin/python benchmark_models.py
+python evaluate.py                    # all tasks (classification + regression)
+python evaluate.py --tasks classification
+python evaluate.py --tasks regression
+python evaluate.py --quick            # faster run with fewer cycles
+python evaluate.py --output results.json
 ```
 
-The script reports:
+Baselines included:
 
-- classification accuracy and F1 against random forest and extra-trees baselines
-- regression MAE/RMSE against random forest and extra-trees baselines
-- unsupervised clustering quality on no-target synthetic datasets
-- runtime-state serialization / reload smoke test
+- **Random Forest** (RF)
+- **Extra Trees** (ET)
+- **Gradient Boosting** (GB)
+- **Histogram Gradient Boosting** (HGB)
+- **Neural Network** (MLP)
+- **K-Nearest Neighbours** (KNN)
+- **SVM / SVR**
+- **Logistic Regression / Ridge**
+- **AdaBoost**
 
-The benchmark suite also includes a permanent ENB2012 / Energy Efficiency sweep that:
+Datasets: iris, breast_cancer, wine (classification); diabetes, california_housing (regression).
 
-- evaluates Heating Load (`Y1`) and Cooling Load (`Y2`) separately
-- sweeps `PhysicsPlane.solid`, `PhysicsPlane.liquid`, and `PhysicsPlane.gas`
-- compares baseline physics runs against the `Viscosity Squeeze` variant
-- records ecosystem vitals such as mean viscosity, terminal velocity, and active complexes
+## Package Structure
 
-This makes ENB2012 a repeatable wind tunnel for checking whether future physics changes help on structured building-energy tabular data.
+```
+physml/
+  __init__.py        Public API exports
+  predictor.py       Core physics engine
+  estimator.py       scikit-learn compatible PhysicsPredictor class
+evaluate.py          Stand-alone benchmark script
+tests/
+  test_predictor.py  Physics engine unit tests
+  test_estimator.py  Estimator / sklearn compatibility tests
+```
 
-## Suggested Visual Legend
+## Key Parameters
 
-If you want to reuse the diagram as documentation, this legend matches the visual panels:
+| Parameter | Default | Description |
+|---|---|---|
+| `plane` | `"liquid"` | Medium preset: `solid` / `liquid` / `gas` |
+| `n_cycles` | 30 | Number of electrophoresis iterations |
+| `cycle_learning_rate` | 0.18 | Per-cycle charge update rate |
+| `cascade_enabled` | `True` | Multicollinearity complex suppression |
+| `pcr_enabled` | `False` | PCR amplification of strong features |
+| `enable_isotopes` | `True` | Auto-generate interaction features |
+| `explicit_train_mask` | `None` | Override random split with boolean array |
 
-- **Top-left:** correlation structure and viscosity field
-- **Top-right:** weighted feature influence and blending points
-- **Bottom-left:** manifold dynamics, sedimentation, and turbulence
-- **Bottom-right:** electrophoresis, PCR amplification, and iterative convergence
+## Running Tests
 
-## Notes
+```bash
+python -m pytest tests/ -q
+```
 
-- SciPy is used when available for statistical routines.
-- The engine is designed to be explainable, not just predictive.
-- Diagnostics are surfaced in `PredictionResult.diagnostics` for debugging and visualization.
-- Runtime state helpers support serialization, pruning, homeostatic gain updates, and abstention-aware reruns.
-- The ENB2012 benchmark is tracked as a permanent regression/plane-sweep fixture.
-- The repository currently includes a small CrewAI starter script for demo runs and narrative summaries.
+## License
 
-## New: Digital Thermodynamics Manifesto
-
-For the full "signal as matter" framework — including the pulse/plateau loop, entropy budget, death-as-compost lifecycle, and a concrete implementation roadmap for Myco's autonomy ecosystem — see:
-
-- `docs/digital_thermodynamics_manifesto.md`
+MIT
