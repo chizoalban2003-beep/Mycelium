@@ -15,6 +15,36 @@ Usage
     reg.fit(X_train, y_train)
     y_pred = reg.predict(X_test)
 
+Competitive improvements
+------------------------
+Five techniques narrow the gap to ensemble methods:
+
+A. ``quantile_transform=True``
+    Applies a QuantileTransformer (rank-normalization) to every numeric
+    feature before the physics pass, exposing non-linear structure to the
+    linear electrophoresis equations.
+
+B. Isotope fix in predict
+    Interaction ("isotope") columns created during ``fit`` are stored as
+    named recipes and reconstructed from test rows in ``predict``, so the
+    engine sees the same feature space during training and inference.
+
+C. ``poly_degree=2``
+    Adds all pairwise interaction terms of the top-k most-charged features
+    via ``PolynomialFeatures``, giving the linear physics engine approximate
+    non-linear capacity.
+
+D. ``n_estimators > 1`` / ``bootstrap=True``
+    Runs multiple independent physics passes on (bootstrap) subsamples and
+    combines them by majority vote (classification) or mean (regression),
+    reducing variance the same way a Random Forest does.
+
+E. ``residual_model="ridge"`` / ``"logistic"``
+    After the physics engine, a lightweight Ridge or Logistic Regression is
+    fit on out-of-fold physics predictions stacked with raw features.  This
+    second stage corrects systematic residuals the linear engine cannot
+    model.
+
 Notes
 -----
 The physics engine runs a coupled train+test electrophoresis pass each time
@@ -25,26 +55,29 @@ This transductive design preserves the full physics simulation fidelity.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from collections import Counter
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 try:
-    from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
+    from sklearn.base import BaseEstimator
+    from sklearn.linear_model import LogisticRegression, Ridge
+    from sklearn.model_selection import KFold, StratifiedKFold
+    from sklearn.preprocessing import PolynomialFeatures, QuantileTransformer
     from sklearn.utils.multiclass import unique_labels
     from sklearn.utils.validation import check_is_fitted
     _SKLEARN_AVAILABLE = True
-except ImportError:
+except ImportError:  # pragma: no cover
     _SKLEARN_AVAILABLE = False
-    BaseEstimator = object
-    ClassifierMixin = object
-    RegressorMixin = object
+    BaseEstimator = object  # type: ignore[assignment,misc]
 
 from physml.predictor import (
     PhysicsPlane,
     PredictionResult,
     PredictorRuntimeState,
+    _safe_feature_slug,  # type: ignore[attr-defined]
     infer_target_kind,
     run_physics_prediction,
 )
@@ -68,6 +101,12 @@ def _resolve_plane(plane: str | PhysicsPlane) -> PhysicsPlane:
         return PhysicsPlane(str(plane).lower())
     except ValueError:
         return PhysicsPlane.liquid
+
+
+def _majority_vote(preds_2d: list[np.ndarray]) -> np.ndarray:
+    """Column-wise majority vote over a list of equal-length prediction arrays."""
+    arr = np.array([[str(p) for p in row] for row in preds_2d])  # (n_est, n_samples)
+    return np.array([Counter(arr[:, j]).most_common(1)[0][0] for j in range(arr.shape[1])])
 
 
 class PhysicsPredictor(BaseEstimator):
@@ -104,6 +143,23 @@ class PhysicsPredictor(BaseEstimator):
     n_cycles_fit : int or None, default None
         Override ``n_cycles`` when calling ``fit`` (leave None to use
         the same ``n_cycles``).
+    quantile_transform : bool, default False
+        (Improvement A) Rank-normalize numeric features before the physics
+        pass so non-linear structure is linearised.
+    poly_degree : int, default 1
+        (Improvement C) Polynomial interaction degree applied to the top-k
+        features by physics weight.  1 = disabled; 2 = pairwise products.
+    poly_top_k : int, default 10
+        Maximum number of features selected for polynomial expansion.
+    n_estimators : int, default 1
+        (Improvement D) Number of independent physics passes to average.
+        Values > 1 activate ensemble / bagging mode.
+    bootstrap : bool, default False
+        When ``n_estimators > 1``, sample training rows with replacement
+        for each base estimator (bagging).
+    residual_model : {"ridge", "logistic"} or None, default None
+        (Improvement E) Second-stage corrector fit on out-of-fold physics
+        predictions stacked with the original features.
     extra_kwargs : dict or None, default None
         Any additional keyword arguments forwarded verbatim to
         ``run_physics_prediction``.
@@ -121,6 +177,16 @@ class PhysicsPredictor(BaseEstimator):
         competitive_inhibition: bool = True,
         train_fraction: float = 0.8,
         n_cycles_fit: int | None = None,
+        # A – rank normalization
+        quantile_transform: bool = False,
+        # C – polynomial interactions
+        poly_degree: int = 1,
+        poly_top_k: int = 10,
+        # D – ensemble / bagging
+        n_estimators: int = 1,
+        bootstrap: bool = False,
+        # E – residual stacking
+        residual_model: str | None = None,
         extra_kwargs: dict[str, Any] | None = None,
     ) -> None:
         self.plane = plane
@@ -133,6 +199,12 @@ class PhysicsPredictor(BaseEstimator):
         self.competitive_inhibition = competitive_inhibition
         self.train_fraction = train_fraction
         self.n_cycles_fit = n_cycles_fit
+        self.quantile_transform = quantile_transform
+        self.poly_degree = poly_degree
+        self.poly_top_k = poly_top_k
+        self.n_estimators = n_estimators
+        self.bootstrap = bootstrap
+        self.residual_model = residual_model
         self.extra_kwargs = extra_kwargs
 
     # ------------------------------------------------------------------
@@ -158,6 +230,154 @@ class PhysicsPredictor(BaseEstimator):
         check_is_fitted(self)
         return bool(getattr(self, "is_classifier_", False))
 
+    # ── A: QuantileTransformer ─────────────────────────────────────────
+
+    def _apply_qt(self, X_df: pd.DataFrame) -> pd.DataFrame:
+        """Apply stored QuantileTransformer to numeric columns (in-place copy)."""
+        qt = getattr(self, "qt_", None)
+        if qt is None:
+            return X_df
+        num_cols = [c for c in getattr(self, "qt_numeric_cols_", []) if c in X_df.columns]
+        if not num_cols:
+            return X_df
+        result = X_df.copy()
+        try:
+            result[num_cols] = qt.transform(result[num_cols].astype(float).values)
+        except Exception:
+            pass
+        return result
+
+    # ── B: Isotope reconstruction ──────────────────────────────────────
+
+    def _apply_isotopes(self, X_df: pd.DataFrame) -> pd.DataFrame:
+        """Reconstruct isotope interaction columns from stored recipes."""
+        recipes: list[dict] = getattr(self, "isotope_recipes_", [])
+        if not recipes:
+            return X_df
+        result = X_df.copy()
+        train_means: dict[str, float] = getattr(self, "isotope_train_means_", {})
+        for recipe in recipes:
+            col_name: str = recipe["column"]
+            if col_name in result.columns:
+                continue
+            num_col: str = recipe["numeric"]
+            cat_col: str = recipe["categorical"]
+            level: str = recipe["level"]
+            if num_col not in result.columns or cat_col not in result.columns:
+                result[col_name] = 0.0
+                continue
+            x = pd.to_numeric(result[num_col], errors="coerce").fillna(0.0)
+            x_centered = x - float(train_means.get(num_col, 0.0))
+            level_mask = (result[cat_col].astype("string").fillna("__MISSING__") == str(level)).astype(float)
+            result[col_name] = x_centered.values * level_mask.values
+        return result
+
+    # ── C: Polynomial features ─────────────────────────────────────────
+
+    def _apply_poly(self, X_df: pd.DataFrame) -> pd.DataFrame:
+        """Add polynomial interaction columns for stored top-k features."""
+        poly = getattr(self, "poly_", None)
+        if poly is None:
+            return X_df
+        top_feats = [f for f in getattr(self, "poly_top_features_", []) if f in X_df.columns]
+        if len(top_feats) < 2:
+            return X_df
+        result = X_df.copy()
+        try:
+            X_sub = result[top_feats].astype(float).values
+            X_poly = poly.transform(X_sub)
+            for i, name in enumerate(poly.get_feature_names_out(top_feats)):
+                safe = f"__poly__{name}"
+                if safe not in result.columns:
+                    result[safe] = X_poly[:, i]
+        except Exception:
+            pass
+        return result
+
+    # ── Combined preprocessing pipeline ───────────────────────────────
+
+    def _preprocess(self, X_df: pd.DataFrame) -> pd.DataFrame:
+        """Apply QT → isotope reconstruction → polynomial expansion."""
+        X_df = self._apply_qt(X_df)
+        X_df = self._apply_isotopes(X_df)
+        X_df = self._apply_poly(X_df)
+        return X_df
+
+    # ── Core engine predict pass ───────────────────────────────────────
+
+    def _engine_predict(
+        self,
+        train_df_with_target: pd.DataFrame,
+        X_test_df: pd.DataFrame,
+        seed: int,
+    ) -> list[Any]:
+        """Run one physics engine predict pass and return test-row predictions.
+
+        Parameters
+        ----------
+        train_df_with_target : DataFrame
+            Training rows that already include the ``__target__`` column.
+        X_test_df : DataFrame
+            Test feature rows (no ``__target__`` column).
+        seed : int
+            Random seed forwarded to the engine.
+        """
+        n_train = int(train_df_with_target.shape[0])
+        n_test = int(X_test_df.shape[0])
+        train_targets = train_df_with_target["__target__"].to_numpy()
+        dummy_target: Any = (
+            train_targets[0]
+            if self.is_classifier_
+            else float(np.nanmean(train_targets.astype(float)))
+        )
+
+        test_part = X_test_df.copy()
+        test_part["__target__"] = dummy_target
+        # Align columns: test may be missing columns that only appear in train.
+        for col in train_df_with_target.columns:
+            if col not in test_part.columns:
+                test_part[col] = 0.0 if col != "__target__" else dummy_target
+        test_part = test_part[train_df_with_target.columns]
+
+        combined = pd.concat([train_df_with_target, test_part], axis=0, ignore_index=True)
+        explicit_mask = np.zeros(n_train + n_test, dtype=bool)
+        explicit_mask[:n_train] = True
+
+        kwargs = self._build_kwargs()
+        kwargs["enable_isotopes"] = False  # isotopes already reconstructed before this call
+        kwargs["explicit_train_mask"] = explicit_mask
+        kwargs["random_seed"] = seed
+
+        result: PredictionResult | None = None
+        try:
+            result = run_physics_prediction(combined, target_col="__target__", runtime_state=None, **kwargs)
+        except Exception:
+            pass
+
+        if result is not None and result.test_predicted:
+            preds = result.test_predicted
+            if result.test_row_indices is not None:
+                idx_map = {int(i): preds[k] for k, i in enumerate(result.test_row_indices)}
+                return [idx_map.get(n_train + j, preds[0] if preds else dummy_target) for j in range(n_test)]
+            out = list(preds[:n_test])
+            if len(out) < n_test:
+                out += [dummy_target] * (n_test - len(out))
+            return out
+        return [dummy_target] * n_test
+
+    # ── Stacking feature builder ───────────────────────────────────────
+
+    def _stacking_X(self, physics_preds: np.ndarray, X_df: pd.DataFrame) -> np.ndarray:
+        """Build stacking feature matrix: [encoded_physics_pred, numeric_X]."""
+        num_cols = [c for c in X_df.columns if pd.api.types.is_numeric_dtype(X_df[c])]
+        X_num = X_df[num_cols].astype(float).values if num_cols else np.empty((len(X_df), 0))
+        if self.is_classifier_:
+            cls_map = {str(c): float(i) for i, c in enumerate(self.classes_)}
+            pred_enc = np.array([cls_map.get(str(p), 0.0) for p in physics_preds]).reshape(-1, 1)
+        else:
+            pred_enc = np.array([float(p) for p in physics_preds]).reshape(-1, 1)
+        return np.hstack([pred_enc, X_num])
+
     # ------------------------------------------------------------------
     # sklearn API
     # ------------------------------------------------------------------
@@ -176,11 +396,9 @@ class PhysicsPredictor(BaseEstimator):
         """
         X_df = _to_dataframe(X)
         self.feature_names_in_: list[str] = list(X_df.columns)
-        n_features = int(X_df.shape[1])
+        self.n_features_in_: int = int(X_df.shape[1])
 
         y_arr = np.asarray(y)
-        # Preserve the original dtype so infer_target_kind correctly detects
-        # integer class labels as "categorical" (few unique numeric values).
         y_series = pd.Series(y_arr).reset_index(drop=True)
         target_kind = infer_target_kind(y_series)
         self.is_classifier_: bool = target_kind == "categorical"
@@ -189,29 +407,156 @@ class PhysicsPredictor(BaseEstimator):
         if self.is_classifier_:
             self.classes_: np.ndarray = unique_labels(y) if _SKLEARN_AVAILABLE else np.unique(y)
 
-        # Store training data (reset index for safe concatenation later)
-        train_df = X_df.copy()
-        train_df["__target__"] = y_series.to_numpy()
-        self.train_df_: pd.DataFrame = train_df.reset_index(drop=True)
-        self.n_features_in_: int = n_features
+        # ── A: Fit QuantileTransformer ────────────────────────────────
+        self.qt_: QuantileTransformer | None = None
+        self.qt_numeric_cols_: list[str] = []
+        if bool(self.quantile_transform) and _SKLEARN_AVAILABLE:
+            num_cols = [c for c in X_df.columns if pd.api.types.is_numeric_dtype(X_df[c])]
+            if num_cols:
+                n_q = min(int(X_df.shape[0]), 1000)
+                qt = QuantileTransformer(
+                    n_quantiles=n_q,
+                    output_distribution="normal",
+                    random_state=int(self.random_seed),
+                )
+                try:
+                    qt.fit(X_df[num_cols].astype(float).values)
+                    self.qt_ = qt
+                    self.qt_numeric_cols_ = list(num_cols)
+                except Exception:
+                    pass
 
-        # Run an in-sample diagnostics pass to warm up the runtime state.
+        X_df_t = self._apply_qt(X_df)
+
+        # ── Initial physics fit pass (for weights + isotope diagnostics) ──
         n_cycles_fit = int(self.n_cycles_fit) if self.n_cycles_fit is not None else int(self.n_cycles)
-        kwargs = self._build_kwargs()
-        kwargs["n_cycles"] = n_cycles_fit
-        kwargs["train_fraction"] = float(self.train_fraction)
+        fit_input = X_df_t.copy()
+        fit_input["__target__"] = y_series.to_numpy()
+        fit_input = fit_input.reset_index(drop=True)
+
+        kwargs_fit = self._build_kwargs()
+        kwargs_fit["n_cycles"] = n_cycles_fit
+        kwargs_fit["train_fraction"] = float(self.train_fraction)
+        kwargs_fit["enable_isotopes"] = bool(self.enable_isotopes)
 
         runtime = PredictorRuntimeState(metadata={"source": "PhysicsPredictor.fit"})
+        fit_result: PredictionResult | None = None
         try:
-            run_physics_prediction(
-                self.train_df_.copy(),
+            fit_result = run_physics_prediction(
+                fit_input.copy(),
                 target_col="__target__",
                 runtime_state=runtime,
-                **kwargs,
+                **kwargs_fit,
             )
         except Exception:
             pass
         self.runtime_state_: PredictorRuntimeState = runtime
+
+        # ── B: Store isotope recipes and reconstruct columns ──────────
+        self.isotope_recipes_: list[dict[str, str]] = []
+        self.isotope_train_means_: dict[str, float] = {}
+        if fit_result is not None and fit_result.diagnostics:
+            iso_diag: dict = fit_result.diagnostics.get("isotopes") or {}
+            self.isotope_recipes_ = list(iso_diag.get("pairs", []))
+            for recipe in self.isotope_recipes_:
+                num_col = recipe.get("numeric", "")
+                if num_col and num_col in X_df_t.columns and num_col not in self.isotope_train_means_:
+                    vals = pd.to_numeric(X_df_t[num_col], errors="coerce")
+                    self.isotope_train_means_[num_col] = float(vals.mean())
+
+        X_df_t = self._apply_isotopes(X_df_t)
+
+        # ── C: Fit PolynomialFeatures on top-k physics-weighted features ─
+        self.poly_: PolynomialFeatures | None = None
+        self.poly_top_features_: list[str] = []
+        if int(self.poly_degree) >= 2 and _SKLEARN_AVAILABLE:
+            top_k = max(2, int(self.poly_top_k))
+            if fit_result is not None and fit_result.weights:
+                sorted_weights = sorted(fit_result.weights, key=lambda w: abs(w.weight), reverse=True)
+                top_features = [
+                    wi.feature
+                    for wi in sorted_weights
+                    if wi.feature in X_df_t.columns
+                    and wi.feature_kind in ("numeric", "datetime", "bool")
+                    and not wi.feature.startswith("__iso__")
+                ][:top_k]
+            else:
+                top_features = [
+                    c for c in X_df_t.columns
+                    if c != "__target__"
+                    and not c.startswith("__iso__")
+                    and pd.api.types.is_numeric_dtype(X_df_t[c])
+                ][:top_k]
+
+            if len(top_features) >= 2:
+                poly = PolynomialFeatures(
+                    degree=int(self.poly_degree),
+                    interaction_only=True,
+                    include_bias=False,
+                )
+                try:
+                    poly.fit(X_df_t[top_features].astype(float).values)
+                    self.poly_ = poly
+                    self.poly_top_features_ = list(top_features)
+                    X_df_t = self._apply_poly(X_df_t)
+                except Exception:
+                    pass
+
+        # Store final (fully transformed) training dataframe.
+        train_final = X_df_t.copy()
+        train_final["__target__"] = y_series.to_numpy()
+        self.train_df_: pd.DataFrame = train_final.reset_index(drop=True)
+
+        # ── D: Store per-estimator training sets (ensemble / bagging) ─
+        n_est = max(1, int(self.n_estimators))
+        self.estimator_train_dfs_: list[pd.DataFrame] = []
+        if n_est > 1:
+            rng_boot = np.random.default_rng(int(self.random_seed))
+            for _ in range(n_est):
+                if bool(self.bootstrap):
+                    idx = rng_boot.integers(0, len(y_arr), size=len(y_arr))
+                    boot_df = X_df_t.iloc[idx].reset_index(drop=True).copy()
+                    boot_df["__target__"] = y_arr[idx]
+                else:
+                    boot_df = train_final.copy()
+                self.estimator_train_dfs_.append(boot_df)
+
+        # ── E: Fit residual stacking corrector ────────────────────────
+        self.residual_estimator_: Any = None
+        res_name = str(self.residual_model or "").lower().strip()
+        if res_name in ("ridge", "logistic") and _SKLEARN_AVAILABLE:
+            n_splits = min(3, max(2, len(y_arr) // 10))
+            try:
+                if self.is_classifier_:
+                    kf: KFold | StratifiedKFold = StratifiedKFold(
+                        n_splits=n_splits, shuffle=True, random_state=int(self.random_seed)
+                    )
+                else:
+                    kf = KFold(n_splits=n_splits, shuffle=True, random_state=int(self.random_seed))
+
+                oof_preds: list[Any] = [None] * len(y_arr)
+                for fold_i, (tr_idx, val_idx) in enumerate(kf.split(X_df_t, y_arr)):
+                    fold_train = X_df_t.iloc[tr_idx].reset_index(drop=True).copy()
+                    fold_train["__target__"] = y_arr[tr_idx]
+                    fold_test = X_df_t.iloc[val_idx].reset_index(drop=True)
+                    fold_p = self._engine_predict(
+                        fold_train, fold_test,
+                        seed=int(self.random_seed) + fold_i * 1000,
+                    )
+                    for k, vi in enumerate(val_idx):
+                        oof_preds[vi] = fold_p[k]
+
+                oof_arr = np.array(oof_preds, dtype=object)
+                X_stack = self._stacking_X(oof_arr, X_df_t)
+                if self.is_classifier_:
+                    est: Any = LogisticRegression(max_iter=1000, random_state=int(self.random_seed))
+                else:
+                    est = Ridge(alpha=1.0)
+                est.fit(X_stack, y_arr)
+                self.residual_estimator_ = est
+            except Exception:
+                self.residual_estimator_ = None
+
         return self
 
     def predict(self, X: Any) -> np.ndarray:
@@ -227,71 +572,35 @@ class PhysicsPredictor(BaseEstimator):
         """
         check_is_fitted(self)
         X_df = _to_dataframe(X, feature_names=self.feature_names_in_)
+        # Apply the same preprocessing pipeline used during fit.
+        X_df_t = self._preprocess(X_df)
 
-        n_train = int(self.train_df_.shape[0])
-        n_test = int(X_df.shape[0])
-
-        # Build a dummy target for test rows using the same dtype as training targets
-        # so infer_target_kind sees a consistent column type.
-        train_targets = self.train_df_["__target__"].to_numpy()
-        if self.is_classifier_:
-            dummy_target = train_targets[0]
-        else:
-            dummy_target = float(np.nanmean(train_targets.astype(float)))
-
-        test_part = X_df.copy()
-        test_part["__target__"] = dummy_target
-
-        # Align columns: test may lack isotope-derived columns added during fit.
-        extra_cols = [c for c in self.train_df_.columns if c not in test_part.columns]
-        for col in extra_cols:
-            fill = 0.0 if col != "__target__" else dummy_target
-            test_part[col] = fill
-        test_part = test_part[self.train_df_.columns]
-
-        combined = pd.concat(
-            [self.train_df_, test_part],
-            axis=0,
-            ignore_index=True,
-        )
-
-        # Explicit train mask: first n_train rows are training rows.
-        explicit_mask = np.zeros(n_train + n_test, dtype=bool)
-        explicit_mask[:n_train] = True
-
-        kwargs = self._build_kwargs()
-        kwargs["enable_isotopes"] = False  # avoid adding new isotope cols in combined df
-        kwargs["explicit_train_mask"] = explicit_mask
-
-        result: PredictionResult | None = None
-        try:
-            result = run_physics_prediction(
-                combined,
-                target_col="__target__",
-                runtime_state=None,
-                **kwargs,
-            )
-        except Exception:
-            pass
-
-        # Extract test row predictions from result.
-        if result is not None and result.test_predicted:
-            preds = result.test_predicted
-            # test_row_indices contains the indices (in combined) that are test rows.
-            if result.test_row_indices is not None:
-                idx_map = {int(i): preds[k] for k, i in enumerate(result.test_row_indices)}
-                output = [idx_map.get(n_train + j, preds[0] if preds else dummy_target) for j in range(n_test)]
+        # ── D: Ensemble / bagging predict ─────────────────────────────
+        n_est = max(1, int(self.n_estimators))
+        estimator_train_dfs = getattr(self, "estimator_train_dfs_", [])
+        if n_est > 1 and estimator_train_dfs:
+            all_preds = [
+                self._engine_predict(est_df, X_df_t, seed=int(self.random_seed) + i * 137)
+                for i, est_df in enumerate(estimator_train_dfs)
+            ]
+            if self.is_classifier_:
+                output: np.ndarray = _majority_vote(all_preds)
             else:
-                # Fall back to first n_test predictions
-                output = list(preds[:n_test])
-                if len(output) < n_test:
-                    output += [dummy_target] * (n_test - len(output))
+                output = np.mean([np.array(p, dtype=float) for p in all_preds], axis=0)
         else:
-            output = [dummy_target] * n_test
+            # Single-estimator path: use the stored full training dataframe.
+            raw = self._engine_predict(self.train_df_, X_df_t, seed=int(self.random_seed))
+            output = np.array(raw)
+
+        # ── E: Residual stacking correction ───────────────────────────
+        if self.residual_estimator_ is not None:
+            try:
+                X_stack = self._stacking_X(output, X_df_t)
+                output = self.residual_estimator_.predict(X_stack)
+            except Exception:
+                pass
 
         if self.is_classifier_:
-            # Cast predictions to the same dtype as the original training labels so that
-            # integer class labels (0, 1, 2) compare correctly with str predictions.
             try:
                 return np.array(output).astype(self.target_dtype_)
             except Exception:
@@ -315,7 +624,6 @@ class PhysicsPredictor(BaseEstimator):
         y_true = np.asarray(y)
         if self.is_classifier_:
             return float(np.mean(y_pred == y_true))
-        # R²
         ss_res = float(np.sum((y_true - y_pred) ** 2))
         ss_tot = float(np.sum((y_true - float(np.mean(y_true))) ** 2))
         if ss_tot == 0.0:
@@ -334,6 +642,12 @@ class PhysicsPredictor(BaseEstimator):
             "competitive_inhibition": self.competitive_inhibition,
             "train_fraction": self.train_fraction,
             "n_cycles_fit": self.n_cycles_fit,
+            "quantile_transform": self.quantile_transform,
+            "poly_degree": self.poly_degree,
+            "poly_top_k": self.poly_top_k,
+            "n_estimators": self.n_estimators,
+            "bootstrap": self.bootstrap,
+            "residual_model": self.residual_model,
             "extra_kwargs": self.extra_kwargs,
         }
 
