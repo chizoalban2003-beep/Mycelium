@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "physml"
+version = "0.12.0"
+description = "Physics-inspired autonomous ML — the myco active-learning agent for tabular data."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Mycelium Contributors" }]
+keywords = [
+    "machine-learning",
+    "active-learning",
+    "autonomous-agent",
+    "tabular-data",
+    "physics-inspired",
+    "myco",
+    "mycelium",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26,<3",
+    "pandas>=2.2,<3",
+    "scipy>=1.12,<2",
+    "scikit-learn>=1.4,<2",
+    "feature-engine>=1.7,<2",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+server = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+dev    = ["pytest>=8", "pytest-cov", "ruff"]
+
+[project.scripts]
+physml = "physml.cli:main"
+
+[project.urls]
+Homepage   = "https://github.com/chizoalban2003-beep/Mycelium"
+Repository = "https://github.com/chizoalban2003-beep/Mycelium"
+Issues     = "https://github.com/chizoalban2003-beep/Mycelium/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["physml*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts   = "-q --tb=short"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

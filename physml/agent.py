@@ -196,6 +196,8 @@ class PhysicsAgent:
         policy: str = "fixed",
         error_window_size: int = 20,
         task_id: str | None = None,
+        drift_detection: bool = False,
+        drift_algorithm: str = "page_hinkley",
     ) -> None:
         self.predictor = predictor
         self.uncertainty_threshold = float(uncertainty_threshold)
@@ -205,9 +207,12 @@ class PhysicsAgent:
         self.policy = str(policy)
         self.error_window_size = int(error_window_size)
         self.task_id = task_id
+        self.drift_detection = bool(drift_detection)
+        self.drift_algorithm = str(drift_algorithm)
         self.n_observations: int = 0
         self.n_asks: int = 0
         self.n_rewards: int = 0
+        self.n_drifts_detected: int = 0
         # Buffer of (X_sample, y_true) pairs waiting to be batch-learned
         self._pending_labels: list[tuple[Any, Any]] = []
         # Stage 10 — sliding window of recent prediction errors (0.0–1.0)
@@ -215,6 +220,13 @@ class PhysicsAgent:
         # Stage 10 — last prediction made (used to compute error in reward())
         self._last_prediction: Any = None
         self._last_X: Any = None
+        # Stage 15 — contextual bandit (created lazily on first observe)
+        self._bandit: Any = None
+        # Stage 17 — drift detector (created lazily when drift_detection=True)
+        self._drift_detector: Any = None
+        if self.drift_detection:
+            from physml.drift import DriftDetector
+            self._drift_detector = DriftDetector(algorithm=self.drift_algorithm)
 
     # ------------------------------------------------------------------
     # Core API
@@ -257,7 +269,25 @@ class PhysicsAgent:
         self._last_X = X_arr
 
         # Policy
-        if confidence >= eff_threshold:
+        if self.policy == "bandit":
+            # Stage 15 — contextual bandit
+            ask_prob = self._bandit_ask_probability(X_arr, homeostasis)
+            # Convert ask-probability to an effective threshold comparison:
+            # if ask_prob > 0.5 the bandit wants to ask, irrespective of confidence
+            if ask_prob > 0.5:
+                action = "ask"
+                needs_label = True
+                self.n_asks += 1
+                prediction = None
+            elif confidence >= eff_threshold:
+                action = "predict"
+                needs_label = False
+            else:
+                action = "ask"
+                needs_label = True
+                self.n_asks += 1
+                prediction = None
+        elif confidence >= eff_threshold:
             action = "predict"
             needs_label = False
         else:
@@ -306,6 +336,10 @@ class PhysicsAgent:
         # Stage 10 — record prediction error for adaptive threshold
         if self.policy == "adaptive":
             self._log_error(X_arr, y_arr)
+
+        # Stage 15 — update contextual bandit with observed reward
+        if self.policy == "bandit":
+            self._bandit_update(X_arr, y_arr)
 
         self._pending_labels.append((X_arr, y_arr))
         self.n_rewards += 1
@@ -417,9 +451,56 @@ class PhysicsAgent:
         ])
         return int(np.argmin(confidences))
 
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+    def select_batch(self, X_pool: Any, k: int) -> list[int]:
+        """Return the indices of the *k* most informative samples in *X_pool*.
+
+        Uses **coreset greedy selection** (Stage 16): iteratively pick the
+        sample that is furthest from all already-selected samples in feature
+        space, maximising coverage while minimising redundancy.  This is
+        significantly better than selecting the top-*k* by entropy alone,
+        which tends to cluster picks in the same region of the feature space.
+
+        Parameters
+        ----------
+        X_pool : array-like of shape (n_candidates, n_features)
+        k : int
+            Number of samples to select.  Clamped to ``len(X_pool)``.
+
+        Returns
+        -------
+        list[int]
+            Indices into ``X_pool`` of the selected samples, in selection order.
+        """
+        X_arr = np.atleast_2d(X_pool)
+        n = len(X_arr)
+        k = min(k, n)
+
+        if k <= 0:
+            return []
+        if k == 1:
+            return [self.select_informative(X_arr)]
+
+        # Start with the single most informative sample (entropy / confidence)
+        selected = [self.select_informative(X_arr)]
+        remaining = list(range(n))
+        remaining.remove(selected[0])
+
+        # Greedy coreset: add the sample maximally distant from the current set
+        for _ in range(k - 1):
+            if not remaining:
+                break
+            selected_arr = X_arr[selected]  # (|selected|, n_feat)
+            # For each remaining candidate: min distance to any selected sample
+            min_dists = np.array([
+                float(np.min(np.linalg.norm(X_arr[i] - selected_arr, axis=1)))
+                for i in remaining
+            ])
+            best_local = int(np.argmax(min_dists))
+            best_global = remaining[best_local]
+            selected.append(best_global)
+            remaining.pop(best_local)
+
+        return selected
 
     def _predict(self, X_arr: np.ndarray) -> Any:
         """Route a predict call through the right interface.
@@ -497,8 +578,71 @@ class PhysicsAgent:
                     0.0, 1.0,
                 ))
             self._error_window.append(error)
+            # Stage 17 — drift detection
+            if self._drift_detector is not None:
+                if self._drift_detector.update(error):
+                    self.n_drifts_detected += 1
+                    self._handle_drift()
         except Exception:
             pass
+
+    def _handle_drift(self) -> None:
+        """React to a detected concept drift event.
+
+        * Reset the homeostasis state so the model re-explores.
+        * Temporarily lower the ask-threshold to collect more labels.
+        * Clear the rolling error window so the adaptive policy starts fresh.
+        * Reset the drift detector.
+        """
+        # Reset homeostasis on the predictor's runtime state
+        state = getattr(self.predictor, "runtime_state_", None)
+        if state is not None:
+            try:
+                state.homeostasis_score = 0.1  # force re-exploration
+            except Exception:
+                pass
+        # Lower ask-threshold burst: set it to a generous asking level
+        # The adaptive policy will naturally raise it again as the model recovers.
+        self._error_window.clear()
+        for _ in range(self.error_window_size // 2):
+            self._error_window.append(1.0)  # pretend many recent errors
+        # Reset the detector so it can detect future drifts
+        if self._drift_detector is not None:
+            self._drift_detector.reset()
+
+    # Stage 15 — contextual bandit helpers
+
+    def _bandit_ask_probability(self, X_arr: np.ndarray, homeostasis: float) -> float:
+        """Return the bandit's ask-probability for the current sample."""
+        if self._bandit is None:
+            n_feat = X_arr.shape[1] if X_arr.ndim == 2 else len(X_arr.ravel())
+            from physml.bandit import ContextualBandit
+            self._bandit = ContextualBandit(n_features=n_feat)
+        x_flat = X_arr.ravel()
+        return self._bandit.ask_probability(x_flat, homeostasis)
+
+    def _bandit_update(self, X_arr: np.ndarray, y_true: np.ndarray) -> None:
+        """Update the bandit with the reward signal after observing the true label."""
+        if self._bandit is None:
+            return
+        homeostasis = self._homeostasis()
+        # Compute reward as accuracy improvement: reward > 0 means asking was good
+        try:
+            y_pred_now = self._predict(X_arr)
+            y_pred_now = np.atleast_1d(y_pred_now)
+            y_t = np.atleast_1d(y_true)
+            is_clf = bool(getattr(self.predictor, "is_classifier_", False))
+            if is_clf:
+                reward = float(np.mean(y_pred_now == y_t)) - 0.5  # centre at 0
+            else:
+                target_range = float(np.ptp(y_t)) or 1.0
+                mae = float(np.mean(np.abs(y_pred_now.astype(float) - y_t.astype(float))))
+                reward = 0.5 - float(np.clip(mae / target_range, 0.0, 1.0))
+        except Exception:
+            reward = 0.0
+        x_flat = X_arr.ravel()
+        asked = (self._last_prediction is None)  # True if last action was "ask"
+        self._bandit.update(x_flat, homeostasis, reward=reward, asked=asked)
 
     def _estimate_confidence(self, X_arr: np.ndarray, homeostasis: float) -> float:
         """Estimate prediction confidence as a scalar in [0, 1].
@@ -552,6 +696,8 @@ class PhysicsAgent:
             "effective_threshold": eff_threshold,
             "policy": self.policy,
             "error_rate": self._error_rate(),
+            "n_drifts_detected": self.n_drifts_detected,
+            "drift_detection": self.drift_detection,
         }
 
 

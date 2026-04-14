@@ -1,9 +1,32 @@
-# PhysML — Physics-Inspired Machine Learning for Tabular Data
+# Mycelium / PhysML — Physics-Inspired Autonomous Machine Learning
 
-A standalone ML model that frames supervised learning as a **gel electrophoresis simulation**.
-Features are treated as charged particles migrating through a viscous medium; their "charge"
-is their statistical association with the target, and "viscosity" is modulated by collinearity,
-distribution shape, and iterative PCR-style amplification.
+> **The headline class is `myco`** — an autonomous active-learning agent that
+> trains itself, asks for labels only when uncertain, and adapts in real-time.
+
+```python
+from physml import myco
+import numpy as np
+
+rng = np.random.default_rng(42)
+X = rng.normal(size=(200, 5))
+y = (X[:, 0] > 0).astype(int)
+
+agent = myco()
+agent.fit(X[:50], y[:50])          # seed with 50 labelled samples
+
+for x_new, y_true in zip(X[50:], y[50:]):
+    action = agent.observe(x_new)
+    if action.action == "ask":     # only asks when uncertain
+        agent.reward(x_new, y_true)
+
+print(agent.report())
+```
+
+PhysML frames supervised learning as a **gel electrophoresis simulation**.
+Features are treated as charged particles migrating through a viscous medium;
+their "charge" is their statistical association with the target, and
+"viscosity" is modulated by collinearity, distribution shape, and an iterative
+PCR-style amplification step.
 
 ## How It Works
 
@@ -35,6 +58,28 @@ Raw tabular data
 pip install numpy pandas scipy scikit-learn
 # optional: richer outlier cleaning
 pip install feature-engine
+# optional: CLI, REST API server
+pip install fastapi uvicorn
+```
+
+## `myco` — Autonomous Agent Quick-Start
+
+| Feature | How to use |
+|---|---|
+| Active learning (entropy) | `myco(query_strategy="entropy")` |
+| Adaptive threshold | `myco(policy="adaptive")` |
+| Confidence calibration | `myco(calibrate=True)` (default) |
+| Contextual bandit policy | `myco(policy="bandit")` |
+| Coreset batch queries | `agent.select_batch(X_pool, k=10)` |
+| Drift detection | `myco(drift_detection=True)` |
+| Multi-task | `myco(task_id="task_A")` |
+| Save / load | `agent.save("agent.pkl")` / `myco.load("agent.pkl")` |
+| Evaluation harness | `from physml.evaluation import benchmark_agent` |
+| Federated learning | `from physml.federated import FederatedMyceliumAgent` |
+| REST API | `uvicorn physml.server:app` |
+| CLI | `physml fit train.csv --target y --out agent.pkl` |
+
+
 ```
 
 ## Quick Start

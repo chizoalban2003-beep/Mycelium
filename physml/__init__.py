@@ -23,6 +23,9 @@ MultiTaskPhysicsEngine   Shared-trunk multi-task engine (Stage 9).
 MyceliumAgent            Flagship autonomous agent — the project's top-level
                          branded class combining Stages 8–11.
 myco                     Short alias for MyceliumAgent (``from physml import myco``).
+DriftDetector            Online concept-drift detector (Stage 17).
+FederatedMyceliumAgent   Federated learning coordinator (Stage 19).
+benchmark_agent          Evaluation harness returning BenchmarkResult (Stage 14).
 """
 
 from physml.predictor import (
@@ -57,6 +60,10 @@ from physml.mycelium_agent import MyceliumAgent
 
 #: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
 myco = MyceliumAgent
+
+from physml.drift import DriftDetector
+from physml.federated import FederatedMyceliumAgent
+from physml.evaluation import benchmark_agent, BenchmarkResult
 
 __all__ = [
     "PhysicsPlane",
@@ -96,4 +103,11 @@ __all__ = [
     # Stage 11 — flagship class
     "MyceliumAgent",
     "myco",  # shorthand alias for MyceliumAgent
+    # Stage 14 — evaluation harness
+    "benchmark_agent",
+    "BenchmarkResult",
+    # Stage 17 — drift detection
+    "DriftDetector",
+    # Stage 19 — federated learning
+    "FederatedMyceliumAgent",
 ]

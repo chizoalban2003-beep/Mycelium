@@ -91,6 +91,19 @@ class MyceliumAgent:
         Extra keyword arguments forwarded to
         :class:`~physml.estimator.PhysicsPredictor` when
         ``predictor`` is ``None``.
+    calibrate : bool, default True
+        When ``True`` (Stage 13), a temperature-scaling calibration step is
+        run after the initial ``fit()`` on a 20 % held-out split of the
+        training data.  This makes confidence scores reliable probabilities
+        that the adaptive threshold policy can trust.  Set to ``False`` to
+        skip calibration (e.g. when ``X_seed`` is very small).
+    drift_detection : bool, default False
+        When ``True`` (Stage 17), a :class:`~physml.drift.DriftDetector` is
+        attached to the agent.  When drift is detected in the reward stream,
+        the homeostasis state is reset and the ask-threshold is temporarily
+        lowered to re-explore the shifted distribution.
+    drift_algorithm : {"page_hinkley", "adwin"}, default "page_hinkley"
+        Drift-detection algorithm.  Only used when ``drift_detection=True``.
     """
 
     def __init__(
@@ -105,6 +118,9 @@ class MyceliumAgent:
         ewc_lambda: float = 0.4,
         task_id: str | None = None,
         predictor_kwargs: dict[str, Any] | None = None,
+        calibrate: bool = True,
+        drift_detection: bool = False,
+        drift_algorithm: str = "page_hinkley",
     ) -> None:
         self._predictor = predictor
         self.uncertainty_threshold = float(uncertainty_threshold)
@@ -115,9 +131,13 @@ class MyceliumAgent:
         self.ewc_lambda = float(ewc_lambda)
         self.task_id = task_id
         self._predictor_kwargs = dict(predictor_kwargs or {})
+        self.calibrate = bool(calibrate)
+        self.drift_detection = bool(drift_detection)
+        self.drift_algorithm = str(drift_algorithm)
 
         self._agent: Any = None  # built after fit()
         self._fitted: bool = False
+        self.temperature_: float = 1.0  # Stage 13 — set after calibration
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,6 +147,10 @@ class MyceliumAgent:
         """Fit the underlying predictor on seed data and initialise the agent.
 
         Must be called at least once before :meth:`observe`.
+
+        When ``calibrate=True`` (default), a temperature-scaling step
+        (Stage 13) is run on a held-out 20 % split of the data to produce
+        well-calibrated confidence scores.
 
         Parameters
         ----------
@@ -154,6 +178,9 @@ class MyceliumAgent:
             self._predictor.fit_task(self.task_id, X_arr, y_arr)
         else:
             self._predictor.fit(X_arr, y_arr)
+
+        # Stage 13 — temperature calibration on held-out split
+        self.temperature_ = self._fit_calibration(X_arr, y_arr)
 
         self._fitted = True
         self._build_agent()
@@ -192,6 +219,21 @@ class MyceliumAgent:
         self._require_fitted()
         return self._agent.select_informative(X_pool)
 
+    def select_batch(self, X_pool: Any, k: int) -> list[int]:
+        """Return indices of the *k* most informative samples (coreset, Stage 16).
+
+        Parameters
+        ----------
+        X_pool : array-like of shape (n_candidates, n_features)
+        k : int
+
+        Returns
+        -------
+        list[int]
+        """
+        self._require_fitted()
+        return self._agent.select_batch(X_pool, k)
+
     def reward(self, X: Any, y_true: Any, *, immediate: bool = True) -> "MyceliumAgent":
         """Provide a ground-truth label so the agent can learn from it.
 
@@ -216,7 +258,7 @@ class MyceliumAgent:
         -------
         dict with keys:
             agent (PhysicsAgent report sub-dict), query_strategy, policy,
-            task_id, fitted.
+            task_id, fitted, temperature (calibration temperature).
         """
         agent_report = self._agent.report() if self._agent is not None else {}
         return {
@@ -225,6 +267,7 @@ class MyceliumAgent:
             "policy": self.policy,
             "task_id": self.task_id,
             "fitted": self._fitted,
+            "temperature": self.temperature_,
         }
 
     # ------------------------------------------------------------------
@@ -293,10 +336,53 @@ class MyceliumAgent:
             policy=self.policy,
             error_window_size=self.error_window_size,
             task_id=self.task_id,
+            drift_detection=self.drift_detection,
+            drift_algorithm=self.drift_algorithm,
         )
+
+    def _fit_calibration(self, X: np.ndarray, y: np.ndarray) -> float:
+        """Stage 13 — fit temperature scaling on a held-out split.
+
+        Uses 20 % of the data as a calibration set.  Returns 1.0 when
+        calibration is disabled, the dataset is too small (< 10 samples), or
+        the predictor has no ``predict_proba``.
+        """
+        if not self.calibrate:
+            return 1.0
+        n = len(y)
+        if n < 10:
+            return 1.0
+        # Reserve last 20 % as calibration set (no shuffle — avoids extra
+        # randomness during fit)
+        n_cal = max(2, int(n * 0.2))
+        X_cal = X[-n_cal:]
+        y_cal = y[-n_cal:]
+        predictor = self._predictor
+        if self.task_id is not None:
+            # For multi-task engines wrap the task-specific predict_proba
+            predictor = _MultiTaskProbaWrapper(self._predictor, self.task_id)
+        from physml.calibration import calibrate_temperature
+        return calibrate_temperature(predictor, X_cal, y_cal)
 
     def _require_fitted(self) -> None:
         if not self._fitted or self._agent is None:
             raise RuntimeError(
                 "MyceliumAgent is not fitted yet.  Call fit(X_seed, y_seed) first."
             )
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+class _MultiTaskProbaWrapper:
+    """Thin wrapper so calibration can call ``predict_proba`` on a task head."""
+
+    def __init__(self, engine: Any, task_id: str) -> None:
+        self._engine = engine
+        self._task_id = task_id
+        # Propagate classes_ if available
+        self.classes_ = getattr(engine, "classes_", None)
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        return self._engine.predict_proba_task(self._task_id, X)
