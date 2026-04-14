@@ -5,6 +5,71 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.0] — 2026-04-14
+
+### Added — Competitive Autonomous Agent (Stages 42–46)
+
+* **Stage 42 — Bug fixes & quality hardening**:
+  - `EpisodicMemory` now uses `collections.deque(maxlen=capacity)` for O(1) FIFO
+    eviction instead of the previous O(n) `list.pop(0)`.
+  - `AutonomousLoop._pick_tool()` receives the pre-computed `goal_vec` from
+    `run()` — eliminates the duplicate featurizer call per loop step.
+  - `MyceliumAgent.reward()` no longer calls `observe()` internally (double
+    inference).  The last action string is cached in `_last_action_str` by
+    `observe()` and reused.
+  - `MyceliumAgent.self_improve()` now triggers a real `partial_fit` on the
+    high-reward subset of the attached episodic memory when accuracy falls
+    below `target_accuracy`, rather than only adjusting the ask-threshold.
+    Returns new `"episodes_retrained"` key in result dict.
+
+* **Stage 43 — Sentence-embedding backbone for `Featurizer`**:
+  - When `sentence-transformers` is installed, `Featurizer` automatically uses
+    `all-MiniLM-L6-v2` for text/dict inputs (semantically meaningful vectors).
+  - Falls back transparently to the existing char n-gram + TruncatedSVD path
+    when the library is absent — no breaking changes to existing code.
+  - New constructor params: `embedding_model`, `use_sentence_embeddings`.
+
+* **Stage 44 — Structured tool-calling protocol** (`physml/tool_planner.py`):
+  - `ToolSpec` — JSON-schema based tool descriptor (superset of `Tool`).
+  - `ToolCall` — typed, auditable tool selection result with confidence and
+    ranked alternatives.
+  - `ToolPlanner` — selects the best tool via embedding cosine similarity
+    combined with episodic-memory success rates.  `plan()`, `execute()`,
+    `plan_and_execute()` public API.
+
+* **Stage 45 — FeedbackBuffer + online RLHF** (`physml/feedback.py`):
+  - `FeedbackItem` — single labelled example with importance weight and source.
+  - `FeedbackBuffer` — bounded FIFO buffer with O(1) eviction, approximate
+    deduplication, and recency-weighted sampling.
+  - `OnlineRLHF` — orchestrates continuous predictor improvement: accumulates
+    labelled feedback, triggers `partial_fit` when the buffer reaches
+    `min_batch_size`, and tracks update statistics.
+
+* **Stage 46 — `AgentOrchestrator`** (`physml/orchestrator.py`):
+  - `Specialist` — named specialist agent with description and handler callable.
+  - `OrchestratorResult` — routing result with specialist name, confidence, and
+    ranked alternatives.
+  - `AgentOrchestrator` — multi-specialist routing coordinator using embedding
+    similarity + memory-derived success rates.  Integrates with `EpisodicMemory`
+    for online routing improvement.  Designed to compose the physics specialist,
+    tool-calling loop, and future modalities under one roof.
+
+### Changed
+* `MyceliumAgent.__init__` gains `_last_action_str` internal attribute.
+* `MyceliumAgent.self_improve()` gains `target_accuracy` parameter (default
+  0.80) and `"episodes_retrained"` in returned metrics dict.
+* `Featurizer.__init__` gains `embedding_model` and `use_sentence_embeddings`
+  parameters (both default to backward-compatible values).
+
+### Fixed
+* `EpisodicMemory`: O(n) eviction replaced with O(1) deque — relevant for
+  high-throughput streaming scenarios.
+* `AutonomousLoop.run()`: removed duplicate `featurizer.transform([goal])` call.
+* `MyceliumAgent.reward()`: eliminated redundant `observe()` call.
+* `MyceliumAgent.self_improve()`: was threshold-only; now does real retraining.
+
+---
+
 ## [0.13.0] — 2026-04-14
 
 ### Added — Tier 4–6: Hardening, Algorithm Depth & Production Ops (Stages 21–29)

@@ -154,7 +154,7 @@ class AutonomousLoop:
             should_use_tool = (action_label == "ask") or (confidence is not None and float(confidence) < 0.5)
 
             if should_use_tool and tools:
-                tool_name = self._pick_tool(goal, tools)
+                tool_name = self._pick_tool(goal, tools, goal_vec=goal_vec)
                 tool_output = self.registry.call(tool_name, goal)
                 n_tool_calls += 1
                 step_info["tool"] = tool_name
@@ -184,12 +184,13 @@ class AutonomousLoop:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _pick_tool(self, goal: str, tools: list[dict]) -> str:
+    def _pick_tool(self, goal: str, tools: list[dict], goal_vec: np.ndarray | None = None) -> str:
         """Return the name of the most relevant tool via cosine similarity."""
         if len(tools) == 1:
             return tools[0]["name"]
 
-        goal_vec = self.featurizer.transform([goal])[0]
+        if goal_vec is None:
+            goal_vec = self.featurizer.transform([goal])[0]
         best_name = tools[0]["name"]
         best_sim = -2.0
 

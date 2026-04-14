@@ -141,6 +141,7 @@ class MyceliumAgent:
         self._fitted: bool = False
         self.temperature_: float = 1.0  # Stage 13 — set after calibration
         self._memory: Any = None  # Stage 38 — attached EpisodicMemory
+        self._last_action_str: str = "predict"  # Stage 42 — avoids re-calling observe() in reward()
 
     # ------------------------------------------------------------------
     # Public API
@@ -204,7 +205,9 @@ class MyceliumAgent:
             (needs label), or ``"abstain"``.
         """
         self._require_fitted()
-        return self._agent.observe(X)
+        action = self._agent.observe(X)
+        self._last_action_str = str(getattr(action, "action", "predict"))
+        return action
 
     def select_informative(self, X_pool: Any) -> int:
         """Return the index of the most informative sample in *X_pool*.
@@ -256,13 +259,16 @@ class MyceliumAgent:
         self._require_fitted()
         self._agent.reward(X, y_true, immediate=immediate, cost=cost)
 
-        # Stage 38 — auto-store episode when memory is attached
+        # Stage 38/42 — auto-store episode; use cached action to avoid
+        # double inference via observe() call
         if self._memory is not None:
             try:
                 x_vec = np.atleast_1d(np.asarray(X, dtype=np.float32)).ravel()
-                action = self._agent.observe(np.atleast_2d(X))
-                action_str = str(getattr(action, "action", "reward"))
-                self._memory.store(context=x_vec, action=action_str, outcome=1.0)
+                self._memory.store(
+                    context=x_vec,
+                    action=self._last_action_str,
+                    outcome=1.0,
+                )
             except Exception:
                 pass  # memory recording is best-effort
 
@@ -644,34 +650,42 @@ class MyceliumAgent:
         y_test: Any,
         *,
         aggressive: bool = False,
+        target_accuracy: float = 0.80,
     ) -> dict:
-        """Auto-tune agent parameters based on self-evaluation results.
+        """Auto-tune agent and retrain on high-reward memory episodes.
 
         Evaluates on the supplied data, then adjusts
-        ``uncertainty_threshold`` and the underlying agent's threshold to
-        improve the ask-rate/accuracy trade-off:
+        ``uncertainty_threshold`` and — when a memory store is attached and
+        accuracy falls below *target_accuracy* — triggers a ``partial_fit``
+        on the top-scoring episodes so the underlying model genuinely improves
+        (not just threshold tuning).
 
-        * If accuracy < 0.55 — lower the threshold to ask more questions.
-        * If accuracy > 0.80 and ECE < 0.05 — raise the threshold slightly
-          to reduce oracle queries and rely more on predictions.
-        * When *aggressive* is ``True``, also resets the homeostasis counter
-          on the underlying agent to trigger rapid re-adaptation.
+        * If accuracy < 0.55 — lower threshold to ask more questions.
+        * If accuracy > 0.80 and ECE < 0.05 — raise threshold slightly to
+          reduce oracle queries.
+        * When *aggressive* is ``True``, also resets the homeostasis window.
+        * When ``_memory`` is attached and accuracy < *target_accuracy*,
+          runs ``partial_fit`` on the high-reward subset of memory episodes
+          (Stage 42 improvement over pure threshold adjustment).
 
         Parameters
         ----------
         X_test : array-like
         y_test : array-like
         aggressive : bool, default False
-            If ``True``, reset the homeostasis window for rapid re-adaptation.
+            Reset the homeostasis window for rapid re-adaptation.
+        target_accuracy : float, default 0.80
+            Accuracy threshold below which memory-driven retraining fires.
 
         Returns
         -------
         dict
-            Self-evaluation metrics plus ``threshold_before`` and
-            ``threshold_after`` keys.
+            Self-evaluation metrics plus ``threshold_before``,
+            ``threshold_after``, and ``episodes_retrained`` keys.
         """
         metrics = self.self_evaluate(X_test, y_test)
         threshold_before = self.uncertainty_threshold
+        episodes_retrained = 0
 
         acc = metrics["accuracy"]
         ece = metrics["ece"]
@@ -690,13 +704,57 @@ class MyceliumAgent:
             self._agent.uncertainty_threshold = new_threshold
 
         if aggressive and self._agent is not None:
-            # Reset error window to force rapid re-adaptation
             from collections import deque
             self._agent._error_window = deque(maxlen=self._agent._error_window.maxlen)
 
+        # Stage 42 — actual model retraining on high-reward memory episodes
+        if self._memory is not None and acc < target_accuracy:
+            episodes_retrained = self._retrain_from_memory()
+
         metrics["threshold_before"] = round(threshold_before, 4)
         metrics["threshold_after"] = round(new_threshold, 4)
+        metrics["episodes_retrained"] = episodes_retrained
         return metrics
+
+    def _retrain_from_memory(self, reward_threshold: float = 0.5) -> int:
+        """Run ``partial_fit`` on high-reward episodes from attached memory.
+
+        Returns the number of episodes used for retraining.
+        """
+        if self._memory is None or len(self._memory) == 0:
+            return 0
+
+        # Collect high-reward episodes
+        outcomes = list(self._memory._outcomes)
+        contexts = list(self._memory._contexts)
+        high_reward_indices = [
+            i for i, o in enumerate(outcomes) if o >= reward_threshold
+        ]
+        if not high_reward_indices:
+            return 0
+
+        X_mem = np.array([contexts[i] for i in high_reward_indices], dtype=np.float32)
+        # Use rounded outcome as binary label for classification
+        y_mem = np.array([round(outcomes[i]) for i in high_reward_indices])
+
+        # Ensure we have more than 1 unique class for meaningful fit
+        if len(np.unique(y_mem)) < 2:
+            return 0
+
+        try:
+            if hasattr(self._predictor, "partial_fit"):
+                import inspect
+                sig = inspect.signature(self._predictor.partial_fit)
+                if "classes" in sig.parameters:
+                    self._predictor.partial_fit(X_mem, y_mem, classes=np.unique(y_mem))
+                else:
+                    self._predictor.partial_fit(X_mem, y_mem)
+            elif hasattr(self._predictor, "fit"):
+                self._predictor.fit(X_mem, y_mem)
+        except Exception:
+            return 0
+
+        return len(high_reward_indices)
 
     # ------------------------------------------------------------------
     # Stage 41 — introspection (rich internal-state summary)

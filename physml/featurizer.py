@@ -1,11 +1,23 @@
 """Stage 30 — Featurizer: converts raw inputs to fixed-length float32 vectors.
 
 Supports three input types detected automatically from the first sample:
-* **text** (``str``) — character n-gram (n=3,4) hashing trick → TruncatedSVD
-* **dict** — JSON-serialised, then same text pipeline
-* **numeric** (``list[float]`` or ``np.ndarray`` rows) — StandardScaler + PCA
+* **text** (``str``) — sentence embedding via ``sentence-transformers``
+  (``all-MiniLM-L6-v2``); falls back to character n-gram hashing if the
+  library is not installed (Stage 43).
+* **dict** — JSON-serialised, then same text pipeline.
+* **numeric** (``list[float]`` or ``np.ndarray`` rows) — StandardScaler + PCA.
 
 All outputs are float32 arrays of shape ``(n_samples, output_dim)``.
+
+Stage 43 change
+---------------
+When ``sentence-transformers`` is importable the text path replaces the
+character n-gram / TruncatedSVD pipeline with a proper pre-trained embedding
+model (``all-MiniLM-L6-v2``).  This dramatically improves tool selection,
+memory retrieval, and goal decomposition quality because the embedding space
+is semantically meaningful rather than character-frequency based.  The TF-IDF
+hash + SVD path is kept as an automatic fallback so the package remains
+dependency-optional.
 """
 
 from __future__ import annotations
@@ -18,6 +30,15 @@ import numpy as np
 from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.preprocessing import StandardScaler
 
+# Stage 43 — attempt to import sentence-transformers once at module load time.
+# If unavailable the TF-IDF hash path is used transparently.
+try:
+    from sentence_transformers import SentenceTransformer as _SentenceTransformer
+    _SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:  # pragma: no cover
+    _SentenceTransformer = None  # type: ignore[assignment,misc]
+    _SENTENCE_TRANSFORMERS_AVAILABLE = False
+
 
 class Featurizer:
     """Convert heterogeneous raw inputs into fixed-length float32 numpy vectors.
@@ -27,17 +48,38 @@ class Featurizer:
     output_dim : int, default 64
         Dimensionality of the output embedding.
     hash_features : int, default 2048
-        Size of the intermediate hashing space used for text / dict inputs.
+        Size of the intermediate hashing space used for text / dict inputs
+        **when sentence-transformers is not available**.
+    embedding_model : str, default "all-MiniLM-L6-v2"
+        Name of the sentence-transformers model used for text/dict inputs when
+        the library is available.  Ignored when the library is absent.
+    use_sentence_embeddings : bool or None, default None
+        ``True`` — force sentence-transformer path (raises if not installed).
+        ``False`` — force TF-IDF hash path regardless of installed packages.
+        ``None`` (default) — auto-detect (use sentence-transformers if available).
     """
 
-    def __init__(self, output_dim: int = 64, hash_features: int = 2048) -> None:
+    def __init__(
+        self,
+        output_dim: int = 64,
+        hash_features: int = 2048,
+        embedding_model: str = "all-MiniLM-L6-v2",
+        use_sentence_embeddings: bool | None = None,
+    ) -> None:
         self.output_dim = int(output_dim)
         self.hash_features = int(hash_features)
+        self.embedding_model = str(embedding_model)
+
+        if use_sentence_embeddings is None:
+            self._use_embeddings: bool = _SENTENCE_TRANSFORMERS_AVAILABLE
+        else:
+            self._use_embeddings = bool(use_sentence_embeddings)
 
         self._kind: str | None = None  # "text" | "dict" | "numeric"
         self._scaler: StandardScaler | None = None
         self._svd: TruncatedSVD | None = None
         self._pca: PCA | None = None
+        self._st_model: Any = None  # SentenceTransformer instance (lazy)
         self._fitted: bool = False
 
     # ------------------------------------------------------------------
@@ -62,11 +104,18 @@ class Featurizer:
         self._kind = self._infer_kind(samples)
 
         if self._kind in ("text", "dict"):
-            texts = self._to_texts(samples)
-            X_hash = self._texts_to_hash_matrix(texts)  # (n, hash_features)
-            n_components = max(1, min(self.output_dim, X_hash.shape[0] - 1, X_hash.shape[1] - 1))
-            self._svd = TruncatedSVD(n_components=n_components, random_state=42)
-            self._svd.fit(X_hash)
+            if self._use_embeddings:
+                # Stage 43 — lazy-load sentence-transformer model
+                self._st_model = _SentenceTransformer(self.embedding_model)
+                # Dimension probe (model-specific)
+                _probe = self._st_model.encode(["probe"], convert_to_numpy=True)
+                # No further fitting needed — model is pre-trained
+            else:
+                texts = self._to_texts(samples)
+                X_hash = self._texts_to_hash_matrix(texts)  # (n, hash_features)
+                n_components = max(1, min(self.output_dim, X_hash.shape[0] - 1, X_hash.shape[1] - 1))
+                self._svd = TruncatedSVD(n_components=n_components, random_state=42)
+                self._svd.fit(X_hash)
         else:
             X = np.atleast_2d(np.array(samples, dtype=np.float32))
             self._scaler = StandardScaler()
@@ -95,8 +144,11 @@ class Featurizer:
 
         if self._kind in ("text", "dict"):
             texts = self._to_texts(samples)
-            X_hash = self._texts_to_hash_matrix(texts)
-            X_out = self._svd.transform(X_hash)
+            if self._use_embeddings and self._st_model is not None:
+                X_out = self._st_model.encode(texts, convert_to_numpy=True).astype(np.float32)
+            else:
+                X_hash = self._texts_to_hash_matrix(texts)
+                X_out = self._svd.transform(X_hash)
         else:
             X = np.atleast_2d(np.array(samples, dtype=np.float32))
             X_scaled = self._scaler.transform(X)

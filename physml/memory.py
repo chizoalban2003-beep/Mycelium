@@ -3,10 +3,14 @@
 Stores ``(context, action, outcome)`` triples and retrieves the *k* most
 similar episodes by cosine similarity.  The retrieved episodes can be used to
 augment input feature vectors before prediction.
+
+Stage 42 fix: eviction uses ``collections.deque(maxlen=capacity)`` so FIFO
+pop is O(1) instead of O(n).
 """
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Any
 
 import numpy as np
@@ -16,7 +20,8 @@ class EpisodicMemory:
     """Fixed-capacity episodic memory backed by numpy arrays.
 
     Episodes are stored as ``(context_vector, action_string, outcome_float)``
-    triples.  When capacity is exceeded the oldest episode is evicted (FIFO).
+    triples.  When capacity is exceeded the oldest episode is evicted (FIFO)
+    in O(1) time via ``collections.deque``.
 
     Parameters
     ----------
@@ -38,9 +43,10 @@ class EpisodicMemory:
         self.n_neighbors = int(n_neighbors)
         self.feature_dim = feature_dim
 
-        self._contexts: list[np.ndarray] = []
-        self._actions: list[str] = []
-        self._outcomes: list[float] = []
+        # Stage 42: deque gives O(1) appendleft/pop vs O(n) list.pop(0)
+        self._contexts: deque[np.ndarray] = deque(maxlen=self.capacity)
+        self._actions: deque[str] = deque(maxlen=self.capacity)
+        self._outcomes: deque[float] = deque(maxlen=self.capacity)
         self._action_vocab: dict[str, int] = {}  # action → index for encoding
 
     # ------------------------------------------------------------------
@@ -65,12 +71,7 @@ class EpisodicMemory:
         act = str(action)
         out = float(outcome)
 
-        # Evict oldest if at capacity
-        if len(self._contexts) >= self.capacity:
-            self._contexts.pop(0)
-            self._actions.pop(0)
-            self._outcomes.pop(0)
-
+        # deque(maxlen=capacity) handles eviction automatically in O(1)
         self._contexts.append(ctx)
         self._actions.append(act)
         self._outcomes.append(out)

@@ -44,6 +44,16 @@ attach_memory            Stage 38 — attach EpisodicMemory for auto episode rec
 self_evaluate            Stage 39 — held-out accuracy/calibration self-evaluation (method on MyceliumAgent).
 self_improve             Stage 40 — auto-tune threshold based on self-eval (method on MyceliumAgent).
 introspect               Stage 41 — rich internal-state summary (method on MyceliumAgent).
+Stage 42 — bug fixes: O(1) memory eviction, no double inference, real partial_fit in self_improve.
+ToolSpec                 Stage 44 — JSON-schema tool specification.
+ToolCall                 Stage 44 — structured tool call result.
+ToolPlanner              Stage 44 — embedding + memory-based tool selection.
+FeedbackBuffer           Stage 45 — bounded feedback buffer for online RLHF.
+FeedbackItem             Stage 45 — single labelled feedback example.
+OnlineRLHF               Stage 45 — online RLHF loop (partial_fit on feedback).
+Specialist               Stage 46 — specialist agent descriptor.
+OrchestratorResult       Stage 46 — routing result from AgentOrchestrator.
+AgentOrchestrator        Stage 46 — multi-specialist routing coordinator.
 """
 
 from physml.predictor import (
@@ -102,6 +112,15 @@ from physml.pretrain import pretrain_neural_engine, pretrain_mycelium
 
 # Stage 35 — Parallel data stream
 from physml.stream_worker import ParallelDataStream
+
+# Stage 44 — Structured tool-calling protocol
+from physml.tool_planner import ToolSpec, ToolCall, ToolPlanner
+
+# Stage 45 — FeedbackBuffer + online RLHF
+from physml.feedback import FeedbackBuffer, FeedbackItem, OnlineRLHF
+
+# Stage 46 — AgentOrchestrator
+from physml.orchestrator import Specialist, OrchestratorResult, AgentOrchestrator
 
 __all__ = [
     "PhysicsPlane",
@@ -167,4 +186,16 @@ __all__ = [
     "pretrain_mycelium",
     # Stage 35 — parallel data stream
     "ParallelDataStream",
+    # Stage 44 — structured tool-calling protocol
+    "ToolSpec",
+    "ToolCall",
+    "ToolPlanner",
+    # Stage 45 — FeedbackBuffer + online RLHF
+    "FeedbackBuffer",
+    "FeedbackItem",
+    "OnlineRLHF",
+    # Stage 46 — AgentOrchestrator
+    "Specialist",
+    "OrchestratorResult",
+    "AgentOrchestrator",
 ]
