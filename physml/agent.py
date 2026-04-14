@@ -562,8 +562,21 @@ class PhysicsAgent:
         single-sample inputs so that ``int(prediction)`` works with NumPy 2.x.
         """
         if self.task_id is not None:
-            return self.predictor.predict_task(self.task_id, X_arr)
-        return self.predictor.predict(X_arr)
+            raw = self.predictor.predict_task(self.task_id, X_arr)
+        else:
+            raw = self.predictor.predict(X_arr)
+        # Squeeze 1-element arrays to a plain Python scalar so that
+        # ``int(prediction)`` works with NumPy 2.x (which no longer allows
+        # implicit conversion of 0-dim arrays to Python scalars).
+        try:
+            arr = np.asarray(raw)
+            if arr.ndim == 1 and arr.shape[0] == 1:
+                return arr[0].item()
+            if arr.ndim == 0:
+                return arr.item()
+        except Exception:
+            pass
+        return raw
 
     def _homeostasis(self) -> float:
         """Return the predictor's current homeostasis score (0–1)."""

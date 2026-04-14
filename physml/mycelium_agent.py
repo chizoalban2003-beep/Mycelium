@@ -170,7 +170,10 @@ class MyceliumAgent:
 
         if self._predictor is None:
             from physml.ensemble_predictor import CompetitiveEnsemblePredictor
-            kwargs = dict(self._predictor_kwargs)
+            import inspect
+            # Filter kwargs to only those accepted by CompetitiveEnsemblePredictor
+            _cep_params = set(inspect.signature(CompetitiveEnsemblePredictor.__init__).parameters) - {"self"}
+            kwargs = {k: v for k, v in self._predictor_kwargs.items() if k in _cep_params}
             self._predictor = CompetitiveEnsemblePredictor(**kwargs)
 
         if self.task_id is not None:
