@@ -144,6 +144,27 @@ from physml.checkpoint import AgentCheckpoint
 # Stage 51 — MetaLearner
 from physml.meta_learner import MetaLearner
 
+# Stage 52 — Prioritized Replay Buffer
+from physml.replay_buffer import ReplayBuffer, PrioritizedReplay, Transition
+
+# Stage 53 — HyperScheduler
+from physml.scheduler import (
+    StepSchedule,
+    CosineSchedule,
+    ExponentialSchedule,
+    LinearSchedule,
+    HyperScheduler,
+)
+
+# Stage 54 — AnomalyGuard
+from physml.anomaly import AnomalyGuard, AnomalyResult
+
+# Stage 55 — MultiObjectiveOptimizer
+from physml.multiobjective import MultiObjectiveOptimizer, Solution
+
+# Stage 56 — AgentProfiler
+from physml.profiler import AgentProfiler, ProfileEntry
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -232,4 +253,23 @@ __all__ = [
     "AgentCheckpoint",
     # Stage 51 — MetaLearner
     "MetaLearner",
+    # Stage 52 — Prioritized Replay Buffer
+    "ReplayBuffer",
+    "PrioritizedReplay",
+    "Transition",
+    # Stage 53 — HyperScheduler
+    "StepSchedule",
+    "CosineSchedule",
+    "ExponentialSchedule",
+    "LinearSchedule",
+    "HyperScheduler",
+    # Stage 54 — AnomalyGuard
+    "AnomalyGuard",
+    "AnomalyResult",
+    # Stage 55 — MultiObjectiveOptimizer
+    "MultiObjectiveOptimizer",
+    "Solution",
+    # Stage 56 — AgentProfiler
+    "AgentProfiler",
+    "ProfileEntry",
 ]

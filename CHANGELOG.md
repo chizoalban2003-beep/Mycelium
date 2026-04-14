@@ -5,7 +5,49 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.15.0] — 2026-04-14
+## [0.16.0] — 2026-04-14
+
+### Added — Replay, Scheduling, Anomaly Detection, Multi-Objective & Profiling (Stages 52–56)
+
+* **Stage 52 — Prioritized Experience Replay** (`physml/replay_buffer.py`):
+  - `Transition` dataclass storing (state, action, reward, next_state, done, priority).
+  - `ReplayBuffer`: fixed-capacity ring buffer with uniform `sample()`.
+  - `PrioritizedReplay`: priority-weighted sampling proportional to
+    |TD-error|^alpha; `update_priorities()` refreshes weights after every
+    learning step.
+
+* **Stage 53 — HyperScheduler** (`physml/scheduler.py`):
+  - `StepSchedule`, `CosineSchedule`, `ExponentialSchedule`, `LinearSchedule`
+    — common parameter annealing schedules.
+  - `HyperScheduler`: manager that advances multiple named schedules
+    simultaneously; supports callback hooks for logging.
+
+* **Stage 54 — AnomalyGuard** (`physml/anomaly.py`):
+  - `AnomalyGuard`: wraps IsolationForest / LOF / EllipticEnvelope (or
+    ensemble of all three) to gate agent predictions on anomalous inputs.
+  - `predict_guarded()` returns both predictions and per-row `AnomalyResult`.
+  - `anomaly_rate()` provides a quick dataset-level summary.
+
+* **Stage 55 — MultiObjectiveOptimizer** (`physml/multiobjective.py`):
+  - `Solution` dataclass with arbitrary named objectives.
+  - `MultiObjectiveOptimizer`: NSGA-II-lite non-dominated sorting +
+    crowding-distance ranking.  `pareto_front`, `best_n()`, and
+    `compromise_solution()` (weighted sum) enable accuracy/cost/fairness
+    Pareto exploration without external libraries.
+
+* **Stage 56 — AgentProfiler** (`physml/profiler.py`):
+  - `AgentProfiler`: context-manager-based timing + `tracemalloc` memory
+    delta tracking per named operation.
+  - `report()` returns top-n bottlenecks by total elapsed time;
+    `top_bottlenecks(n)` returns names only.  Thread-safe for use inside
+    parallel pipelines.
+
+### Tests
+- Added `tests/test_stages_52_56.py` with **50 tests** (all passing).
+
+---
+
+
 
 ### Added — Production Autonomous Agent (Stages 47–51)
 
