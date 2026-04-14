@@ -22,6 +22,7 @@ PhysicsAgentSession      User-facing stateful session API (Stage 7).
 MultiTaskPhysicsEngine   Shared-trunk multi-task engine (Stage 9).
 MyceliumAgent            Flagship autonomous agent — the project's top-level
                          branded class combining Stages 8–11.
+myco                     Short alias for MyceliumAgent (``from physml import myco``).
 """
 
 from physml.predictor import (
@@ -53,6 +54,9 @@ from physml.agent import AgentAction, DataStream, PhysicsAgent
 from physml.agent_api import PhysicsAgentSession
 from physml.multitask_engine import MultiTaskPhysicsEngine
 from physml.mycelium_agent import MyceliumAgent
+
+#: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
+myco = MyceliumAgent
 
 __all__ = [
     "PhysicsPlane",
@@ -91,4 +95,5 @@ __all__ = [
     "MultiTaskPhysicsEngine",
     # Stage 11 — flagship class
     "MyceliumAgent",
+    "myco",  # shorthand alias for MyceliumAgent
 ]
