@@ -13,6 +13,10 @@ PhysicsPredictor         scikit-learn compatible estimator.
 PhysicsPlane             Enum: solid | liquid | gas (medium preset).
 PredictionResult         Rich result dataclass returned by the engine.
 PredictorRuntimeState    Mutable state object for multi-run homeostasis.
+NeuralPhysicsEngine      MLP + feature-attention backend (Stage 1–3).
+PhysicsAgent             Autonomous observe/reward/adapt loop (Stage 4).
+DataStream               Mini-batch streaming for big data (Stage 5).
+PhysicsAgentSession      User-facing stateful session API (Stage 7).
 """
 
 from physml.predictor import (
@@ -40,6 +44,8 @@ from physml.predictor import (
 )
 from physml.estimator import PhysicsPredictor
 from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
+from physml.agent import AgentAction, DataStream, PhysicsAgent
+from physml.agent_api import PhysicsAgentSession
 
 __all__ = [
     "PhysicsPlane",
@@ -66,4 +72,10 @@ __all__ = [
     "PhysicsPredictor",
     "NeuralPhysicsEngine",
     "run_neural_prediction",
+    # Stage 4 + 5
+    "AgentAction",
+    "PhysicsAgent",
+    "DataStream",
+    # Stage 7
+    "PhysicsAgentSession",
 ]

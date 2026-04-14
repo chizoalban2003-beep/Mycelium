@@ -1,4 +1,4 @@
-"""Neural physics engine — Stage 1 + 2 implementation.
+"""Neural physics engine — Stage 1 + 2 + 3 (continual learning) implementation.
 
 Architecture
 ------------
@@ -42,7 +42,9 @@ for GPU/autograd support in future extensions.
 from __future__ import annotations
 
 import math
-from typing import Any, Literal
+from collections import deque
+from pathlib import Path
+from typing import Any, Iterable, Literal
 
 import numpy as np
 import pandas as pd
@@ -439,13 +441,15 @@ class NeuralPhysicsEngine:
         lr: float,
         random_state: int,
         n_train: int,
+        early_stopping: bool | None = None,
     ) -> Any:
         """Instantiate an sklearn MLP estimator."""
         if not _SKLEARN_AVAILABLE:
             raise ImportError("scikit-learn is required for NeuralPhysicsEngine")
 
         batch = min(max(32, n_train // 10), 256)
-        early_stop = n_train >= 40
+        if early_stopping is None:
+            early_stopping = n_train >= 40
 
         common = dict(
             hidden_layer_sizes=self.hidden_layer_sizes,
@@ -457,14 +461,359 @@ class NeuralPhysicsEngine:
             learning_rate_init=float(lr),
             max_iter=int(n_epochs),
             random_state=int(random_state),
-            early_stopping=early_stop,
-            validation_fraction=0.15 if early_stop else 0.0,
+            early_stopping=early_stopping,
+            validation_fraction=0.15 if early_stopping else 0.0,
             n_iter_no_change=15,
             tol=1e-4,
         )
         if is_classifier:
             return MLPClassifier(**common)
         return MLPRegressor(**common)
+
+    # ------------------------------------------------------------------
+    # Stage 3 — Inductive / stateful interface (fit_model / partial_fit_model)
+    # ------------------------------------------------------------------
+
+    def fit_model(
+        self,
+        X_train: np.ndarray,
+        y_train: np.ndarray,
+        *,
+        is_classifier: bool,
+        n_epochs: int = 300,
+        lr: float = 0.001,
+        random_state: int = 42,
+        encoded_feature_names: list[str] | None = None,
+        encoded_feature_kinds: dict[str, str] | None = None,
+        label_enc: Any = None,
+    ) -> "NeuralPhysicsEngine":
+        """Fit and store the attention block + MLP for inductive (stateful) use.
+
+        After calling this, ``predict_model`` and ``partial_fit_model`` are
+        available without passing training data again.
+
+        Parameters
+        ----------
+        X_train : ndarray, shape (n_train, n_features)
+        y_train : ndarray, shape (n_train,)
+        is_classifier : bool
+        n_epochs : int
+        lr : float
+            Adam learning_rate_init.
+        random_state : int
+        encoded_feature_names : list[str] or None
+            Column names corresponding to X_train features (for encoding
+            alignment in partial_fit).
+        encoded_feature_kinds : dict or None
+        label_enc : LabelEncoder or None
+            Fitted LabelEncoder used to encode y_train.
+        """
+        if not _SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn is required for NeuralPhysicsEngine")
+
+        n_train = X_train.shape[0]
+        # Stage 2 — fit attention block
+        attn = _FeatureAttentionBlock(max_attend_features=self.max_attend_features)
+        X_att = attn.fit_transform(X_train)
+        X_aug = np.hstack([X_train, X_att])
+
+        # Stage 1 — fit MLP
+        mlp = self._make_mlp(
+            is_classifier=is_classifier,
+            n_epochs=n_epochs,
+            lr=lr,
+            random_state=random_state,
+            n_train=n_train,
+            early_stopping=False,  # must be False to allow partial_fit later
+        )
+        mlp.fit(X_aug, y_train)
+
+        # Store fitted components
+        self.attn_: _FeatureAttentionBlock = attn
+        self.mlp_: Any = mlp
+        self.is_classifier_: bool = is_classifier
+        self.label_enc_: Any = label_enc
+        self.n_input_features_: int = X_train.shape[1]
+        self.encoded_feature_names_: list[str] = list(encoded_feature_names or [])
+        self.encoded_feature_kinds_: dict[str, str] = dict(encoded_feature_kinds or {})
+
+        # EWC anchor — store weights + Fisher approximation
+        self._theta_old_: np.ndarray | None = self._get_flat_weights()
+        self._fisher_: np.ndarray | None = self._compute_fisher()
+        return self
+
+    def predict_model(self, X_new: np.ndarray) -> np.ndarray:
+        """Predict using the stored MLP (inductive mode, no re-training).
+
+        Parameters
+        ----------
+        X_new : ndarray, shape (n_samples, n_input_features)
+
+        Returns
+        -------
+        y_pred : ndarray, shape (n_samples,)
+            Raw integer labels (classification) or floats (regression).
+        """
+        if not hasattr(self, "mlp_"):
+            raise RuntimeError("fit_model() must be called before predict_model()")
+        X_att = self.attn_.transform(X_new)
+        X_aug = np.hstack([X_new, X_att])
+        return self.mlp_.predict(X_aug)
+
+    def partial_fit_model(
+        self,
+        X_new: np.ndarray,
+        y_new: np.ndarray,
+        X_replay: np.ndarray | None = None,
+        y_replay: np.ndarray | None = None,
+        *,
+        ewc_lambda: float = 0.4,
+    ) -> "NeuralPhysicsEngine":
+        """Incrementally update the stored MLP with new data and replay buffer.
+
+        Uses sklearn ``partial_fit`` (SGD step) on the combined
+        new + replay batch, then applies a post-hoc EWC weight-consolidation
+        step to prevent catastrophic forgetting.
+
+        Parameters
+        ----------
+        X_new : ndarray, shape (n_new, n_input_features)
+        y_new : ndarray, shape (n_new,)
+        X_replay : ndarray or None
+            Historic rows drawn from the caller's replay buffer.
+        y_replay : ndarray or None
+        ewc_lambda : float, default 0.4
+            Consolidation strength.  0 = no EWC, 1 = weights frozen.
+        """
+        if not hasattr(self, "mlp_"):
+            raise RuntimeError("fit_model() must be called before partial_fit_model()")
+
+        # Mix new data with replay
+        if X_replay is not None and len(X_replay) > 0:
+            X_all = np.vstack([X_new, X_replay])
+            y_all = np.concatenate([y_new, y_replay])
+        else:
+            X_all, y_all = X_new, y_new
+
+        X_att = self.attn_.transform(X_all)
+        X_aug = np.hstack([X_all, X_att])
+
+        if self.is_classifier_:
+            all_classes = np.unique(
+                np.concatenate([y_all, self.mlp_.classes_])
+            )
+            self.mlp_.partial_fit(X_aug, y_all, classes=all_classes)
+        else:
+            self.mlp_.partial_fit(X_aug, y_all)
+
+        # EWC consolidation
+        if ewc_lambda > 0.0:
+            self._apply_ewc(ewc_lambda)
+        return self
+
+    # ── EWC helpers ────────────────────────────────────────────────────
+
+    def _get_flat_weights(self) -> np.ndarray | None:
+        """Flatten all MLP weight matrices and biases into a 1-D vector."""
+        if not hasattr(self, "mlp_"):
+            return None
+        parts: list[np.ndarray] = []
+        for W in self.mlp_.coefs_:
+            parts.append(W.ravel())
+        for b in self.mlp_.intercepts_:
+            parts.append(b.ravel())
+        return np.concatenate(parts)
+
+    def _set_flat_weights(self, flat: np.ndarray) -> None:
+        """Write a flat weight vector back into the MLP coefs + intercepts."""
+        idx = 0
+        for W in self.mlp_.coefs_:
+            n = W.size
+            W[:] = flat[idx : idx + n].reshape(W.shape)
+            idx += n
+        for b in self.mlp_.intercepts_:
+            n = b.size
+            b[:] = flat[idx : idx + n].reshape(b.shape)
+            idx += n
+
+    def _compute_fisher(self) -> np.ndarray | None:
+        """Approximate diagonal Fisher information as normalised |θ|.
+
+        A full empirical Fisher requires per-sample gradients which sklearn
+        does not expose.  We use |θ| / max(|θ|) as a robust proxy: large
+        weights are assumed to encode more knowledge and should be protected
+        more strongly during consolidation.
+        """
+        theta = self._get_flat_weights()
+        if theta is None:
+            return None
+        fisher = np.abs(theta) / (np.abs(theta).max() + 1e-8)
+        return fisher
+
+    def _apply_ewc(self, ewc_lambda: float) -> None:
+        """Pull current weights toward the EWC anchor θ_old.
+
+        The update rule is:
+            θ_new = θ_current − λ · F · (θ_current − θ_old)
+
+        where F is the diagonal Fisher approximation stored at ``fit_model``
+        time.  This is equivalent to a per-parameter ridge penalty toward the
+        anchor, applied once per ``partial_fit`` call.
+        """
+        if self._theta_old_ is None or self._fisher_ is None:
+            return
+        theta_cur = self._get_flat_weights()
+        if theta_cur is None:
+            return
+        delta = theta_cur - self._theta_old_
+        theta_final = theta_cur - float(ewc_lambda) * self._fisher_ * delta
+        self._set_flat_weights(theta_final)
+
+    def encode_aligned(
+        self,
+        df: pd.DataFrame,
+        target_col: str = "__target__",
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Encode a new DataFrame using the stored feature schema.
+
+        Aligns one-hot columns to those seen during ``fit_model``, filling
+        missing columns with 0 and dropping unseen columns.
+
+        Returns
+        -------
+        X : ndarray, shape (n, n_input_features_)
+        y : ndarray, shape (n,)
+        """
+        X_raw, y_raw, feat_names, feat_kinds, _ = _encode_dataframe(df, target_col)
+
+        if not self.encoded_feature_names_:
+            return X_raw, y_raw
+
+        name_to_col: dict[str, int] = {n: i for i, n in enumerate(feat_names)}
+        n = X_raw.shape[0]
+        d = len(self.encoded_feature_names_)
+        X_aligned = np.zeros((n, d), dtype=float)
+        for j, name in enumerate(self.encoded_feature_names_):
+            if name in name_to_col:
+                X_aligned[:, j] = X_raw[:, name_to_col[name]]
+        return X_aligned, y_raw
+
+    # ── Stage 6 — Save / load ──────────────────────────────────────────
+
+    def save(self, path: str | Path) -> None:
+        """Persist the fitted engine to disk using joblib.
+
+        Parameters
+        ----------
+        path : str or Path
+            File path (e.g. ``"my_engine.pkl"``).
+        """
+        try:
+            import joblib
+        except ImportError as exc:
+            raise ImportError("joblib is required for save/load") from exc
+        joblib.dump(self, str(path))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "NeuralPhysicsEngine":
+        """Load a previously saved engine.
+
+        Parameters
+        ----------
+        path : str or Path
+
+        Returns
+        -------
+        NeuralPhysicsEngine
+        """
+        try:
+            import joblib
+        except ImportError as exc:
+            raise ImportError("joblib is required for save/load") from exc
+        obj = joblib.load(str(path))
+        if not isinstance(obj, cls):
+            raise TypeError(f"Expected NeuralPhysicsEngine, got {type(obj)}")
+        return obj
+
+    # ── Stage 6 — Pretraining / transfer learning ──────────────────────
+
+    @classmethod
+    def pretrain(
+        cls,
+        datasets: list[pd.DataFrame],
+        target_col: str,
+        *,
+        n_cycles: int = 20,
+        cycle_learning_rate: float = 0.18,
+        random_seed: int = 42,
+        ewc_lambda: float = 0.4,
+        hidden_layer_sizes: tuple[int, ...] = (256, 128),
+        max_attend_features: int = 60,
+        alpha: float = 1e-4,
+    ) -> "NeuralPhysicsEngine":
+        """Train sequentially across multiple datasets with EWC regularisation.
+
+        Implements curriculum learning: each dataset in ``datasets`` is used
+        in order.  After the first dataset the engine uses ``partial_fit_model``
+        with EWC consolidation so that knowledge from earlier tasks is
+        retained.
+
+        Parameters
+        ----------
+        datasets : list[DataFrame]
+            Each DataFrame must contain ``target_col``.
+        target_col : str
+        n_cycles : int
+            Epochs per dataset (first fit uses ``n_cycles * 10``).
+        cycle_learning_rate : float
+        random_seed : int
+        ewc_lambda : float
+            EWC consolidation strength between tasks (0 = disabled).
+        hidden_layer_sizes, max_attend_features, alpha
+            Architecture hyperparameters forwarded to the engine.
+
+        Returns
+        -------
+        NeuralPhysicsEngine
+            Fitted engine ready for ``predict_model`` or further fine-tuning.
+        """
+        engine = cls(
+            hidden_layer_sizes=hidden_layer_sizes,
+            max_attend_features=max_attend_features,
+            alpha=alpha,
+        )
+        n_epochs_first = int(np.clip(n_cycles * 10, 100, 2000))
+        n_epochs_cont = max(50, n_epochs_first // 4)
+        lr = float(np.clip(cycle_learning_rate * 0.01, 1e-4, 0.01))
+
+        for task_idx, df in enumerate(datasets):
+            if target_col not in df.columns:
+                continue
+            df_reset = df.reset_index(drop=True)
+            X, y, feat_names, feat_kinds, label_enc = _encode_dataframe(df_reset, target_col)
+            if len(X) < 4:
+                continue
+            target_kind = infer_target_kind(df_reset[target_col])
+            is_clf = target_kind == "categorical"
+
+            if task_idx == 0:
+                engine.fit_model(
+                    X, y,
+                    is_classifier=is_clf,
+                    n_epochs=n_epochs_first,
+                    lr=lr,
+                    random_state=random_seed,
+                    encoded_feature_names=feat_names,
+                    encoded_feature_kinds=feat_kinds,
+                    label_enc=label_enc,
+                )
+            else:
+                X_aligned, y_aligned = engine.encode_aligned(df_reset, target_col)
+                engine.partial_fit_model(X_aligned, y_aligned, ewc_lambda=ewc_lambda)
+                # Refresh EWC anchor after each task
+                engine._theta_old_ = engine._get_flat_weights()
+                engine._fisher_ = engine._compute_fisher()
+        return engine
 
     # ------------------------------------------------------------------
     # Public interface — matches run_physics_prediction call signature

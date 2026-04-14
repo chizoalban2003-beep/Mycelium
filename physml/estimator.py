@@ -55,7 +55,8 @@ This transductive design preserves the full physics simulation fidelity.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, deque
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -81,7 +82,7 @@ from physml.predictor import (
     infer_target_kind,
     run_physics_prediction,
 )
-from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
+from physml.neural_engine import NeuralPhysicsEngine, _encode_dataframe, run_neural_prediction
 
 
 def _to_dataframe(X: Any, feature_names: list[str] | None = None) -> pd.DataFrame:
@@ -175,6 +176,11 @@ class PhysicsPredictor(BaseEstimator):
           API (fit / predict / score / cross_val_score) is identical; only
           the inner prediction loop changes.  ``QuantileTransformer`` (A)
           and ``PolynomialFeatures`` (C) are still applied as a front-end.
+          Supports ``partial_fit`` for continual / online learning.
+    replay_size : int, default 500
+        Maximum number of rows kept in the replay buffer used by
+        ``partial_fit`` (neural backend only).  Older rows are discarded
+        when the buffer is full.
     """
 
     def __init__(
@@ -202,6 +208,8 @@ class PhysicsPredictor(BaseEstimator):
         extra_kwargs: dict[str, Any] | None = None,
         # Neural backend (Stage 1 + 2)
         backend: str = "physics",
+        # Stage 3 — continual learning
+        replay_size: int = 500,
     ) -> None:
         self.plane = plane
         self.n_cycles = n_cycles
@@ -221,6 +229,7 @@ class PhysicsPredictor(BaseEstimator):
         self.residual_model = residual_model
         self.extra_kwargs = extra_kwargs
         self.backend = backend
+        self.replay_size = replay_size
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -548,6 +557,36 @@ class PhysicsPredictor(BaseEstimator):
         train_final["__target__"] = y_series.to_numpy()
         self.train_df_: pd.DataFrame = train_final.reset_index(drop=True)
 
+        # ── Neural: fit and store the inductive engine ────────────────
+        # When backend="neural", fit a persistent NeuralPhysicsEngine that
+        # can be reused across predict() calls and updated via partial_fit().
+        self._neural_engine_: NeuralPhysicsEngine | None = None
+        if str(getattr(self, "backend", "physics")).lower().strip() == "neural":
+            try:
+                n_epochs = int(np.clip(
+                    (int(self.n_cycles_fit) if self.n_cycles_fit else int(self.n_cycles)) * 10,
+                    100, 2000,
+                ))
+                lr = float(np.clip(float(self.cycle_learning_rate) * 0.01, 1e-4, 0.01))
+                tmp_df = self.train_df_.copy()
+                X_enc, y_enc, feat_names, feat_kinds, lbl_enc = _encode_dataframe(tmp_df, "__target__")
+                engine = NeuralPhysicsEngine(alpha=1e-4)
+                engine.fit_model(
+                    X_enc, y_enc,
+                    is_classifier=bool(self.is_classifier_),
+                    n_epochs=n_epochs,
+                    lr=lr,
+                    random_state=int(self.random_seed),
+                    encoded_feature_names=feat_names,
+                    encoded_feature_kinds=feat_kinds,
+                    label_enc=lbl_enc,
+                )
+                self._neural_engine_ = engine
+            except Exception:
+                pass
+        # Initialise the replay buffer (neural backend only)
+        self._replay_buffer_: deque = deque(maxlen=max(1, int(self.replay_size)))
+
         # ── D: Store per-estimator training sets (ensemble / bagging) ─
         n_est = max(1, int(self.n_estimators))
         self.estimator_train_dfs_: list[pd.DataFrame] = []
@@ -616,22 +655,30 @@ class PhysicsPredictor(BaseEstimator):
         # Apply the same preprocessing pipeline used during fit.
         X_df_t = self._preprocess(X_df)
 
-        # ── D: Ensemble / bagging predict ─────────────────────────────
-        n_est = max(1, int(self.n_estimators))
-        estimator_train_dfs = getattr(self, "estimator_train_dfs_", [])
-        if n_est > 1 and estimator_train_dfs:
-            all_preds = [
-                self._engine_predict(est_df, X_df_t, seed=int(self.random_seed) + i * 137)
-                for i, est_df in enumerate(estimator_train_dfs)
-            ]
-            if self.is_classifier_:
-                output: np.ndarray = _majority_vote(all_preds)
-            else:
-                output = np.mean([np.array(p, dtype=float) for p in all_preds], axis=0)
+        # ── Neural inductive path: use stored engine directly ─────────
+        neural_engine: NeuralPhysicsEngine | None = getattr(self, "_neural_engine_", None)
+        if (
+            str(getattr(self, "backend", "physics")).lower().strip() == "neural"
+            and neural_engine is not None
+            and hasattr(neural_engine, "mlp_")
+        ):
+            output = self._neural_predict_inductive(neural_engine, X_df_t)
         else:
-            # Single-estimator path: use the stored full training dataframe.
-            raw = self._engine_predict(self.train_df_, X_df_t, seed=int(self.random_seed))
-            output = np.array(raw)
+            # ── D: Ensemble / bagging predict (physics or fallback) ───
+            n_est = max(1, int(self.n_estimators))
+            estimator_train_dfs = getattr(self, "estimator_train_dfs_", [])
+            if n_est > 1 and estimator_train_dfs:
+                all_preds = [
+                    self._engine_predict(est_df, X_df_t, seed=int(self.random_seed) + i * 137)
+                    for i, est_df in enumerate(estimator_train_dfs)
+                ]
+                if self.is_classifier_:
+                    output = _majority_vote(all_preds)
+                else:
+                    output = np.mean([np.array(p, dtype=float) for p in all_preds], axis=0)
+            else:
+                raw = self._engine_predict(self.train_df_, X_df_t, seed=int(self.random_seed))
+                output = np.array(raw)
 
         # ── E: Residual stacking correction ───────────────────────────
         if self.residual_estimator_ is not None:
@@ -647,6 +694,167 @@ class PhysicsPredictor(BaseEstimator):
             except Exception:
                 return np.array(output)
         return np.array(output, dtype=float)
+
+    def _neural_predict_inductive(
+        self,
+        engine: NeuralPhysicsEngine,
+        X_df_t: pd.DataFrame,
+    ) -> np.ndarray:
+        """Use the stored NeuralPhysicsEngine directly (inductive mode).
+
+        Encodes ``X_df_t`` to match the training feature schema, runs the
+        stored MLP, and decodes classification labels back to original
+        values.
+        """
+        try:
+            # Build a temporary df with a dummy target for _encode_dataframe
+            tmp = X_df_t.copy()
+            tmp["__target__"] = 0
+            # Align to train columns (same strategy as _engine_predict)
+            for col in self.train_df_.columns:
+                if col not in tmp.columns:
+                    tmp[col] = 0.0 if col != "__target__" else 0
+            tmp = tmp[self.train_df_.columns]
+
+            X_enc, _, _, _, _ = _encode_dataframe(tmp, "__target__")
+            X_aligned, _ = engine.encode_aligned(tmp, "__target__")
+            raw_pred = engine.predict_model(X_aligned)
+
+            if self.is_classifier_ and engine.label_enc_ is not None:
+                try:
+                    raw_int = raw_pred.astype(int)
+                    raw_int = np.clip(raw_int, 0, len(engine.label_enc_.classes_) - 1)
+                    return engine.label_enc_.inverse_transform(raw_int)
+                except Exception:
+                    pass
+            return raw_pred
+        except Exception:
+            # Fall back to transductive path on any encoding error
+            raw = self._engine_predict(self.train_df_, X_df_t, seed=int(self.random_seed))
+            return np.array(raw)
+
+    # ── Stage 3: partial_fit / continual learning ──────────────────────
+
+    def partial_fit(self, X: Any, y: Any, *, ewc_lambda: float = 0.4) -> "PhysicsPredictor":
+        """Incrementally update the neural engine with new labelled data.
+
+        Only supported when ``backend="neural"``.  Internally:
+
+        1. Applies the same preprocessing pipeline as ``fit`` (QT, isotopes,
+           polynomial features).
+        2. Appends the new rows to the replay buffer.
+        3. Draws a replay sample from the buffer (excluding the newest rows).
+        4. Calls ``NeuralPhysicsEngine.partial_fit_model`` with the combined
+           new + replay batch.
+        5. Applies EWC weight consolidation (pull weights toward the anchor
+           set during ``fit``).
+        6. Appends new rows to ``train_df_`` for future reference.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+        y : array-like of shape (n_samples,)
+        ewc_lambda : float, default 0.4
+            EWC consolidation strength forwarded to ``partial_fit_model``.
+            0 = no EWC, 1 = weights frozen.
+
+        Returns
+        -------
+        self
+        """
+        check_is_fitted(self)
+        if str(getattr(self, "backend", "physics")).lower().strip() != "neural":
+            raise ValueError(
+                "partial_fit is only supported for backend='neural'. "
+                "For the physics backend re-call fit() with augmented data."
+            )
+        engine: NeuralPhysicsEngine | None = getattr(self, "_neural_engine_", None)
+        if engine is None or not hasattr(engine, "mlp_"):
+            raise RuntimeError(
+                "No fitted neural engine found. Call fit() before partial_fit()."
+            )
+
+        X_df = _to_dataframe(X, feature_names=self.feature_names_in_)
+        X_df_t = self._preprocess(X_df)
+        y_arr = np.asarray(y)
+
+        # Align to training schema
+        tmp = X_df_t.copy()
+        tmp["__target__"] = y_arr
+        for col in self.train_df_.columns:
+            if col not in tmp.columns:
+                tmp[col] = 0.0 if col != "__target__" else 0
+        tmp = tmp[self.train_df_.columns]
+
+        X_new_enc, y_new_enc = engine.encode_aligned(tmp, "__target__")
+
+        # Update replay buffer
+        buf: deque = getattr(self, "_replay_buffer_", deque(maxlen=max(1, int(self.replay_size))))
+        self._replay_buffer_ = buf
+        for i in range(len(y_arr)):
+            buf.append((X_new_enc[i], y_new_enc[i]))
+
+        # Sample replay (all buffer items except the newest len(y_arr) rows)
+        X_replay: np.ndarray | None = None
+        y_replay: np.ndarray | None = None
+        n_new = len(y_arr)
+        if len(buf) > n_new:
+            replay_items = list(buf)[:-n_new]
+            X_replay = np.array([r[0] for r in replay_items])
+            y_replay = np.array([r[1] for r in replay_items])
+
+        engine.partial_fit_model(
+            X_new_enc, y_new_enc,
+            X_replay=X_replay,
+            y_replay=y_replay,
+            ewc_lambda=ewc_lambda,
+        )
+
+        # Extend train_df_ so future _engine_predict calls see new data
+        new_rows = tmp.reset_index(drop=True)
+        self.train_df_ = pd.concat(
+            [self.train_df_, new_rows], axis=0, ignore_index=True
+        )
+        return self
+
+    # ── Stage 6: save / load ───────────────────────────────────────────
+
+    def save(self, path: str | Path) -> None:
+        """Persist the fitted predictor (and neural engine) to disk.
+
+        Uses ``joblib`` for serialisation, which handles numpy arrays and
+        sklearn objects efficiently.
+
+        Parameters
+        ----------
+        path : str or Path
+        """
+        try:
+            import joblib
+        except ImportError as exc:
+            raise ImportError("joblib is required for save/load") from exc
+        joblib.dump(self, str(path))
+
+    @classmethod
+    def load(cls, path: str | Path) -> "PhysicsPredictor":
+        """Load a previously saved predictor.
+
+        Parameters
+        ----------
+        path : str or Path
+
+        Returns
+        -------
+        PhysicsPredictor
+        """
+        try:
+            import joblib
+        except ImportError as exc:
+            raise ImportError("joblib is required for save/load") from exc
+        obj = joblib.load(str(path))
+        if not isinstance(obj, cls):
+            raise TypeError(f"Expected PhysicsPredictor, got {type(obj)}")
+        return obj
 
     def score(self, X: Any, y: Any) -> float:
         """Return accuracy (classification) or R² (regression).
@@ -691,6 +899,7 @@ class PhysicsPredictor(BaseEstimator):
             "residual_model": self.residual_model,
             "extra_kwargs": self.extra_kwargs,
             "backend": self.backend,
+            "replay_size": self.replay_size,
         }
 
     def set_params(self, **params: Any) -> "PhysicsPredictor":
