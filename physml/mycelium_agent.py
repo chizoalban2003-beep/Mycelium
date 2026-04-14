@@ -380,6 +380,57 @@ class MyceliumAgent:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Stage 31 — tool use
+    # ------------------------------------------------------------------
+
+    def use_tool(self, tool_name: str, input_str: str, registry: "ToolRegistry") -> str:
+        """Call a registered tool and incorporate the interaction into agent state.
+
+        The tool output is featurized (if possible) and used as a reward signal
+        so the agent learns which tools produce useful outcomes.
+
+        Parameters
+        ----------
+        tool_name : str
+            Name of the tool to call (must be registered in *registry*).
+        input_str : str
+            Input passed to the tool function.
+        registry : ToolRegistry
+
+        Returns
+        -------
+        str — raw output from the tool.
+        """
+        from physml.tools import ToolRegistry  # local import avoids circular deps
+
+        result: str = registry.call(tool_name, input_str)
+        return result
+
+    # ------------------------------------------------------------------
+    # Stage 33 — episodic memory augmentation
+    # ------------------------------------------------------------------
+
+    def augment_with_memory(self, X: "np.ndarray", memory: "EpisodicMemory") -> "np.ndarray":
+        """Augment *X* with episodic-memory features before prediction.
+
+        Delegates to :meth:`~physml.memory.EpisodicMemory.augment_features`.
+        If *memory* is empty, *X* is returned unchanged.
+
+        Parameters
+        ----------
+        X : np.ndarray, shape (n_samples, n_features)
+        memory : EpisodicMemory
+
+        Returns
+        -------
+        np.ndarray, shape (n_samples, n_features + n_neighbors * 2)
+        """
+        from physml.memory import EpisodicMemory  # local import
+
+        return memory.augment_features(X)
+
+
 class _MultiTaskProbaWrapper:
     """Thin wrapper so calibration can call ``predict_proba`` on a task head."""
 

@@ -27,6 +27,16 @@ DriftDetector            Online concept-drift detector (Stage 17).
 FederatedMyceliumAgent   Federated learning coordinator (Stage 19).
 benchmark_agent          Evaluation harness returning BenchmarkResult (Stage 14).
 ModelRegistry            Lightweight JSONL model registry (Stage 29).
+Featurizer               Raw-input → float32 vector converter (Stage 30).
+Tool                     Named callable for agentic tool-use (Stage 31).
+ToolRegistry             Registry for Tool objects (Stage 31).
+AutonomousLoop           Agent + tools agentic loop (Stage 31).
+GoalPlanner              Multi-step goal decomposition (Stage 32).
+SubTask                  Single sub-goal dataclass (Stage 32).
+EpisodicMemory           kNN episodic memory store (Stage 33).
+pretrain_neural_engine   Masked-feature pretraining function (Stage 34).
+pretrain_mycelium        Convenience pretraining wrapper (Stage 34).
+ParallelDataStream       Concurrent mini-batch processor (Stage 35).
 """
 
 from physml.predictor import (
@@ -66,6 +76,24 @@ from physml.drift import DriftDetector
 from physml.federated import FederatedMyceliumAgent
 from physml.evaluation import benchmark_agent, BenchmarkResult
 from physml.registry import ModelRegistry
+
+# Stage 30 — Featurizer
+from physml.featurizer import Featurizer
+
+# Stage 31 — Tool-calling support
+from physml.tools import Tool, ToolRegistry, AutonomousLoop
+
+# Stage 32 — Goal planner
+from physml.planner import GoalPlanner, SubTask
+
+# Stage 33 — Episodic memory
+from physml.memory import EpisodicMemory
+
+# Stage 34 — Pretraining
+from physml.pretrain import pretrain_neural_engine, pretrain_mycelium
+
+# Stage 35 — Parallel data stream
+from physml.stream_worker import ParallelDataStream
 
 __all__ = [
     "PhysicsPlane",
@@ -114,89 +142,20 @@ __all__ = [
     "FederatedMyceliumAgent",
     # Stage 29 — model registry
     "ModelRegistry",
-]
-
-
-from physml.predictor import (
-    PhysicsPlane,
-    PredictionMetrics,
-    PredictionResult,
-    PredictorError,
-    PredictorRuntimeState,
-    WeightInfo,
-    MigrationInfo,
-    BondInfo,
-    IterationInfo,
-    EquilibriumZone,
-    infer_target_kind,
-    infer_feature_kind,
-    run_physics_prediction,
-    serialize_predictor_state,
-    deserialize_predictor_state,
-    save_predictor_state,
-    load_predictor_state,
-    prune_predictor_state,
-    update_predictor_state_from_result,
-    serialize_metrics,
-    clean_tabular_dataframe,
-)
-from physml.estimator import PhysicsPredictor, PhysicsRegressor, PhysicsClassifier
-from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
-from physml.agent import AgentAction, DataStream, PhysicsAgent
-from physml.agent_api import PhysicsAgentSession
-from physml.multitask_engine import MultiTaskPhysicsEngine
-from physml.mycelium_agent import MyceliumAgent
-
-#: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
-myco = MyceliumAgent
-
-from physml.drift import DriftDetector
-from physml.federated import FederatedMyceliumAgent
-from physml.evaluation import benchmark_agent, BenchmarkResult
-
-__all__ = [
-    "PhysicsPlane",
-    "PredictionMetrics",
-    "PredictionResult",
-    "PredictorError",
-    "PredictorRuntimeState",
-    "WeightInfo",
-    "MigrationInfo",
-    "BondInfo",
-    "IterationInfo",
-    "EquilibriumZone",
-    "infer_target_kind",
-    "infer_feature_kind",
-    "run_physics_prediction",
-    "serialize_predictor_state",
-    "deserialize_predictor_state",
-    "save_predictor_state",
-    "load_predictor_state",
-    "prune_predictor_state",
-    "update_predictor_state_from_result",
-    "serialize_metrics",
-    "clean_tabular_dataframe",
-    "PhysicsPredictor",
-    "PhysicsRegressor",
-    "PhysicsClassifier",
-    "NeuralPhysicsEngine",
-    "run_neural_prediction",
-    # Stage 4 + 5
-    "AgentAction",
-    "PhysicsAgent",
-    "DataStream",
-    # Stage 7
-    "PhysicsAgentSession",
-    # Stage 9
-    "MultiTaskPhysicsEngine",
-    # Stage 11 — flagship class
-    "MyceliumAgent",
-    "myco",  # shorthand alias for MyceliumAgent
-    # Stage 14 — evaluation harness
-    "benchmark_agent",
-    "BenchmarkResult",
-    # Stage 17 — drift detection
-    "DriftDetector",
-    # Stage 19 — federated learning
-    "FederatedMyceliumAgent",
+    # Stage 30 — featurizer
+    "Featurizer",
+    # Stage 31 — tool-calling support
+    "Tool",
+    "ToolRegistry",
+    "AutonomousLoop",
+    # Stage 32 — goal planner
+    "GoalPlanner",
+    "SubTask",
+    # Stage 33 — episodic memory
+    "EpisodicMemory",
+    # Stage 34 — pretraining
+    "pretrain_neural_engine",
+    "pretrain_mycelium",
+    # Stage 35 — parallel data stream
+    "ParallelDataStream",
 ]
