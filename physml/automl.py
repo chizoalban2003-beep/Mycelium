@@ -37,6 +37,12 @@ import numpy as np
 from sklearn.model_selection import ParameterGrid, StratifiedKFold, KFold
 
 _DEFAULT_PARAM_GRID: dict[str, list[Any]] = {
+    "C": [0.01, 0.1, 1.0, 10.0],
+    "solver": ["lbfgs", "liblinear"],
+}
+
+# CEP-targeted grid kept as a convenience constant for callers that pass CEP explicitly
+_CEP_PARAM_GRID: dict[str, list[Any]] = {
     "n_estimators": [50, 100, 150],
     "learning_rate": [0.05, 0.1, 0.2],
     "max_leaf_nodes": [15, 31, 63],
@@ -113,8 +119,8 @@ class AutoMLOptimizer:
         y = np.asarray(y)
 
         if estimator is None:
-            from physml.ensemble_predictor import CompetitiveEnsemblePredictor
-            estimator = CompetitiveEnsemblePredictor()
+            from sklearn.linear_model import LogisticRegression
+            estimator = LogisticRegression(max_iter=300, random_state=0)
 
         rng = np.random.default_rng(self.random_state)
         all_params = list(ParameterGrid(self.param_grid))
@@ -146,16 +152,26 @@ class AutoMLOptimizer:
 
         return self.best_params_
 
-    def get_best_estimator(self, X: np.ndarray, y: np.ndarray) -> Any:
-        """Fit a fresh estimator with the best params and return it."""
+    def get_best_estimator(self, X: np.ndarray, y: np.ndarray, estimator: Any | None = None) -> Any:
+        """Fit a fresh estimator with the best params and return it.
+
+        Parameters
+        ----------
+        estimator : sklearn-compatible estimator, optional
+            Base estimator to configure. Defaults to LogisticRegression (fast).
+        """
         if not self.best_params_:
-            self.fit(X, y)
-        from physml.ensemble_predictor import CompetitiveEnsemblePredictor
-        base = CompetitiveEnsemblePredictor()
+            self.fit(X, y, estimator=estimator)
+        if estimator is None:
+            from sklearn.linear_model import LogisticRegression
+            base = LogisticRegression(max_iter=300, random_state=0)
+        else:
+            from sklearn.base import clone
+            base = clone(estimator)
         accepted = self._filter_params(base, self.best_params_)
         for k, v in accepted.items():
             setattr(base, k, v)
-        base.fit(X, y)
+        base.fit(np.asarray(X, dtype=float), np.asarray(y))
         return base
 
     def summary(self) -> list[dict[str, Any]]:
