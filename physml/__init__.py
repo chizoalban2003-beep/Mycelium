@@ -38,6 +38,12 @@ EpisodicMemory           kNN episodic memory store (Stage 33).
 pretrain_neural_engine   Masked-feature pretraining function (Stage 34).
 pretrain_mycelium        Convenience pretraining wrapper (Stage 34).
 ParallelDataStream       Concurrent mini-batch processor (Stage 35).
+CompetitiveEnsemblePredictor  Stage 36 stacking ensemble (fast, competitive).
+run_goal                 Stage 37 — goal-driven closed autonomous loop (method on MyceliumAgent).
+attach_memory            Stage 38 — attach EpisodicMemory for auto episode recording (method on MyceliumAgent).
+self_evaluate            Stage 39 — held-out accuracy/calibration self-evaluation (method on MyceliumAgent).
+self_improve             Stage 40 — auto-tune threshold based on self-eval (method on MyceliumAgent).
+introspect               Stage 41 — rich internal-state summary (method on MyceliumAgent).
 """
 
 from physml.predictor import (

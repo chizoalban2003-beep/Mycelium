@@ -140,6 +140,7 @@ class MyceliumAgent:
         self._agent: Any = None  # built after fit()
         self._fitted: bool = False
         self.temperature_: float = 1.0  # Stage 13 — set after calibration
+        self._memory: Any = None  # Stage 38 — attached EpisodicMemory
 
     # ------------------------------------------------------------------
     # Public API
@@ -254,6 +255,17 @@ class MyceliumAgent:
         """
         self._require_fitted()
         self._agent.reward(X, y_true, immediate=immediate, cost=cost)
+
+        # Stage 38 — auto-store episode when memory is attached
+        if self._memory is not None:
+            try:
+                x_vec = np.atleast_1d(np.asarray(X, dtype=np.float32)).ravel()
+                action = self._agent.observe(np.atleast_2d(X))
+                action_str = str(getattr(action, "action", "reward"))
+                self._memory.store(context=x_vec, action=action_str, outcome=1.0)
+            except Exception:
+                pass  # memory recording is best-effort
+
         return self
 
     def report(self) -> dict[str, Any]:
@@ -430,6 +442,318 @@ class MyceliumAgent:
         from physml.memory import EpisodicMemory  # local import
 
         return memory.augment_features(X)
+
+    # ------------------------------------------------------------------
+    # Stage 38 — attach episodic memory for automatic episode recording
+    # ------------------------------------------------------------------
+
+    def attach_memory(self, memory: "EpisodicMemory") -> "MyceliumAgent":
+        """Attach an :class:`~physml.memory.EpisodicMemory` to this agent.
+
+        Once attached, every call to :meth:`reward` automatically stores the
+        ``(feature_vector, action, outcome)`` triple so the agent accumulates
+        experience over time.  The stored memory can later be passed to
+        :meth:`augment_with_memory` or used by :meth:`run_goal`.
+
+        Parameters
+        ----------
+        memory : EpisodicMemory
+
+        Returns
+        -------
+        self
+        """
+        self._memory = memory
+        return self
+
+    # ------------------------------------------------------------------
+    # Stage 37 — goal-driven closed autonomous loop
+    # ------------------------------------------------------------------
+
+    def run_goal(
+        self,
+        goal: str,
+        registry: "ToolRegistry",
+        featurizer: "Featurizer",
+        *,
+        memory: "EpisodicMemory | None" = None,
+        n_subtasks: int = 3,
+        max_steps: int = 10,
+    ) -> dict:
+        """Execute a goal end-to-end using planning, tools, and memory.
+
+        Decomposes *goal* into sub-tasks via :class:`~physml.planner.GoalPlanner`,
+        then runs each sub-task through :class:`~physml.tools.AutonomousLoop`.
+        Results are stored in *memory* (or the attached memory, if any) so
+        that the agent accumulates cross-goal experience.
+
+        Parameters
+        ----------
+        goal : str
+            Free-text goal description.
+        registry : ToolRegistry
+            Available tools for the agent to call.
+        featurizer : Featurizer
+            Fitted featurizer used to embed text into vectors.
+        memory : EpisodicMemory or None
+            Episode store; if ``None``, falls back to the agent's attached
+            memory (see :meth:`attach_memory`).  If neither is available, no
+            episodes are recorded.
+        n_subtasks : int, default 3
+            Number of sub-tasks to decompose *goal* into.
+        max_steps : int, default 10
+            Maximum loop iterations per sub-task.
+
+        Returns
+        -------
+        dict with keys:
+            ``goal`` (str), ``subtasks`` (list of sub-task result dicts),
+            ``n_tool_calls`` (int), ``n_episodes_stored`` (int),
+            ``result`` (str — final tool/prediction output).
+        """
+        self._require_fitted()
+        from physml.planner import GoalPlanner
+        from physml.tools import AutonomousLoop
+
+        mem = memory if memory is not None else getattr(self, "_memory", None)
+
+        planner = GoalPlanner(featurizer=featurizer, agent=self, n_subtasks=n_subtasks)
+        loop = AutonomousLoop(
+            agent=self,
+            registry=registry,
+            featurizer=featurizer,
+            max_steps=max_steps,
+        )
+
+        subtasks = planner.plan(goal)
+        subtask_results: list[dict] = []
+        total_tool_calls = 0
+        n_episodes_stored = 0
+        final_result = goal
+
+        for subtask in subtasks:
+            st_result = loop.run(subtask.description)
+            total_tool_calls += st_result.get("n_tool_calls", 0)
+            subtask_results.append(
+                {"task_id": subtask.task_id, "description": subtask.description, **st_result}
+            )
+            final_result = st_result.get("result", final_result)
+
+            # Record episode in memory
+            if mem is not None:
+                outcome = 1.0 if st_result.get("n_tool_calls", 0) > 0 else 0.5
+                mem.store(
+                    context=subtask.feature_vec,
+                    action=str(st_result.get("result", "predict"))[:64],
+                    outcome=outcome,
+                )
+                n_episodes_stored += 1
+
+        return {
+            "goal": goal,
+            "subtasks": subtask_results,
+            "n_tool_calls": total_tool_calls,
+            "n_episodes_stored": n_episodes_stored,
+            "result": final_result,
+        }
+
+    # ------------------------------------------------------------------
+    # Stage 39 — self-evaluation
+    # ------------------------------------------------------------------
+
+    def self_evaluate(self, X_test: Any, y_test: Any) -> dict:
+        """Evaluate the agent on held-out data and return quality metrics.
+
+        Computes accuracy, mean confidence, expected calibration error (ECE),
+        and the running oracle cost from :meth:`report`.
+
+        Parameters
+        ----------
+        X_test : array-like of shape (n_samples, n_features)
+        y_test : array-like of shape (n_samples,)
+
+        Returns
+        -------
+        dict with keys:
+            ``accuracy`` (float), ``mean_confidence`` (float),
+            ``ece`` (float), ``n_samples`` (int),
+            ``oracle_cost`` (float), ``threshold`` (float).
+        """
+        self._require_fitted()
+        X = np.atleast_2d(X_test)
+        y = np.atleast_1d(y_test)
+        n = len(y)
+
+        correct = 0
+        confidences: list[float] = []
+        ece_bins = np.zeros(10)
+        ece_counts = np.zeros(10)
+        ece_correct = np.zeros(10)
+
+        for i in range(n):
+            action = self._agent.observe(X[i : i + 1])
+            pred = getattr(action, "prediction", None)
+            conf = float(getattr(action, "confidence", 0.5) or 0.5)
+            confidences.append(conf)
+
+            if pred is not None:
+                try:
+                    correct += int(int(pred) == int(y[i]))
+                except (TypeError, ValueError):
+                    correct += int(pred == y[i])
+
+            # ECE binning
+            bin_idx = min(int(conf * 10), 9)
+            ece_counts[bin_idx] += 1
+            ece_bins[bin_idx] += conf
+            try:
+                ece_correct[bin_idx] += int(int(pred) == int(y[i])) if pred is not None else 0
+            except (TypeError, ValueError):
+                pass
+
+        accuracy = correct / n if n > 0 else 0.0
+        mean_conf = float(np.mean(confidences)) if confidences else 0.0
+
+        # ECE: weighted mean of |confidence - accuracy| per bin
+        ece = 0.0
+        for b in range(10):
+            if ece_counts[b] > 0:
+                bin_conf = ece_bins[b] / ece_counts[b]
+                bin_acc = ece_correct[b] / ece_counts[b]
+                ece += (ece_counts[b] / n) * abs(bin_conf - bin_acc)
+
+        report = self.report()
+        oracle_cost = report.get("agent", {}).get("total_oracle_cost", 0.0)
+
+        return {
+            "accuracy": round(accuracy, 4),
+            "mean_confidence": round(mean_conf, 4),
+            "ece": round(ece, 4),
+            "n_samples": n,
+            "oracle_cost": oracle_cost,
+            "threshold": self.uncertainty_threshold,
+        }
+
+    # ------------------------------------------------------------------
+    # Stage 40 — self-improvement (auto-tuning from self-evaluation)
+    # ------------------------------------------------------------------
+
+    def self_improve(
+        self,
+        X_test: Any,
+        y_test: Any,
+        *,
+        aggressive: bool = False,
+    ) -> dict:
+        """Auto-tune agent parameters based on self-evaluation results.
+
+        Evaluates on the supplied data, then adjusts
+        ``uncertainty_threshold`` and the underlying agent's threshold to
+        improve the ask-rate/accuracy trade-off:
+
+        * If accuracy < 0.55 — lower the threshold to ask more questions.
+        * If accuracy > 0.80 and ECE < 0.05 — raise the threshold slightly
+          to reduce oracle queries and rely more on predictions.
+        * When *aggressive* is ``True``, also resets the homeostasis counter
+          on the underlying agent to trigger rapid re-adaptation.
+
+        Parameters
+        ----------
+        X_test : array-like
+        y_test : array-like
+        aggressive : bool, default False
+            If ``True``, reset the homeostasis window for rapid re-adaptation.
+
+        Returns
+        -------
+        dict
+            Self-evaluation metrics plus ``threshold_before`` and
+            ``threshold_after`` keys.
+        """
+        metrics = self.self_evaluate(X_test, y_test)
+        threshold_before = self.uncertainty_threshold
+
+        acc = metrics["accuracy"]
+        ece = metrics["ece"]
+
+        if acc < 0.55:
+            # Ask more — lower threshold
+            new_threshold = max(0.10, self.uncertainty_threshold - 0.05)
+        elif acc > 0.80 and ece < 0.05:
+            # Trust predictions more — raise threshold
+            new_threshold = min(0.90, self.uncertainty_threshold + 0.05)
+        else:
+            new_threshold = self.uncertainty_threshold
+
+        self.uncertainty_threshold = new_threshold
+        if self._agent is not None:
+            self._agent.uncertainty_threshold = new_threshold
+
+        if aggressive and self._agent is not None:
+            # Reset error window to force rapid re-adaptation
+            from collections import deque
+            self._agent._error_window = deque(maxlen=self._agent._error_window.maxlen)
+
+        metrics["threshold_before"] = round(threshold_before, 4)
+        metrics["threshold_after"] = round(new_threshold, 4)
+        return metrics
+
+    # ------------------------------------------------------------------
+    # Stage 41 — introspection (rich internal-state summary)
+    # ------------------------------------------------------------------
+
+    def introspect(self) -> dict:
+        """Return a rich summary of the agent's internal state.
+
+        Useful for debugging, monitoring, and explainability.  The returned
+        dict includes predictor type, memory stats, calibration temperature,
+        drift state, and agent activity counters.
+
+        Returns
+        -------
+        dict with keys:
+            ``fitted``, ``predictor_type``, ``predictor_runtime_state``,
+            ``uncertainty_threshold``, ``policy``, ``query_strategy``,
+            ``calibration_temperature``, ``drift_detection_enabled``,
+            ``drift_detected``, ``n_memory_episodes``,
+            ``agent_activity`` (sub-dict from :meth:`report`).
+        """
+        predictor_type = type(self._predictor).__name__ if self._predictor is not None else "None"
+
+        # Runtime state from predictor if available
+        runtime_state: dict = {}
+        if self._predictor is not None:
+            rs = getattr(self._predictor, "runtime_state_", None)
+            if rs is not None:
+                runtime_state = {
+                    "homeostasis_score": getattr(rs, "homeostasis_score", None),
+                    "iteration": getattr(rs, "iteration", None),
+                }
+
+        # Drift state
+        drift_detected = False
+        if self._agent is not None:
+            detector = getattr(self._agent, "_drift_detector", None)
+            if detector is not None:
+                drift_detected = bool(getattr(detector, "drift_detected_", False))
+
+        # Memory stats
+        mem = getattr(self, "_memory", None)
+        n_episodes = len(mem) if mem is not None else 0
+
+        return {
+            "fitted": self._fitted,
+            "predictor_type": predictor_type,
+            "predictor_runtime_state": runtime_state,
+            "uncertainty_threshold": self.uncertainty_threshold,
+            "policy": self.policy,
+            "query_strategy": self.query_strategy,
+            "calibration_temperature": self.temperature_,
+            "drift_detection_enabled": self.drift_detection,
+            "drift_detected": drift_detected,
+            "n_memory_episodes": n_episodes,
+            "agent_activity": self.report() if self._fitted else {},
+        }
 
 
 class _MultiTaskProbaWrapper:
