@@ -419,9 +419,16 @@ class PhysicsAgent:
             return
 
         backend = str(getattr(self.predictor, "backend", "physics")).lower().strip()
-        if backend == "neural":
+        if backend in ("neural", "ensemble") or callable(getattr(self.predictor, "partial_fit", None)):
+            # Any predictor that supports partial_fit (neural, ensemble, etc.)
             try:
                 self.predictor.partial_fit(X_batch, y_batch, ewc_lambda=self.ewc_lambda)
+            except TypeError:
+                # partial_fit doesn't accept ewc_lambda
+                try:
+                    self.predictor.partial_fit(X_batch, y_batch)
+                except Exception:
+                    pass
             except Exception:
                 pass
         else:
@@ -550,6 +557,9 @@ class PhysicsAgent:
 
         Supports plain ``PhysicsPredictor`` and, when ``task_id`` is set,
         :class:`~physml.multitask_engine.MultiTaskPhysicsEngine`.
+
+        Returns a scalar (or 1-element array squeezed to scalar) for
+        single-sample inputs so that ``int(prediction)`` works with NumPy 2.x.
         """
         if self.task_id is not None:
             return self.predictor.predict_task(self.task_id, X_arr)

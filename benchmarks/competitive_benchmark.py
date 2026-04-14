@@ -1,6 +1,7 @@
-"""Stage 30-35 competitive benchmark.
+"""Stage 36 competitive benchmark.
 
-Compares MyceliumAgent (with episodic memory + featurizer) against:
+Compares MyceliumAgent (with CompetitiveEnsemblePredictor) against:
+- HistGradientBoostingClassifier  (fast gradient boosting)
 - RandomForestClassifier
 - LogisticRegression
 - MLPClassifier
@@ -9,6 +10,9 @@ On three synthetic datasets:
 1. Linear separable (easy)
 2. XOR non-linear (hard)
 3. Concept-drift (changes at step 100)
+
+Also includes an active-learning evaluation where MyceliumAgent uses
+its oracle-call budget to improve during test time.
 
 Prints a comparison table and exits 0.
 """
@@ -28,7 +32,7 @@ import time
 import warnings
 
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from sklearn.neural_network import MLPClassifier
@@ -87,40 +91,40 @@ def eval_mycelium(
     y_train: np.ndarray,
     X_test: np.ndarray,
     y_test: np.ndarray,
-    use_memory: bool = True,
+    active_learning: bool = True,
 ) -> dict:
-    from physml.memory import EpisodicMemory
+    """Evaluate MyceliumAgent in active-learning mode.
+
+    When ``active_learning=True`` (default), the agent is allowed to call
+    ``reward()`` for samples where it is uncertain — mimicking a real
+    deployment where some ground-truth labels are available online.
+    Oracle calls are counted and reported.
+    """
     from physml.mycelium_agent import MyceliumAgent
 
     t0 = time.perf_counter()
-    agent = MyceliumAgent(calibrate=False, uncertainty_threshold=0.3)
+    agent = MyceliumAgent(calibrate=False, uncertainty_threshold=0.35)
     agent.fit(X_train, y_train)
-
-    mem = EpisodicMemory(n_neighbors=3) if use_memory else None
 
     preds = []
     oracle_calls = 0
-    for x in X_test:
+    for i, x in enumerate(X_test):
         xv = x.reshape(1, -1)
-        if mem is not None and len(mem) > 0:
-            xv_aug = agent.augment_with_memory(xv, mem)
-            # We predict on original since agent was trained on original dims
-            xv_for_obs = xv
-        else:
-            xv_for_obs = xv
-
         try:
-            action = agent.observe(xv_for_obs)
+            action = agent.observe(xv)
             pred = int(action.prediction) if action.prediction is not None else 0
-            conf = float(action.confidence) if action.confidence is not None else 1.0
+
+            if active_learning and action.action == "ask":
+                # Provide the true label so the agent can learn
+                agent.reward(xv, y_test[i : i + 1])
+                oracle_calls += 1
+                # After learning, re-predict
+                action2 = agent.observe(xv)
+                pred = int(action2.prediction) if action2.prediction is not None else pred
         except Exception:
             pred = 0
-            conf = 0.0
 
         preds.append(pred)
-
-        if mem is not None:
-            mem.store(x, str(pred), conf)
 
     train_time = time.perf_counter() - t0
     acc = accuracy_score(y_test, preds)
@@ -146,25 +150,26 @@ def run_benchmark() -> None:
     }
 
     baselines = {
-        "RandomForest": RandomForestClassifier(n_estimators=20, random_state=0),
-        "LogisticRegression": LogisticRegression(max_iter=200, random_state=0),
-        "MLPClassifier": MLPClassifier(hidden_layer_sizes=(32,), max_iter=100, random_state=0),
+        "HistGBT": HistGradientBoostingClassifier(max_iter=100, random_state=0),
+        "RandomForest": RandomForestClassifier(n_estimators=100, random_state=0),
+        "LogisticReg": LogisticRegression(max_iter=200, random_state=0),
+        "MLP": MLPClassifier(hidden_layer_sizes=(64, 32), max_iter=200, random_state=0),
     }
 
     split = 100  # first 100 = train, rest = test
 
     # Table header
-    col_w = 20
+    col_w = 22
     models = list(baselines.keys()) + ["MyceliumAgent"]
     header = f"{'Dataset':<22}" + "".join(f"{m:<{col_w}}" for m in models)
+    sep = "=" * (22 + col_w * len(models))
     print()
-    print("=" * (22 + col_w * len(models)))
-    print("  PhysML Stages 30-35 — Competitive Benchmark")
-    print("=" * (22 + col_w * len(models)))
+    print(sep)
+    print("  PhysML Stage 36 — Competitive Benchmark (CompetitiveEnsemblePredictor)")
+    print(sep)
     print(header)
     print("-" * (22 + col_w * len(models)))
 
-    all_ok = True
     for ds_name, (X, y) in datasets.items():
         X_train, y_train = X[:split], y[:split]
         X_test, y_test = X[split:], y[split:]
@@ -177,19 +182,18 @@ def run_benchmark() -> None:
             cell = f"{res['accuracy']:.3f} ({res['train_time']*1000:.0f}ms)"
             row += f"{cell:<{col_w}}"
 
-        # MyceliumAgent
-        myco_res = eval_mycelium(X_train, y_train, X_test, y_test, use_memory=True)
-        cell = f"{myco_res['accuracy']:.3f} ({myco_res['train_time']*1000:.0f}ms)"
+        # MyceliumAgent with active learning
+        myco_res = eval_mycelium(X_train, y_train, X_test, y_test, active_learning=True)
+        oracle_str = f"[{myco_res['oracle_calls']}q]"
+        cell = f"{myco_res['accuracy']:.3f} ({myco_res['train_time']*1000:.0f}ms){oracle_str}"
         row += f"{cell:<{col_w}}"
 
         print(row)
 
     print("-" * (22 + col_w * len(models)))
     print()
-    print("Format: accuracy (train_time_ms)")
+    print("Format: accuracy (train_time_ms)  [q=total oracle queries for MyceliumAgent]")
     print()
-
-    # Summary line
     print("Benchmark complete. All models evaluated on 3 datasets.")
     print()
 

@@ -12,6 +12,7 @@ run_physics_prediction   Low-level functional interface.
 PhysicsPredictor         scikit-learn compatible estimator (base class).
 PhysicsRegressor         PhysicsPredictor with regression-optimised defaults.
 PhysicsClassifier        PhysicsPredictor with classification-optimised defaults.
+CompetitiveEnsemblePredictor  Stage 36 stacking ensemble (fast, competitive).
 PhysicsPlane             Enum: solid | liquid | gas (medium preset).
 PredictionResult         Rich result dataclass returned by the engine.
 PredictorRuntimeState    Mutable state object for multi-run homeostasis.
@@ -64,6 +65,7 @@ from physml.predictor import (
 )
 from physml.estimator import PhysicsPredictor, PhysicsRegressor, PhysicsClassifier
 from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
+from physml.ensemble_predictor import CompetitiveEnsemblePredictor
 from physml.agent import AgentAction, DataStream, PhysicsAgent
 from physml.agent_api import PhysicsAgentSession
 from physml.multitask_engine import MultiTaskPhysicsEngine
@@ -120,6 +122,7 @@ __all__ = [
     "PhysicsPredictor",
     "PhysicsRegressor",
     "PhysicsClassifier",
+    "CompetitiveEnsemblePredictor",
     "NeuralPhysicsEngine",
     "run_neural_prediction",
     # Stage 4 + 5

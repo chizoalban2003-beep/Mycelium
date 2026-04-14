@@ -169,11 +169,9 @@ class MyceliumAgent:
         y_arr = np.atleast_1d(y)
 
         if self._predictor is None:
-            from physml.estimator import PhysicsPredictor
+            from physml.ensemble_predictor import CompetitiveEnsemblePredictor
             kwargs = dict(self._predictor_kwargs)
-            kwargs.setdefault("backend", "neural")
-            kwargs.setdefault("n_cycles", 20)
-            self._predictor = PhysicsPredictor(**kwargs)
+            self._predictor = CompetitiveEnsemblePredictor(**kwargs)
 
         if self.task_id is not None:
             # Multi-task mode: delegate to MultiTaskPhysicsEngine.fit_task
