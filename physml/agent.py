@@ -198,6 +198,7 @@ class PhysicsAgent:
         task_id: str | None = None,
         drift_detection: bool = False,
         drift_algorithm: str = "page_hinkley",
+        n_ensemble: int = 5,
     ) -> None:
         self.predictor = predictor
         self.uncertainty_threshold = float(uncertainty_threshold)
@@ -209,10 +210,13 @@ class PhysicsAgent:
         self.task_id = task_id
         self.drift_detection = bool(drift_detection)
         self.drift_algorithm = str(drift_algorithm)
+        self.n_ensemble = max(2, int(n_ensemble))
         self.n_observations: int = 0
         self.n_asks: int = 0
         self.n_rewards: int = 0
         self.n_drifts_detected: int = 0
+        # cumulative oracle cost (Stage 25)
+        self._oracle_cost: float = 0.0
         # Buffer of (X_sample, y_true) pairs waiting to be batch-learned
         self._pending_labels: list[tuple[Any, Any]] = []
         # Stage 10 — sliding window of recent prediction errors (0.0–1.0)
@@ -227,6 +231,12 @@ class PhysicsAgent:
         if self.drift_detection:
             from physml.drift import DriftDetector
             self._drift_detector = DriftDetector(algorithm=self.drift_algorithm)
+        # Stage 24 — GP surrogate for "gp" query strategy (fitted lazily)
+        self._gp: Any = None
+        self._gp_X: list[Any] = []
+        self._gp_y: list[Any] = []
+        # Stage 26 — ensemble members for "ensemble" policy (fitted lazily)
+        self._ensemble_members: list[Any] = []
 
     # ------------------------------------------------------------------
     # Core API
@@ -287,6 +297,21 @@ class PhysicsAgent:
                 needs_label = True
                 self.n_asks += 1
                 prediction = None
+        elif self.policy == "ensemble":
+            # Stage 26 — query-by-committee: use ensemble disagreement as signal
+            disagreement = self._ensemble_disagreement(X_arr)
+            # disagreement is in [0, 1]; treat it like an inverted confidence
+            ensemble_confidence = float(1.0 - disagreement)
+            if ensemble_confidence >= eff_threshold:
+                action = "predict"
+                needs_label = False
+                confidence = ensemble_confidence
+            else:
+                action = "ask"
+                needs_label = True
+                self.n_asks += 1
+                prediction = None
+                confidence = ensemble_confidence
         elif confidence >= eff_threshold:
             action = "predict"
             needs_label = False
@@ -311,7 +336,7 @@ class PhysicsAgent:
             },
         )
 
-    def reward(self, X: Any, y_true: Any, *, immediate: bool = True) -> None:
+    def reward(self, X: Any, y_true: Any, *, immediate: bool = True, cost: float = 1.0) -> None:
         """Provide a ground-truth label so the agent can learn from it.
 
         When ``policy="adaptive"``, the agent also computes the prediction
@@ -327,19 +352,32 @@ class PhysicsAgent:
         immediate : bool, default True
             If True, immediately call ``partial_fit`` (neural backend) or
             buffer the sample for the next ``adapt()`` call.
+        cost : float, default 1.0
+            Oracle annotation cost for this sample (Stage 25).  Used by the
+            bandit to optimise *accuracy per unit cost* rather than raw
+            accuracy.  Tracked in ``total_oracle_cost`` via :meth:`report`.
         """
         import numpy as np
 
         X_arr = np.atleast_2d(X)
         y_arr = np.atleast_1d(y_true)
+        self._oracle_cost += float(cost)
 
         # Stage 10 — record prediction error for adaptive threshold
         if self.policy == "adaptive":
             self._log_error(X_arr, y_arr)
 
-        # Stage 15 — update contextual bandit with observed reward
+        # Stage 15 — update contextual bandit with cost-adjusted reward signal
         if self.policy == "bandit":
-            self._bandit_update(X_arr, y_arr)
+            self._bandit_update(X_arr, y_arr, cost=float(cost))
+
+        # Stage 24 — accumulate GP training data
+        self._gp_X.append(X_arr)
+        self._gp_y.append(y_arr)
+        self._gp = None  # invalidate cached GP so it is re-fitted next query
+
+        # Stage 26 — accumulate ensemble training data & trigger re-fit
+        self._ensemble_members = []  # invalidate so it is re-fitted next observe
 
         self._pending_labels.append((X_arr, y_arr))
         self.n_rewards += 1
@@ -431,6 +469,11 @@ class PhysicsAgent:
 
         if n == 1:
             return 0
+
+        if self.query_strategy == "gp":
+            gp_idx = self._gp_select(X_arr)
+            if gp_idx is not None:
+                return gp_idx
 
         if self.query_strategy == "entropy":
             try:
@@ -621,8 +664,8 @@ class PhysicsAgent:
         x_flat = X_arr.ravel()
         return self._bandit.ask_probability(x_flat, homeostasis)
 
-    def _bandit_update(self, X_arr: np.ndarray, y_true: np.ndarray) -> None:
-        """Update the bandit with the reward signal after observing the true label."""
+    def _bandit_update(self, X_arr: np.ndarray, y_true: np.ndarray, cost: float = 1.0) -> None:
+        """Update the bandit with the cost-adjusted reward signal."""
         if self._bandit is None:
             return
         homeostasis = self._homeostasis()
@@ -633,16 +676,138 @@ class PhysicsAgent:
             y_t = np.atleast_1d(y_true)
             is_clf = bool(getattr(self.predictor, "is_classifier_", False))
             if is_clf:
-                reward = float(np.mean(y_pred_now == y_t)) - 0.5  # centre at 0
+                accuracy = float(np.mean(y_pred_now == y_t))
             else:
                 target_range = float(np.ptp(y_t)) or 1.0
                 mae = float(np.mean(np.abs(y_pred_now.astype(float) - y_t.astype(float))))
-                reward = 0.5 - float(np.clip(mae / target_range, 0.0, 1.0))
+                accuracy = 1.0 - float(np.clip(mae / target_range, 0.0, 1.0))
+            # Stage 25: scale reward by inverse cost (accuracy per unit cost)
+            reward = (accuracy - 0.5) / max(cost, 1e-6)
         except Exception:
             reward = 0.0
         x_flat = X_arr.ravel()
         asked = (self._last_prediction is None)  # True if last action was "ask"
         self._bandit.update(x_flat, homeostasis, reward=reward, asked=asked)
+
+    # Stage 24 — GP uncertainty helpers
+
+    def _gp_select(self, X_pool: np.ndarray) -> int | None:
+        """Select the pool sample with the highest GP predictive variance.
+
+        Falls back to ``None`` (which causes the caller to use entropy/threshold)
+        when fewer than 3 labelled examples are available or sklearn's GP
+        is unavailable.
+        """
+        if len(self._gp_X) < 3:
+            return None
+        try:
+            from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
+            from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+            from sklearn.preprocessing import StandardScaler
+
+            X_train = np.vstack(self._gp_X)
+            y_train = np.concatenate(self._gp_y)
+
+            if self._gp is None:
+                kernel = RBF(length_scale=1.0) + WhiteKernel(noise_level=0.1)
+                is_clf = bool(getattr(self.predictor, "is_classifier_", False))
+                if is_clf:
+                    gp = GaussianProcessClassifier(kernel=kernel, max_iter_predict=20)
+                    gp.fit(X_train, y_train)
+                else:
+                    gp = GaussianProcessRegressor(kernel=kernel, normalize_y=True)
+                    gp.fit(X_train, y_train)
+                self._gp = (gp, is_clf)
+
+            gp, is_clf = self._gp
+            if is_clf:
+                proba = gp.predict_proba(X_pool)
+                eps = 1e-12
+                scores = -np.sum(proba * np.log(proba + eps), axis=1)
+            else:
+                _, std = gp.predict(X_pool, return_std=True)
+                scores = std
+            return int(np.argmax(scores))
+        except Exception:
+            return None
+
+    # Stage 26 — ensemble helpers
+
+    def _build_ensemble(self) -> None:
+        """Build bootstrap ensemble from accumulated labelled data."""
+        if len(self._gp_X) < 2:
+            return
+        try:
+            from sklearn.neural_network import MLPClassifier, MLPRegressor
+
+            X_train = np.vstack(self._gp_X)
+            y_train = np.concatenate(self._gp_y)
+            n = len(y_train)
+            is_clf = bool(getattr(self.predictor, "is_classifier_", False))
+            rng = np.random.default_rng(42)
+            members = []
+            for _ in range(self.n_ensemble):
+                idx = rng.choice(n, size=n, replace=True)
+                X_b = X_train[idx]
+                y_b = y_train[idx]
+                if is_clf:
+                    m = MLPClassifier(
+                        hidden_layer_sizes=(32,),
+                        max_iter=100,
+                        random_state=int(rng.integers(10000)),
+                    )
+                else:
+                    m = MLPRegressor(
+                        hidden_layer_sizes=(32,),
+                        max_iter=100,
+                        random_state=int(rng.integers(10000)),
+                    )
+                try:
+                    m.fit(X_b, y_b)
+                    members.append((m, is_clf))
+                except Exception:
+                    pass
+            self._ensemble_members = members
+        except Exception:
+            self._ensemble_members = []
+
+    def _ensemble_disagreement(self, X_arr: np.ndarray) -> float:
+        """Return committee disagreement score in [0, 1] for *X_arr*.
+
+        Uses vote entropy for classifiers and coefficient of variation of
+        predictions for regressors.  Returns 0.5 (maximum uncertainty) if the
+        ensemble has not been built yet.
+        """
+        if not self._ensemble_members:
+            self._build_ensemble()
+        if not self._ensemble_members:
+            return 0.5
+        try:
+            preds = []
+            for m, is_clf in self._ensemble_members:
+                p = m.predict(X_arr)
+                preds.append(p)
+            preds = np.array(preds)  # (n_members, n_samples)
+            if self._ensemble_members[0][1]:  # classifier
+                n_members = len(preds)
+                n_samples = preds.shape[1]
+                disagreements = []
+                for j in range(n_samples):
+                    votes = preds[:, j]
+                    classes, counts = np.unique(votes, return_counts=True)
+                    probs = counts / n_members
+                    eps = 1e-12
+                    ent = -np.sum(probs * np.log(probs + eps))
+                    max_ent = np.log(max(len(classes), 2))
+                    disagreements.append(float(ent / max_ent) if max_ent > 0 else 0.0)
+                return float(np.mean(disagreements))
+            else:
+                # Regressor: use coefficient of variation
+                std = float(np.std(preds))
+                mean = float(np.abs(np.mean(preds))) + 1e-6
+                return float(np.clip(std / mean, 0.0, 1.0))
+        except Exception:
+            return 0.5
 
     def _estimate_confidence(self, X_arr: np.ndarray, homeostasis: float) -> float:
         """Estimate prediction confidence as a scalar in [0, 1].
@@ -698,6 +863,7 @@ class PhysicsAgent:
             "error_rate": self._error_rate(),
             "n_drifts_detected": self.n_drifts_detected,
             "drift_detection": self.drift_detection,
+            "total_oracle_cost": self._oracle_cost,
         }
 
 

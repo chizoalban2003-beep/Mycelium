@@ -121,6 +121,7 @@ class MyceliumAgent:
         calibrate: bool = True,
         drift_detection: bool = False,
         drift_algorithm: str = "page_hinkley",
+        n_ensemble: int = 5,
     ) -> None:
         self._predictor = predictor
         self.uncertainty_threshold = float(uncertainty_threshold)
@@ -134,6 +135,7 @@ class MyceliumAgent:
         self.calibrate = bool(calibrate)
         self.drift_detection = bool(drift_detection)
         self.drift_algorithm = str(drift_algorithm)
+        self.n_ensemble = max(2, int(n_ensemble))
 
         self._agent: Any = None  # built after fit()
         self._fitted: bool = False
@@ -234,7 +236,7 @@ class MyceliumAgent:
         self._require_fitted()
         return self._agent.select_batch(X_pool, k)
 
-    def reward(self, X: Any, y_true: Any, *, immediate: bool = True) -> "MyceliumAgent":
+    def reward(self, X: Any, y_true: Any, *, immediate: bool = True, cost: float = 1.0) -> "MyceliumAgent":
         """Provide a ground-truth label so the agent can learn from it.
 
         Parameters
@@ -242,13 +244,15 @@ class MyceliumAgent:
         X : array-like
         y_true : array-like
         immediate : bool, default True
+        cost : float, default 1.0
+            Oracle annotation cost for this sample (Stage 25).
 
         Returns
         -------
         self
         """
         self._require_fitted()
-        self._agent.reward(X, y_true, immediate=immediate)
+        self._agent.reward(X, y_true, immediate=immediate, cost=cost)
         return self
 
     def report(self) -> dict[str, Any]:
@@ -338,6 +342,7 @@ class MyceliumAgent:
             task_id=self.task_id,
             drift_detection=self.drift_detection,
             drift_algorithm=self.drift_algorithm,
+            n_ensemble=self.n_ensemble,
         )
 
     def _fit_calibration(self, X: np.ndarray, y: np.ndarray) -> float:

@@ -26,7 +26,96 @@ myco                     Short alias for MyceliumAgent (``from physml import myc
 DriftDetector            Online concept-drift detector (Stage 17).
 FederatedMyceliumAgent   Federated learning coordinator (Stage 19).
 benchmark_agent          Evaluation harness returning BenchmarkResult (Stage 14).
+ModelRegistry            Lightweight JSONL model registry (Stage 29).
 """
+
+from physml.predictor import (
+    PhysicsPlane,
+    PredictionMetrics,
+    PredictionResult,
+    PredictorError,
+    PredictorRuntimeState,
+    WeightInfo,
+    MigrationInfo,
+    BondInfo,
+    IterationInfo,
+    EquilibriumZone,
+    infer_target_kind,
+    infer_feature_kind,
+    run_physics_prediction,
+    serialize_predictor_state,
+    deserialize_predictor_state,
+    save_predictor_state,
+    load_predictor_state,
+    prune_predictor_state,
+    update_predictor_state_from_result,
+    serialize_metrics,
+    clean_tabular_dataframe,
+)
+from physml.estimator import PhysicsPredictor, PhysicsRegressor, PhysicsClassifier
+from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
+from physml.agent import AgentAction, DataStream, PhysicsAgent
+from physml.agent_api import PhysicsAgentSession
+from physml.multitask_engine import MultiTaskPhysicsEngine
+from physml.mycelium_agent import MyceliumAgent
+
+#: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
+myco = MyceliumAgent
+
+from physml.drift import DriftDetector
+from physml.federated import FederatedMyceliumAgent
+from physml.evaluation import benchmark_agent, BenchmarkResult
+from physml.registry import ModelRegistry
+
+__all__ = [
+    "PhysicsPlane",
+    "PredictionMetrics",
+    "PredictionResult",
+    "PredictorError",
+    "PredictorRuntimeState",
+    "WeightInfo",
+    "MigrationInfo",
+    "BondInfo",
+    "IterationInfo",
+    "EquilibriumZone",
+    "infer_target_kind",
+    "infer_feature_kind",
+    "run_physics_prediction",
+    "serialize_predictor_state",
+    "deserialize_predictor_state",
+    "save_predictor_state",
+    "load_predictor_state",
+    "prune_predictor_state",
+    "update_predictor_state_from_result",
+    "serialize_metrics",
+    "clean_tabular_dataframe",
+    "PhysicsPredictor",
+    "PhysicsRegressor",
+    "PhysicsClassifier",
+    "NeuralPhysicsEngine",
+    "run_neural_prediction",
+    # Stage 4 + 5
+    "AgentAction",
+    "PhysicsAgent",
+    "DataStream",
+    # Stage 7
+    "PhysicsAgentSession",
+    # Stage 9
+    "MultiTaskPhysicsEngine",
+    # Stage 11 — flagship class
+    "MyceliumAgent",
+    "myco",  # shorthand alias for MyceliumAgent
+    # Stage 14 — evaluation harness
+    "benchmark_agent",
+    "BenchmarkResult",
+    # Stage 17 — drift detection
+    "DriftDetector",
+    # Stage 19 — federated learning
+    "FederatedMyceliumAgent",
+    # Stage 29 — model registry
+    "ModelRegistry",
+]
+
 
 from physml.predictor import (
     PhysicsPlane,

@@ -1,5 +1,10 @@
 # Mycelium / PhysML — Physics-Inspired Autonomous Machine Learning
 
+[![CI](https://github.com/chizoalban2003-beep/Mycelium/actions/workflows/ci.yml/badge.svg)](https://github.com/chizoalban2003-beep/Mycelium/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/physml.svg)](https://pypi.org/project/physml/)
+[![Python](https://img.shields.io/pypi/pyversions/physml.svg)](https://pypi.org/project/physml/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **The headline class is `myco`** — an autonomous active-learning agent that
 > trains itself, asks for labels only when uncertain, and adapts in real-time.
 
@@ -284,6 +289,19 @@ tests/
 | `quantile_transform` | `False` (`True` in subclasses) | Rank-normalise numeric features |
 | `residual_model` | `None` (`"ridge"` / `"logistic"` in subclasses) | Second-stage residual corrector |
 | `backend` | `"physics"` | `"physics"` or `"neural"` (MLP + attention) |
+
+## Benchmark Results
+
+Evaluated with `benchmark_agent` (seed=20, oracle_budget=60, `myco()` defaults).
+Full per-step CSVs are in [`benchmarks/results/`](benchmarks/results/).
+
+| Dataset | Samples | Features | Final Accuracy |
+|---|---|---|---|
+| iris | 150 | 4 | 93.8% |
+| breast_cancer | 569 | 30 | 87.6% |
+| wine | 178 | 13 | 56.3% |
+
+Reproduce: `python benchmarks/run_benchmarks.py`
 
 ## Running Tests
 

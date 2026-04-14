@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: physml
+  labels:
+    app: physml
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: physml
+  template:
+    metadata:
+      labels:
+        app: physml
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: physml
+          image: ghcr.io/chizoalban2003-beep/mycelium:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: PHYSML_LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 30

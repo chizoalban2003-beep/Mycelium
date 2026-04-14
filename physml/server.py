@@ -189,6 +189,65 @@ def create_app() -> Any:
         session = _sessions[user_id]
         return session.report()
 
+    @app.get("/metrics")
+    def metrics() -> Any:
+        """Prometheus text-format metrics endpoint (Stage 27).
+
+        Exposes aggregate counters across all active sessions::
+
+            physml_n_observations_total   — total observe() calls
+            physml_oracle_calls_total     — total ask/reward calls
+            physml_drift_events_total     — total drift-detection events
+            physml_ask_rate               — mean ask-rate across sessions
+            physml_active_sessions        — number of active user sessions
+
+        Drop into any Grafana / Prometheus stack::
+
+            scrape_configs:
+              - job_name: physml
+                static_configs:
+                  - targets: ["localhost:8000"]
+        """
+        from fastapi.responses import PlainTextResponse
+
+        n_obs = 0
+        n_oracle = 0
+        n_drift = 0
+        ask_rates: list[float] = []
+
+        for session in _sessions.values():
+            try:
+                r = session.report()
+                agent_r = r.get("agent", r)
+                n_obs += int(agent_r.get("n_observations", 0))
+                n_oracle += int(agent_r.get("n_rewards", 0))
+                n_drift += int(agent_r.get("n_drifts_detected", 0))
+                ask_rates.append(float(agent_r.get("ask_rate", 0.0)))
+            except Exception:
+                pass
+
+        mean_ask_rate = float(np.mean(ask_rates)) if ask_rates else 0.0
+        n_sessions = len(_sessions)
+
+        lines = [
+            "# HELP physml_n_observations_total Total observe() calls across all sessions",
+            "# TYPE physml_n_observations_total counter",
+            f"physml_n_observations_total {n_obs}",
+            "# HELP physml_oracle_calls_total Total oracle (reward) calls across all sessions",
+            "# TYPE physml_oracle_calls_total counter",
+            f"physml_oracle_calls_total {n_oracle}",
+            "# HELP physml_drift_events_total Total concept-drift events detected",
+            "# TYPE physml_drift_events_total counter",
+            f"physml_drift_events_total {n_drift}",
+            "# HELP physml_ask_rate Mean ask-rate across active sessions",
+            "# TYPE physml_ask_rate gauge",
+            f"physml_ask_rate {mean_ask_rate:.6f}",
+            "# HELP physml_active_sessions Number of active user sessions",
+            "# TYPE physml_active_sessions gauge",
+            f"physml_active_sessions {n_sessions}",
+        ]
+        return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
+
     return app
 
 
