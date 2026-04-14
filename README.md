@@ -39,7 +39,27 @@ pip install feature-engine
 
 ## Quick Start
 
-### scikit-learn API
+### Convenience classes (recommended)
+
+```python
+from physml import PhysicsRegressor, PhysicsClassifier
+
+# Regression — quantile_transform + ridge residual model enabled by default
+from sklearn.datasets import load_diabetes
+X, y = load_diabetes(return_X_y=True)
+reg = PhysicsRegressor()
+reg.fit(X, y)
+print(reg.score(X, y))   # R²
+
+# Classification — quantile_transform + logistic residual model enabled by default
+from sklearn.datasets import load_wine
+X, y = load_wine(return_X_y=True)
+clf = PhysicsClassifier()
+clf.fit(X, y)
+print(clf.score(X, y))   # accuracy
+```
+
+### scikit-learn API (base class)
 
 ```python
 from physml import PhysicsPredictor
@@ -97,9 +117,10 @@ result = run_physics_prediction(
 Run the comprehensive benchmark to compare PhysML against RF, GBT, MLP, KNN, SVM, and more:
 
 ```bash
-python evaluate.py                    # all tasks (classification + regression)
+python evaluate.py                    # all tasks (classification + regression + agent)
 python evaluate.py --tasks classification
 python evaluate.py --tasks regression
+python evaluate.py --tasks agent      # agent streaming / online-learning benchmark
 python evaluate.py --quick            # faster run with fewer cycles
 python evaluate.py --output results.json
 ```
@@ -118,17 +139,90 @@ Baselines included:
 
 Datasets: iris, breast_cancer, wine (classification); diabetes, california_housing (regression).
 
+## Autonomous Agent Loop
+
+PhysML includes a full autonomous-agent stack layered on top of the physics predictor:
+
+```python
+from physml import PhysicsPredictor
+from physml.agent import PhysicsAgent
+
+predictor = PhysicsPredictor(backend="neural", n_cycles=20)
+predictor.fit(X_seed, y_seed)
+
+agent = PhysicsAgent(predictor, uncertainty_threshold=0.35)
+
+for X_new in stream_of_samples:
+    action = agent.observe(X_new)         # "predict" | "ask" | "abstain"
+    if action.action == "ask":
+        y_true = oracle(X_new)            # request human label
+        agent.reward(X_new, y_true)       # partial_fit with EWC + replay
+    else:
+        use_prediction(action.prediction)
+```
+
+### Session API (production deployment)
+
+```python
+from physml.agent_api import PhysicsAgentSession
+
+session = PhysicsAgentSession(user_id="alice")
+session.train(X_seed, y_seed)            # initial fit
+result = session.query(X_new)            # {"prediction": ..., "action": "predict"|"ask", ...}
+session.feedback(X_new, y_true)          # trigger partial_fit
+session.save()                           # persist to ~/.physml_agents/alice.pkl
+
+session2 = PhysicsAgentSession.load("alice")  # restore
+```
+
+### Autonomy Roadmap
+
+| Stage | Status | Description |
+|-------|--------|-------------|
+| 1 | ✅ | MLP backbone (256 → 128, sklearn) |
+| 2 | ✅ | Feature-attention block (electrophoresis metaphor) |
+| 3 | ✅ | Continual learning: `partial_fit` + EWC + replay buffer |
+| 4 | ✅ | Agent loop: `PhysicsAgent.observe()` / `.reward()` |
+| 5 | ✅ | `DataStream` mini-batch streaming |
+| 6 | ✅ | Save / load + curriculum pretraining (`pretrain`) |
+| 7 | ✅ | `PhysicsAgentSession` stateful per-user deployment |
+| 8 | 🔲 | Active learning: entropy-based query selection |
+| 9 | 🔲 | Multi-task head: shared representation across datasets |
+| 10 | 🔲 | Reward shaping: RL policy replacing the fixed threshold |
+
+## Naming Conventions
+
+PhysML follows the **scikit-learn naming convention**:
+
+| Class | Role |
+|-------|------|
+| `PhysicsPredictor` | Base estimator (physics backend, all options) |
+| `PhysicsRegressor` | `PhysicsPredictor` with regression defaults (`quantile_transform=True`, `residual_model="ridge"`) |
+| `PhysicsClassifier` | `PhysicsPredictor` with classification defaults (`quantile_transform=True`, `residual_model="logistic"`) |
+| `NeuralPhysicsEngine` | Internal neural backend (MLP + attention) |
+| `PhysicsAgent` | Autonomous observe/reward/adapt loop |
+| `PhysicsAgentSession` | Stateful per-user production wrapper |
+| `DataStream` | Mini-batch streaming helper |
+| `AgentAction` | Return value from `PhysicsAgent.observe()` |
+
+Rule of thumb: `Physics<Algorithm>` for the core engine classes, `<Algorithm>Action` / `<Algorithm>Session` / `<Algorithm>Stream` for agent utilities.
+
 ## Package Structure
 
 ```
 physml/
   __init__.py        Public API exports
   predictor.py       Core physics engine
-  estimator.py       scikit-learn compatible PhysicsPredictor class
+  estimator.py       PhysicsPredictor / PhysicsRegressor / PhysicsClassifier
+  neural_engine.py   NeuralPhysicsEngine (Stage 1–3)
+  agent.py           PhysicsAgent + DataStream (Stage 4–5)
+  agent_api.py       PhysicsAgentSession (Stage 7)
 evaluate.py          Stand-alone benchmark script
 tests/
   test_predictor.py  Physics engine unit tests
   test_estimator.py  Estimator / sklearn compatibility tests
+  test_neural_engine.py  Neural engine tests
+  test_agent.py      Agent loop, streaming, session tests
 ```
 
 ## Key Parameters
@@ -142,6 +236,9 @@ tests/
 | `pcr_enabled` | `False` | PCR amplification of strong features |
 | `enable_isotopes` | `True` | Auto-generate interaction features |
 | `explicit_train_mask` | `None` | Override random split with boolean array |
+| `quantile_transform` | `False` (`True` in subclasses) | Rank-normalise numeric features |
+| `residual_model` | `None` (`"ridge"` / `"logistic"` in subclasses) | Second-stage residual corrector |
+| `backend` | `"physics"` | `"physics"` or `"neural"` (MLP + attention) |
 
 ## Running Tests
 

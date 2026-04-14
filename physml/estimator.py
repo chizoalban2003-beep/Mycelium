@@ -695,6 +695,47 @@ class PhysicsPredictor(BaseEstimator):
                 return np.array(output)
         return np.array(output, dtype=float)
 
+    def predict_proba(self, X: Any) -> np.ndarray:
+        """Return class probability estimates (neural backend, classification only).
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+
+        Returns
+        -------
+        proba : ndarray of shape (n_samples, n_classes)
+            Class probabilities ordered by ``self.classes_``.
+
+        Raises
+        ------
+        ValueError
+            If called on a regression task or when ``backend != "neural"``.
+        """
+        check_is_fitted(self)
+        if not self.is_classifier_:
+            raise ValueError("predict_proba is only available for classifiers.")
+        neural_engine: NeuralPhysicsEngine | None = getattr(self, "_neural_engine_", None)
+        if (
+            str(getattr(self, "backend", "physics")).lower().strip() != "neural"
+            or neural_engine is None
+            or not hasattr(neural_engine, "mlp_")
+        ):
+            raise ValueError(
+                "predict_proba is only supported when backend='neural'. "
+                "For the physics backend use predict() directly."
+            )
+        X_df = _to_dataframe(X, feature_names=self.feature_names_in_)
+        X_df_t = self._preprocess(X_df)
+        tmp = X_df_t.copy()
+        tmp["__target__"] = 0
+        for col in self.train_df_.columns:
+            if col not in tmp.columns:
+                tmp[col] = 0.0 if col != "__target__" else 0
+        tmp = tmp[self.train_df_.columns]
+        X_aligned, _ = neural_engine.encode_aligned(tmp, "__target__")
+        return neural_engine.predict_proba_model(X_aligned)
+
     def _neural_predict_inductive(
         self,
         engine: NeuralPhysicsEngine,
@@ -724,7 +765,13 @@ class PhysicsPredictor(BaseEstimator):
                 try:
                     raw_int = raw_pred.astype(int)
                     raw_int = np.clip(raw_int, 0, len(engine.label_enc_.classes_) - 1)
-                    return engine.label_enc_.inverse_transform(raw_int)
+                    decoded = engine.label_enc_.inverse_transform(raw_int)
+                    # Cast back to the original target dtype (e.g. int64 for sklearn
+                    # integer-label datasets) so that accuracy metrics compare correctly.
+                    try:
+                        return decoded.astype(getattr(self, "target_dtype_", decoded.dtype))
+                    except (ValueError, TypeError):
+                        return decoded
                 except Exception:
                     pass
             return raw_pred
@@ -906,3 +953,114 @@ class PhysicsPredictor(BaseEstimator):
         for key, value in params.items():
             setattr(self, key, value)
         return self
+
+
+# ---------------------------------------------------------------------------
+# Convenience subclasses — task-optimised defaults
+# ---------------------------------------------------------------------------
+
+class PhysicsRegressor(PhysicsPredictor):
+    """PhysicsPredictor pre-configured for regression tasks.
+
+    Enables ``quantile_transform`` and ``residual_model="ridge"`` by default,
+    which consistently improves R² on tabular regression benchmarks.  All
+    other parameters are unchanged and can still be overridden.
+
+    Naming convention
+    -----------------
+    ``PhysicsRegressor`` follows the scikit-learn naming convention
+    (``<Algorithm><Task>``) used by ``LinearRegression``, ``SVR``,
+    ``RandomForestRegressor``, etc.
+
+    Parameters
+    ----------
+    plane : str or PhysicsPlane, default "solid"
+        Solid medium is the recommended preset for regression tasks.
+    n_cycles : int, default 30
+    quantile_transform : bool, default True
+        Rank-normalise numeric features before the physics pass.
+    residual_model : str or None, default "ridge"
+        Ridge second-stage corrector for systematic residuals.
+    **kwargs
+        All remaining ``PhysicsPredictor`` parameters.
+
+    Examples
+    --------
+    >>> from physml import PhysicsRegressor
+    >>> from sklearn.datasets import load_diabetes
+    >>> X, y = load_diabetes(return_X_y=True)
+    >>> reg = PhysicsRegressor()
+    >>> reg.fit(X, y)
+    PhysicsRegressor(...)
+    >>> reg.score(X, y)        # R²
+    """
+
+    def __init__(
+        self,
+        plane: str | PhysicsPlane = "solid",
+        n_cycles: int = 30,
+        *,
+        quantile_transform: bool = True,
+        residual_model: str | None = "ridge",
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            plane=plane,
+            n_cycles=n_cycles,
+            quantile_transform=quantile_transform,
+            residual_model=residual_model,
+            **kwargs,
+        )
+
+
+class PhysicsClassifier(PhysicsPredictor):
+    """PhysicsPredictor pre-configured for classification tasks.
+
+    Enables ``quantile_transform`` and ``residual_model="logistic"`` by
+    default, which narrows the accuracy gap to ensemble methods on tabular
+    classification benchmarks.
+
+    Naming convention
+    -----------------
+    ``PhysicsClassifier`` follows the scikit-learn naming convention used by
+    ``LogisticRegression``, ``SVC``, ``RandomForestClassifier``, etc.
+
+    Parameters
+    ----------
+    plane : str or PhysicsPlane, default "liquid"
+        Liquid medium is the recommended preset for classification tasks.
+    n_cycles : int, default 20
+    quantile_transform : bool, default True
+        Rank-normalise numeric features before the physics pass.
+    residual_model : str or None, default "logistic"
+        Logistic second-stage corrector for systematic residuals.
+    **kwargs
+        All remaining ``PhysicsPredictor`` parameters.
+
+    Examples
+    --------
+    >>> from physml import PhysicsClassifier
+    >>> from sklearn.datasets import load_wine
+    >>> X, y = load_wine(return_X_y=True)
+    >>> clf = PhysicsClassifier()
+    >>> clf.fit(X, y)
+    PhysicsClassifier(...)
+    >>> clf.score(X, y)        # accuracy
+    """
+
+    def __init__(
+        self,
+        plane: str | PhysicsPlane = "liquid",
+        n_cycles: int = 20,
+        *,
+        quantile_transform: bool = True,
+        residual_model: str | None = "logistic",
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            plane=plane,
+            n_cycles=n_cycles,
+            quantile_transform=quantile_transform,
+            residual_model=residual_model,
+            **kwargs,
+        )

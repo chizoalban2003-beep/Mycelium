@@ -548,3 +548,146 @@ class TestPhysicsAgentSession:
             joblib.dump({"not": "a session"}, str(path))
             with pytest.raises(TypeError):
                 PhysicsAgentSession.load(path)
+
+
+# ── New tests for: multi-class fix, predict_proba, convenience classes ─────
+
+class TestMultiClassNeuralFix:
+    """Neural backend multi-class label dtype must match original y dtype."""
+
+    def test_wine_integer_labels_returned_as_int(self):
+        """inverse_transform used to return strings; verify integers now."""
+        from sklearn.datasets import load_wine
+        X, y = load_wine(return_X_y=True)
+        clf = PhysicsPredictor(backend="neural", n_cycles=5)
+        clf.fit(X[:120], y[:120])
+        preds = clf.predict(X[120:])
+        assert preds.dtype.kind in ("i", "u"), f"Expected int dtype, got {preds.dtype}"
+        # All predictions must be valid class indices
+        assert set(np.unique(preds)).issubset({0, 1, 2})
+
+    def test_multiclass_accuracy_above_random(self):
+        """Multi-class neural predictions must beat random baseline (1/n_classes).
+
+        Uses a shuffled split so test rows are representative of all classes.
+        """
+        from sklearn.datasets import load_wine
+        from sklearn.metrics import accuracy_score
+        X, y = load_wine(return_X_y=True)
+        rng = np.random.default_rng(7)
+        idx = rng.permutation(len(y))
+        X, y = X[idx], y[idx]
+        n_train = int(len(y) * 0.80)
+        clf = PhysicsPredictor(backend="neural", n_cycles=20)
+        clf.fit(X[:n_train], y[:n_train])
+        acc = accuracy_score(y[n_train:], clf.predict(X[n_train:]))
+        n_classes = len(np.unique(y))
+        assert acc > 1.0 / n_classes, f"Accuracy {acc:.3f} is at or below random ({1/n_classes:.3f})"
+
+
+class TestPredictProba:
+    """predict_proba on the neural backend."""
+
+    def test_predict_proba_shape(self):
+        clf, X_te, _ = _fitted_neural_clf()
+        proba = clf.predict_proba(X_te)
+        assert proba.shape == (len(X_te), 2)
+
+    def test_predict_proba_sums_to_one(self):
+        clf, X_te, _ = _fitted_neural_clf()
+        proba = clf.predict_proba(X_te)
+        np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-5)
+
+    def test_predict_proba_values_in_range(self):
+        clf, X_te, _ = _fitted_neural_clf()
+        proba = clf.predict_proba(X_te)
+        assert np.all(proba >= 0) and np.all(proba <= 1)
+
+    def test_predict_proba_raises_for_regression(self):
+        reg, X_te, _ = _fitted_neural_reg()
+        with pytest.raises(ValueError, match="classifiers"):
+            reg.predict_proba(X_te)
+
+    def test_predict_proba_raises_for_physics_backend(self):
+        X, y = _clf_data()
+        clf = PhysicsPredictor(n_cycles=5, backend="physics")
+        clf.fit(X, y)
+        with pytest.raises(ValueError, match="neural"):
+            clf.predict_proba(X[:5])
+
+    def test_predict_proba_model_raises_for_regression(self):
+        _, reg_engine = _make_fitted_engine(is_clf=False)
+        with pytest.raises(ValueError):
+            reg_engine.predict_proba_model(np.ones((3, 4)))
+
+    def test_predict_proba_model_shape(self):
+        X, clf_engine = _make_fitted_engine(is_clf=True)
+        proba = clf_engine.predict_proba_model(X)
+        assert proba.ndim == 2 and proba.shape[0] == len(X)
+
+
+def _make_fitted_engine(is_clf: bool):
+    rng = np.random.default_rng(0)
+    n, d = 60, 4
+    X = rng.normal(size=(n, d))
+    if is_clf:
+        y = (X[:, 0] > 0).astype(int)
+    else:
+        y = X[:, 0] * 2 + rng.normal(size=n) * 0.1
+    engine = NeuralPhysicsEngine()
+    engine.fit_model(X, y, is_classifier=is_clf, n_epochs=20)
+    return X, engine
+
+
+class TestConvenienceSubclasses:
+    """PhysicsRegressor and PhysicsClassifier subclasses."""
+
+    def test_physics_regressor_defaults(self):
+        from physml import PhysicsRegressor
+        reg = PhysicsRegressor()
+        assert reg.quantile_transform is True
+        assert reg.residual_model == "ridge"
+        assert reg.plane in ("solid", "PhysicsPlane.solid")
+
+    def test_physics_classifier_defaults(self):
+        from physml import PhysicsClassifier
+        clf = PhysicsClassifier()
+        assert clf.quantile_transform is True
+        assert clf.residual_model == "logistic"
+
+    def test_physics_regressor_fit_predict(self):
+        from physml import PhysicsRegressor
+        X, y = _reg_data()
+        reg = PhysicsRegressor(n_cycles=5)
+        reg.fit(X[:80], y[:80])
+        preds = reg.predict(X[80:])
+        assert preds.shape == (len(y[80:]),)
+
+    def test_physics_classifier_fit_predict(self):
+        from physml import PhysicsClassifier
+        X, y = _clf_data()
+        clf = PhysicsClassifier(n_cycles=5)
+        clf.fit(X[:80], y[:80])
+        preds = clf.predict(X[80:])
+        assert preds.shape == (len(y[80:]),)
+
+    def test_regressor_sklearn_get_params(self):
+        from physml import PhysicsRegressor
+        reg = PhysicsRegressor(n_cycles=7)
+        params = reg.get_params()
+        assert params["n_cycles"] == 7
+        assert params["quantile_transform"] is True
+
+    def test_classifier_override_defaults(self):
+        from physml import PhysicsClassifier
+        clf = PhysicsClassifier(quantile_transform=False, residual_model=None)
+        assert clf.quantile_transform is False
+        assert clf.residual_model is None
+
+    def test_regressor_is_instance_of_predictor(self):
+        from physml import PhysicsRegressor
+        assert isinstance(PhysicsRegressor(), PhysicsPredictor)
+
+    def test_classifier_is_instance_of_predictor(self):
+        from physml import PhysicsClassifier
+        assert isinstance(PhysicsClassifier(), PhysicsPredictor)

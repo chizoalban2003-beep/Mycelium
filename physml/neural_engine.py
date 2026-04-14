@@ -560,6 +560,34 @@ class NeuralPhysicsEngine:
         X_aug = np.hstack([X_new, X_att])
         return self.mlp_.predict(X_aug)
 
+    def predict_proba_model(self, X_new: np.ndarray) -> np.ndarray:
+        """Return class probability estimates (classification only).
+
+        Parameters
+        ----------
+        X_new : ndarray, shape (n_samples, n_input_features)
+
+        Returns
+        -------
+        proba : ndarray, shape (n_samples, n_classes)
+            Probability of each class, columns ordered by
+            ``self.mlp_.classes_``.
+
+        Raises
+        ------
+        RuntimeError
+            If ``fit_model`` has not been called.
+        ValueError
+            If the engine was fitted on a regression task.
+        """
+        if not hasattr(self, "mlp_"):
+            raise RuntimeError("fit_model() must be called before predict_proba_model()")
+        if not getattr(self, "is_classifier_", False):
+            raise ValueError("predict_proba_model is only available for classifiers")
+        X_att = self.attn_.transform(X_new)
+        X_aug = np.hstack([X_new, X_att])
+        return self.mlp_.predict_proba(X_aug)
+
     def partial_fit_model(
         self,
         X_new: np.ndarray,

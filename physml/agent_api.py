@@ -290,4 +290,4 @@ class PhysicsAgentSession:
 # ---------------------------------------------------------------------------
 
 def _now() -> str:
-    return datetime.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")

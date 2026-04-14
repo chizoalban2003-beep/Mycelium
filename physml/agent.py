@@ -286,8 +286,10 @@ class PhysicsAgent:
     def _estimate_confidence(self, X_arr: np.ndarray, homeostasis: float) -> float:
         """Estimate prediction confidence as a scalar in [0, 1].
 
-        For classifiers: use max class probability if ``predict_proba`` is
-        available, otherwise fall back to ``homeostasis``.
+        For classifiers: use max class probability from ``predict_proba``
+        (when available) blended with the runtime ``homeostasis_score``.
+        Blending prevents an overconfident (saturated) MLP from reporting
+        1.0 confidence regardless of the threshold setting.
         For regressors: use ``homeostasis`` directly.
         """
         try:
@@ -295,7 +297,11 @@ class PhysicsAgent:
             if is_clf:
                 try:
                     proba = self.predictor.predict_proba(X_arr)
-                    return float(proba.max(axis=1).mean())
+                    max_p = float(proba.max(axis=1).mean())
+                    # Blend MLP confidence with homeostasis: neither alone
+                    # is a reliable signal.  Softmax saturation can push
+                    # max_p to ~1.0 even for poorly-trained models.
+                    return float((max_p + homeostasis) / 2.0)
                 except Exception:
                     pass
             return float(np.clip(homeostasis, 0.0, 1.0))

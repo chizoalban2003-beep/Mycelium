@@ -82,6 +82,7 @@ from sklearn.svm import SVC, SVR
 # PhysML imports ─────────────────────────────────────────────────────────
 from physml import PhysicsPlane, run_physics_prediction
 from physml.estimator import PhysicsPredictor
+from physml.agent import DataStream, PhysicsAgent
 
 
 # ── Constants ────────────────────────────────────────────────────────────
@@ -575,6 +576,103 @@ def run_regression_benchmark(quick: bool = False) -> list[dict[str, Any]]:
     return all_results
 
 
+def run_agent_streaming_benchmark(quick: bool = False) -> list[dict[str, Any]]:
+    """Simulate the autonomous agent loop on a regression dataset.
+
+    The dataset is split into a seed portion (first 20 %) used to ``fit``
+    the predictor, and a stream portion (remaining 80 %) that arrives in
+    mini-batches.  For each batch the agent:
+
+    1. Predicts on the incoming X.
+    2. Computes the prediction error *before* updating.
+    3. Calls ``partial_fit`` with the true labels (oracle feedback).
+    4. Re-computes the error *after* updating.
+
+    Reported metrics show how R² and RMSE change as the agent receives more
+    labelled data — the "learning curve under the agent loop".
+
+    Args:
+        quick: When True, uses fewer batches and a shorter seed.
+    """
+    from sklearn.datasets import load_diabetes
+    from sklearn.metrics import mean_squared_error, r2_score as _r2
+
+    data = load_diabetes()
+    X_all, y_all = data.data, data.target
+    n = len(y_all)
+    seed_n = max(30, int(n * (0.1 if quick else 0.2)))
+    batch_size = 20 if quick else 30
+    n_batches = 3 if quick else 6
+
+    rng = np.random.default_rng(RANDOM_SEED)
+    idx = rng.permutation(n)
+    X_seed, y_seed = X_all[idx[:seed_n]], y_all[idx[:seed_n]]
+    X_stream, y_stream = X_all[idx[seed_n:]], y_all[idx[seed_n:]]
+
+    # Build a neural PhysicsPredictor for online learning
+    predictor = PhysicsPredictor(backend="neural", plane="solid", n_cycles=15)
+    agent = PhysicsAgent(predictor, uncertainty_threshold=0.35)
+
+    predictor.fit(X_seed, y_seed)
+
+    print(f"\n{'='*70}")
+    print("AGENT STREAMING BENCHMARK — online learning (neural backend, diabetes)")
+    print(f"{'='*70}")
+    print(f"  Seed rows: {seed_n}   Batch size: {batch_size}   Batches: {n_batches}")
+    print(f"  {'Batch':>6} {'Rows seen':>10} {'R² before':>10} {'R² after':>10}  {'ΔRMSE':>8}")
+    print(f"  {'-'*6} {'-'*10} {'-'*10} {'-'*10}  {'-'*8}")
+
+    all_batches: list[dict[str, Any]] = []
+    rows_seen = seed_n
+
+    for b in range(n_batches):
+        start = b * batch_size
+        end = min(start + batch_size, len(y_stream))
+        if start >= len(y_stream):
+            break
+        Xb, yb = X_stream[start:end], y_stream[start:end]
+
+        # Evaluate BEFORE update
+        try:
+            y_pre = predictor.predict(Xb)
+            r2_pre = float(_r2(yb, y_pre))
+            rmse_pre = float(math.sqrt(mean_squared_error(yb, y_pre)))
+        except Exception:
+            r2_pre, rmse_pre = float("nan"), float("nan")
+
+        # Agent feedback — teach with true labels
+        try:
+            agent.reward(Xb, yb)
+        except Exception:
+            predictor.partial_fit(Xb, yb)
+
+        # Evaluate AFTER update
+        try:
+            y_post = predictor.predict(Xb)
+            r2_post = float(_r2(yb, y_post))
+            rmse_post = float(math.sqrt(mean_squared_error(yb, y_post)))
+        except Exception:
+            r2_post, rmse_post = float("nan"), float("nan")
+
+        rows_seen += len(yb)
+        delta_rmse = rmse_post - rmse_pre
+        sign = "↑" if delta_rmse > 0 else "↓"
+        print(
+            f"  {b+1:>6} {rows_seen:>10} {r2_pre:>10.4f} {r2_post:>10.4f}  "
+            f"{abs(delta_rmse):>7.2f}{sign}"
+        )
+        all_batches.append({
+            "batch": b + 1,
+            "rows_seen": rows_seen,
+            "r2_before": r2_pre,
+            "r2_after": r2_post,
+            "rmse_before": rmse_pre,
+            "rmse_after": rmse_post,
+        })
+
+    return [{"dataset": "diabetes_streaming", "task": "regression_online", "batches": all_batches}]
+
+
 def _print_summary(all_results: list[dict[str, Any]]) -> None:
     """Print a compact summary of PhysML's rank among baselines."""
     print(f"\n{'='*70}")
@@ -586,7 +684,10 @@ def _print_summary(all_results: list[dict[str, Any]]) -> None:
     for block in all_results:
         ds_name = block["dataset"]
         task = block["task"]
-        rows = block["results"]
+        rows = block.get("results")
+        # Agent / streaming blocks don't have a "results" list; skip them
+        if not rows:
+            continue
         if task == "classification":
             key = "accuracy_mean"
             label = "Accuracy"
@@ -617,7 +718,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--tasks",
-        choices=["all", "classification", "regression"],
+        choices=["all", "classification", "regression", "agent"],
         default="all",
         help="Which task types to benchmark (default: all)",
     )
@@ -646,6 +747,10 @@ def main() -> None:
     if args.tasks in ("all", "regression"):
         reg_results = run_regression_benchmark(quick=args.quick)
         all_results.extend(reg_results)
+
+    if args.tasks in ("all", "agent"):
+        agent_results = run_agent_streaming_benchmark(quick=args.quick)
+        all_results.extend(agent_results)
 
     _print_summary(all_results)
 

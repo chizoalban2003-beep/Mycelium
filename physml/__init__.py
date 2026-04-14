@@ -9,7 +9,9 @@ iterative PCR-style amplification step.
 Public API
 ----------
 run_physics_prediction   Low-level functional interface.
-PhysicsPredictor         scikit-learn compatible estimator.
+PhysicsPredictor         scikit-learn compatible estimator (base class).
+PhysicsRegressor         PhysicsPredictor with regression-optimised defaults.
+PhysicsClassifier        PhysicsPredictor with classification-optimised defaults.
 PhysicsPlane             Enum: solid | liquid | gas (medium preset).
 PredictionResult         Rich result dataclass returned by the engine.
 PredictorRuntimeState    Mutable state object for multi-run homeostasis.
@@ -42,7 +44,7 @@ from physml.predictor import (
     serialize_metrics,
     clean_tabular_dataframe,
 )
-from physml.estimator import PhysicsPredictor
+from physml.estimator import PhysicsPredictor, PhysicsRegressor, PhysicsClassifier
 from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
 from physml.agent import AgentAction, DataStream, PhysicsAgent
 from physml.agent_api import PhysicsAgentSession
@@ -70,6 +72,8 @@ __all__ = [
     "serialize_metrics",
     "clean_tabular_dataframe",
     "PhysicsPredictor",
+    "PhysicsRegressor",
+    "PhysicsClassifier",
     "NeuralPhysicsEngine",
     "run_neural_prediction",
     # Stage 4 + 5
