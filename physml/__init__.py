@@ -39,6 +39,7 @@ from physml.predictor import (
     clean_tabular_dataframe,
 )
 from physml.estimator import PhysicsPredictor
+from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
 
 __all__ = [
     "PhysicsPlane",
@@ -63,4 +64,6 @@ __all__ = [
     "serialize_metrics",
     "clean_tabular_dataframe",
     "PhysicsPredictor",
+    "NeuralPhysicsEngine",
+    "run_neural_prediction",
 ]

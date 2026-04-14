@@ -81,6 +81,7 @@ from physml.predictor import (
     infer_target_kind,
     run_physics_prediction,
 )
+from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
 
 
 def _to_dataframe(X: Any, feature_names: list[str] | None = None) -> pd.DataFrame:
@@ -162,7 +163,18 @@ class PhysicsPredictor(BaseEstimator):
         predictions stacked with the original features.
     extra_kwargs : dict or None, default None
         Any additional keyword arguments forwarded verbatim to
-        ``run_physics_prediction``.
+        ``run_physics_prediction`` (``backend="physics"``) or
+        ``run_neural_prediction`` (``backend="neural"``).
+    backend : {"physics", "neural"}, default "physics"
+        Prediction backend to use.
+
+        * ``"physics"`` — original electrophoresis engine (default, no
+          breaking changes).
+        * ``"neural"`` — neural engine: 3-layer MLP (256 → 128) with a
+          single-head feature-attention block (Stage 1 + 2).  The sklearn
+          API (fit / predict / score / cross_val_score) is identical; only
+          the inner prediction loop changes.  ``QuantileTransformer`` (A)
+          and ``PolynomialFeatures`` (C) are still applied as a front-end.
     """
 
     def __init__(
@@ -188,6 +200,8 @@ class PhysicsPredictor(BaseEstimator):
         # E – residual stacking
         residual_model: str | None = None,
         extra_kwargs: dict[str, Any] | None = None,
+        # Neural backend (Stage 1 + 2)
+        backend: str = "physics",
     ) -> None:
         self.plane = plane
         self.n_cycles = n_cycles
@@ -206,6 +220,7 @@ class PhysicsPredictor(BaseEstimator):
         self.bootstrap = bootstrap
         self.residual_model = residual_model
         self.extra_kwargs = extra_kwargs
+        self.backend = backend
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -349,8 +364,22 @@ class PhysicsPredictor(BaseEstimator):
         kwargs["random_seed"] = seed
 
         result: PredictionResult | None = None
+        backend = str(getattr(self, "backend", "physics")).lower().strip()
         try:
-            result = run_physics_prediction(combined, target_col="__target__", runtime_state=None, **kwargs)
+            if backend == "neural":
+                result = NeuralPhysicsEngine().run(
+                    combined,
+                    target_col="__target__",
+                    runtime_state=None,
+                    n_cycles=kwargs.get("n_cycles", int(self.n_cycles)),
+                    cycle_learning_rate=kwargs.get("cycle_learning_rate", float(self.cycle_learning_rate)),
+                    random_seed=seed,
+                    explicit_train_mask=explicit_mask,
+                    return_predictions=True,
+                    plane=kwargs.get("plane", _resolve_plane(self.plane)),
+                )
+            else:
+                result = run_physics_prediction(combined, target_col="__target__", runtime_state=None, **kwargs)
         except Exception:
             pass
 
@@ -441,13 +470,25 @@ class PhysicsPredictor(BaseEstimator):
 
         runtime = PredictorRuntimeState(metadata={"source": "PhysicsPredictor.fit"})
         fit_result: PredictionResult | None = None
+        backend = str(getattr(self, "backend", "physics")).lower().strip()
         try:
-            fit_result = run_physics_prediction(
-                fit_input.copy(),
-                target_col="__target__",
-                runtime_state=runtime,
-                **kwargs_fit,
-            )
+            if backend == "neural":
+                fit_result = NeuralPhysicsEngine().run(
+                    fit_input.copy(),
+                    target_col="__target__",
+                    runtime_state=runtime,
+                    n_cycles=n_cycles_fit,
+                    cycle_learning_rate=float(self.cycle_learning_rate),
+                    random_seed=int(self.random_seed),
+                    train_fraction=float(self.train_fraction),
+                )
+            else:
+                fit_result = run_physics_prediction(
+                    fit_input.copy(),
+                    target_col="__target__",
+                    runtime_state=runtime,
+                    **kwargs_fit,
+                )
         except Exception:
             pass
         self.runtime_state_: PredictorRuntimeState = runtime
@@ -649,6 +690,7 @@ class PhysicsPredictor(BaseEstimator):
             "bootstrap": self.bootstrap,
             "residual_model": self.residual_model,
             "extra_kwargs": self.extra_kwargs,
+            "backend": self.backend,
         }
 
     def set_params(self, **params: Any) -> "PhysicsPredictor":
