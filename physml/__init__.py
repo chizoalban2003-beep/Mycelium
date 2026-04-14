@@ -54,6 +54,13 @@ OnlineRLHF               Stage 45 — online RLHF loop (partial_fit on feedback)
 Specialist               Stage 46 — specialist agent descriptor.
 OrchestratorResult       Stage 46 — routing result from AgentOrchestrator.
 AgentOrchestrator        Stage 46 — multi-specialist routing coordinator.
+AutoMLOptimizer          Stage 47 — successive-halving hyperparameter search.
+ConformalClassifier      Stage 48 — split-conformal classifier (valid prediction sets).
+ConformalRegressor       Stage 48 — split-conformal regressor (valid prediction intervals).
+Explainer                Stage 49 — permutation-importance feature attribution.
+explain_agent            Stage 49 — convenience: fit Explainer from an agent.
+AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
+MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
 from physml.predictor import (
@@ -121,6 +128,21 @@ from physml.feedback import FeedbackBuffer, FeedbackItem, OnlineRLHF
 
 # Stage 46 — AgentOrchestrator
 from physml.orchestrator import Specialist, OrchestratorResult, AgentOrchestrator
+
+# Stage 47 — AutoMLOptimizer
+from physml.automl import AutoMLOptimizer
+
+# Stage 48 — Conformal Prediction
+from physml.conformal import ConformalClassifier, ConformalRegressor
+
+# Stage 49 — Explainability
+from physml.explainability import Explainer, explain_agent
+
+# Stage 50 — AgentCheckpoint
+from physml.checkpoint import AgentCheckpoint
+
+# Stage 51 — MetaLearner
+from physml.meta_learner import MetaLearner
 
 __all__ = [
     "PhysicsPlane",
@@ -198,4 +220,16 @@ __all__ = [
     "Specialist",
     "OrchestratorResult",
     "AgentOrchestrator",
+    # Stage 47 — AutoMLOptimizer
+    "AutoMLOptimizer",
+    # Stage 48 — Conformal Prediction
+    "ConformalClassifier",
+    "ConformalRegressor",
+    # Stage 49 — Explainability
+    "Explainer",
+    "explain_agent",
+    # Stage 50 — AgentCheckpoint
+    "AgentCheckpoint",
+    # Stage 51 — MetaLearner
+    "MetaLearner",
 ]

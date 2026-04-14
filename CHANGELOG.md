@@ -5,6 +5,59 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.0] — 2026-04-14
+
+### Added — Production Autonomous Agent (Stages 47–51)
+
+* **Stage 47 — AutoML hyperparameter optimizer** (`physml/automl.py`):
+  - `AutoMLOptimizer` uses successive-halving over a parameter grid
+    (backed by scikit-learn, no extra dependencies) to auto-tune
+    `CompetitiveEnsemblePredictor` or any sklearn-compatible estimator.
+  - `MyceliumAgent.self_improve()` gains an `auto_tune=True` flag that
+    triggers the optimizer and reports `best_automl_params` /
+    `best_automl_score` in the result dict.
+
+* **Stage 48 — Conformal prediction** (`physml/conformal.py`):
+  - `ConformalClassifier` — split-conformal wrapper; `calibrate()` computes
+    the 1 − α quantile of nonconformity scores; `predict_set()` returns
+    prediction *sets* with marginal coverage ≥ 1 − α.
+  - `ConformalRegressor` — same idea for regression; `predict_interval()`
+    returns symmetric `[ŷ − q̂, ŷ + q̂]` intervals.
+  - `coverage()` and `set_sizes()` / `interval_widths()` diagnostic helpers.
+  - Zero extra dependencies (pure numpy + sklearn).
+
+* **Stage 49 — Explainability** (`physml/explainability.py`):
+  - `Explainer` computes feature importance via:
+    1. `feature_importances_` (tree-based models), or
+    2. absolute `coef_` (linear models), or
+    3. permutation importance fallback (model-agnostic, `n_repeats` shuffles).
+  - `top_features(k)` and `report()` public API.
+  - `explain_agent(agent, X_val, y_val)` convenience function.
+
+* **Stage 50 — Agent checkpointing** (`physml/checkpoint.py`):
+  - `AgentCheckpoint.save(agent, path)` — joblib-based full-agent
+    serialization with gzip compression; stores a manifest with version,
+    timestamp, and observation count.
+  - `AgentCheckpoint.load(path)` — validates version and returns a
+    ready-to-use agent.
+  - `AgentCheckpoint.inspect(path)` — reads metadata only (no full
+    deserialization).
+  - `save_bytes` / `load_bytes` for in-memory (no file I/O) round-trips.
+
+* **Stage 51 — Meta-learner strategy selector** (`physml/meta_learner.py`):
+  - `MetaLearner` accumulates `(dataset_profile, config, score)` entries
+    across tasks and recommends the best `(query_strategy, policy)` pair
+    for a new dataset via cosine-similarity weighted kNN lookup.
+  - 5-D dataset profile: log-size, log-dimensionality, class balance,
+    mean feature correlation, normalised target variance.
+  - Recency-decay weighting; falls back to hard-coded default when history
+    is insufficient.
+
+### Tests
+* `tests/test_stages_47_51.py` — 49 tests covering all new functionality.
+
+---
+
 ## [0.14.0] — 2026-04-14
 
 ### Added — Competitive Autonomous Agent (Stages 42–46)

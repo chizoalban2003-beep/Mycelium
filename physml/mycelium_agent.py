@@ -651,6 +651,7 @@ class MyceliumAgent:
         *,
         aggressive: bool = False,
         target_accuracy: float = 0.80,
+        auto_tune: bool = False,
     ) -> dict:
         """Auto-tune agent and retrain on high-reward memory episodes.
 
@@ -667,6 +668,9 @@ class MyceliumAgent:
         * When ``_memory`` is attached and accuracy < *target_accuracy*,
           runs ``partial_fit`` on the high-reward subset of memory episodes
           (Stage 42 improvement over pure threshold adjustment).
+        * When *auto_tune* is ``True``, runs the Stage 47
+          :class:`~physml.automl.AutoMLOptimizer` on ``(X_test, y_test)``
+          and updates the ensemble predictor with the best found params.
 
         Parameters
         ----------
@@ -676,12 +680,15 @@ class MyceliumAgent:
             Reset the homeostasis window for rapid re-adaptation.
         target_accuracy : float, default 0.80
             Accuracy threshold below which memory-driven retraining fires.
+        auto_tune : bool, default False
+            Run AutoML hyperparameter search (Stage 47) and apply best params.
 
         Returns
         -------
         dict
             Self-evaluation metrics plus ``threshold_before``,
-            ``threshold_after``, and ``episodes_retrained`` keys.
+            ``threshold_after``, ``episodes_retrained``, and optionally
+            ``best_automl_params`` keys.
         """
         metrics = self.self_evaluate(X_test, y_test)
         threshold_before = self.uncertainty_threshold
@@ -710,6 +717,19 @@ class MyceliumAgent:
         # Stage 42 — actual model retraining on high-reward memory episodes
         if self._memory is not None and acc < target_accuracy:
             episodes_retrained = self._retrain_from_memory()
+
+        # Stage 47 — AutoML hyper-parameter search
+        if auto_tune:
+            from physml.automl import AutoMLOptimizer
+            try:
+                X_arr = np.asarray(X_test, dtype=float)
+                y_arr = np.asarray(y_test)
+                opt = AutoMLOptimizer(n_candidates=6, cv=3, random_state=42)
+                best_params = opt.fit(X_arr, y_arr)
+                metrics["best_automl_params"] = best_params
+                metrics["best_automl_score"] = round(opt.best_score_, 4)
+            except Exception:
+                metrics["best_automl_params"] = {}
 
         metrics["threshold_before"] = round(threshold_before, 4)
         metrics["threshold_after"] = round(new_threshold, 4)
