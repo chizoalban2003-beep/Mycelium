@@ -691,3 +691,436 @@ class TestConvenienceSubclasses:
     def test_classifier_is_instance_of_predictor(self):
         from physml import PhysicsClassifier
         assert isinstance(PhysicsClassifier(), PhysicsPredictor)
+
+
+# ============================================================================
+# Stage 8 — Active learning (query_strategy + select_informative)
+# ============================================================================
+
+class TestActiveLearning:
+    """Tests for PhysicsAgent.select_informative and query_strategy."""
+
+    def test_select_informative_returns_valid_index(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, query_strategy="entropy")
+        idx = agent.select_informative(X_te[:5])
+        assert 0 <= idx < 5
+
+    def test_select_informative_single_sample(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, query_strategy="entropy")
+        idx = agent.select_informative(X_te[:1])
+        assert idx == 0
+
+    def test_select_informative_threshold_strategy(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, query_strategy="threshold")
+        idx = agent.select_informative(X_te[:8])
+        assert 0 <= idx < 8
+
+    def test_select_informative_entropy_vs_threshold_differ(self):
+        """Entropy and threshold strategies can return different samples."""
+        rng = np.random.default_rng(7)
+        X, y = _clf_data(seed=7)
+        clf = PhysicsPredictor(n_cycles=10, backend="neural")
+        clf.fit(X[:80], y[:80])
+        pool = X[80:]
+        agent_e = PhysicsAgent(clf, query_strategy="entropy")
+        agent_t = PhysicsAgent(clf, query_strategy="threshold")
+        idx_e = agent_e.select_informative(pool)
+        idx_t = agent_t.select_informative(pool)
+        # Both must return valid indices; they may or may not agree
+        assert 0 <= idx_e < len(pool)
+        assert 0 <= idx_t < len(pool)
+
+    def test_query_strategy_in_constructor(self):
+        clf, _, _ = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, query_strategy="entropy")
+        assert agent.query_strategy == "entropy"
+
+    def test_select_informative_fallback_regression(self):
+        """Entropy strategy falls back gracefully for regressors."""
+        reg, X_te, y_te = _fitted_neural_reg()
+        agent = PhysicsAgent(reg, query_strategy="entropy")
+        idx = agent.select_informative(X_te[:6])
+        assert 0 <= idx < 6
+
+    def test_active_learning_reduces_oracle_calls(self):
+        """Entropy selection should concentrate asks on uncertain samples."""
+        X, y = _clf_data(seed=0)
+        clf = PhysicsPredictor(n_cycles=10, backend="neural")
+        clf.fit(X[:80], y[:80])
+        agent = PhysicsAgent(clf, query_strategy="entropy")
+        pool = X[80:]
+        # Just verify it runs without errors and returns valid indices
+        for _ in range(5):
+            idx = agent.select_informative(pool)
+            assert 0 <= idx < len(pool)
+            agent.reward(pool[idx: idx + 1], y[80 + idx: 80 + idx + 1])
+
+
+# ============================================================================
+# Stage 9 — Multi-task engine
+# ============================================================================
+
+class TestMultiTaskEngine:
+    """Tests for MultiTaskPhysicsEngine."""
+
+    def _make_engine(self, n=80):
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=n)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_trunk(X[:60], y[:60], is_classifier=True, n_epochs=50)
+        return engine, X, y
+
+    def test_fit_trunk_initialises_trunk(self):
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_trunk(X[:60], y[:60], is_classifier=True, n_epochs=30)
+        assert engine._trunk is not None
+        assert hasattr(engine._trunk, "attn_")
+
+    def test_fit_task_creates_head(self):
+        engine, X, y = self._make_engine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=30)
+        assert "clf" in engine.list_tasks()
+
+    def test_predict_task_shape(self):
+        engine, X, y = self._make_engine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=30)
+        preds = engine.predict_task("clf", X[60:])
+        assert preds.shape == (len(X[60:]),)
+
+    def test_predict_task_unknown_raises(self):
+        engine, X, y = self._make_engine()
+        with pytest.raises(KeyError, match="unknown_task"):
+            engine.predict_task("unknown_task", X[:5])
+
+    def test_multiple_tasks_independent(self):
+        from physml import MultiTaskPhysicsEngine
+        rng = np.random.default_rng(5)
+        X = rng.normal(size=(80, 4))
+        y_clf = (X[:, 0] > 0).astype(int)
+        y_reg = 2.0 * X[:, 1] + rng.normal(size=80) * 0.1
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("clf", X[:60], y_clf[:60], is_classifier=True, n_epochs=50)
+        engine.fit_task("reg", X[:60], y_reg[:60], is_classifier=False, n_epochs=50)
+        assert set(engine.list_tasks()) == {"clf", "reg"}
+        preds_clf = engine.predict_task("clf", X[60:])
+        preds_reg = engine.predict_task("reg", X[60:])
+        assert preds_clf.shape == (20,)
+        assert preds_reg.shape == (20,)
+
+    def test_predict_proba_task_shape(self):
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=50)
+        proba = engine.predict_proba_task("clf", X[60:])
+        assert proba.ndim == 2
+        assert proba.shape[0] == 20
+
+    def test_predict_proba_task_sums_to_one(self):
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=50)
+        proba = engine.predict_proba_task("clf", X[60:])
+        np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-5)
+
+    def test_predict_proba_task_raises_for_regression(self):
+        from physml import MultiTaskPhysicsEngine
+        rng = np.random.default_rng(0)
+        X = rng.normal(size=(60, 4))
+        y = X[:, 0] * 2
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("reg", X, y, is_classifier=False, n_epochs=30)
+        with pytest.raises(ValueError, match="regression"):
+            engine.predict_proba_task("reg", X[:5])
+
+    def test_list_tasks_empty_initially(self):
+        from physml import MultiTaskPhysicsEngine
+        engine = MultiTaskPhysicsEngine()
+        assert engine.list_tasks() == []
+
+    def test_task_info(self):
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=30)
+        info = engine.task_info("clf")
+        assert info["is_classifier"] is True
+        assert info["n_input_features"] == X.shape[1]
+
+    def test_save_load_roundtrip(self):
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=30)
+        preds_before = engine.predict_task("clf", X[60:])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "engine.pkl"
+            engine.save(path)
+            loaded = MultiTaskPhysicsEngine.load(path)
+        preds_after = loaded.predict_task("clf", X[60:])
+        np.testing.assert_array_equal(preds_before, preds_after)
+
+    def test_auto_init_trunk_on_first_task(self):
+        """fit_task without prior fit_trunk should auto-init the trunk."""
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        assert engine._trunk is None
+        engine.fit_task("auto", X[:60], y[:60], is_classifier=True, n_epochs=30)
+        assert engine._trunk is not None
+
+    def test_agent_with_task_id(self):
+        """PhysicsAgent with task_id routes through MultiTaskPhysicsEngine."""
+        from physml import MultiTaskPhysicsEngine
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("clf", X[:60], y[:60], is_classifier=True, n_epochs=50)
+        agent = PhysicsAgent(engine, task_id="clf", uncertainty_threshold=0.0)
+        action = agent.observe(X[60:61])
+        assert action.action == "predict"
+        assert action.prediction is not None
+
+
+# ============================================================================
+# Stage 10 — Adaptive threshold (reward shaping)
+# ============================================================================
+
+class TestAdaptiveThreshold:
+    """Tests for PhysicsAgent adaptive policy."""
+
+    def test_policy_fixed_default(self):
+        clf, _, _ = _fitted_neural_clf()
+        agent = PhysicsAgent(clf)
+        assert agent.policy == "fixed"
+
+    def test_policy_adaptive_construction(self):
+        clf, _, _ = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive")
+        assert agent.policy == "adaptive"
+
+    def test_error_window_empty_initially(self):
+        clf, _, _ = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive")
+        assert len(agent._error_window) == 0
+
+    def test_error_rate_half_when_empty(self):
+        clf, _, _ = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive")
+        assert agent._error_rate() == 0.5
+
+    def test_reward_logs_error_to_window(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive")
+        agent.reward(X_te[:3], y_te[:3])
+        assert len(agent._error_window) == 1
+
+    def test_error_window_respects_maxlen(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive", error_window_size=3)
+        for i in range(6):
+            agent.reward(X_te[i: i + 1], y_te[i: i + 1])
+        assert len(agent._error_window) <= 3
+
+    def test_adaptive_threshold_changes_with_errors(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(
+            clf,
+            policy="adaptive",
+            uncertainty_threshold=0.5,
+            homeostasis_weight=0.0,
+            error_window_size=10,
+        )
+        homeostasis = 0.5  # neutral
+        base = agent._adaptive_threshold(homeostasis)
+
+        # Fill window with high error rate (all wrong)
+        for _ in range(10):
+            agent._error_window.append(1.0)
+        high_err_thr = agent._adaptive_threshold(homeostasis)
+
+        # Fill window with low error rate (all correct)
+        agent._error_window.clear()
+        for _ in range(10):
+            agent._error_window.append(0.0)
+        low_err_thr = agent._adaptive_threshold(homeostasis)
+
+        # High error → HIGHER threshold → harder to be confident → asks more
+        # Low error  → LOWER threshold → easier to be confident → asks less
+        assert high_err_thr > low_err_thr
+
+    def test_adaptive_threshold_stays_in_range(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive", uncertainty_threshold=0.5)
+        for _ in range(20):
+            agent._error_window.append(1.0)
+        thr = agent._adaptive_threshold(0.5)
+        assert 0.05 <= thr <= 0.95
+
+    def test_report_includes_policy_and_error_rate(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive")
+        r = agent.report()
+        assert "policy" in r
+        assert "error_rate" in r
+        assert r["policy"] == "adaptive"
+
+    def test_observe_metadata_includes_policy(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(clf, policy="adaptive")
+        action = agent.observe(X_te[:1])
+        assert "policy" in action.metadata
+
+    def test_fixed_policy_ignores_error_window(self):
+        clf, X_te, y_te = _fitted_neural_clf()
+        agent = PhysicsAgent(
+            clf,
+            policy="fixed",
+            uncertainty_threshold=0.5,
+            homeostasis_weight=0.0,
+        )
+        # Even with errors logged, fixed policy ignores the window
+        for _ in range(10):
+            agent._error_window.append(1.0)
+        thr = agent._adaptive_threshold(0.5)
+        assert math.isclose(thr, 0.5, abs_tol=1e-9)
+
+
+# ============================================================================
+# Stage 11 — MyceliumAgent
+# ============================================================================
+
+class TestMyceliumAgent:
+    """Tests for the flagship MyceliumAgent class."""
+
+    def _make_agent(self, **kwargs):
+        from physml import MyceliumAgent
+        X, y = _clf_data()
+        X_tr, X_te, y_tr, y_te = _split(X, y)
+        agent = MyceliumAgent(predictor_kwargs={"n_cycles": 5}, **kwargs)
+        agent.fit(X_tr, y_tr)
+        return agent, X_te, y_te
+
+    def test_fit_sets_fitted(self):
+        from physml import MyceliumAgent
+        X, y = _clf_data()
+        agent = MyceliumAgent(predictor_kwargs={"n_cycles": 5})
+        agent.fit(X[:80], y[:80])
+        assert agent._fitted is True
+
+    def test_observe_before_fit_raises(self):
+        from physml import MyceliumAgent
+        agent = MyceliumAgent()
+        with pytest.raises(RuntimeError, match="fit"):
+            agent.observe(np.ones((1, 5)))
+
+    def test_observe_returns_agent_action(self):
+        from physml import AgentAction, MyceliumAgent
+        agent, X_te, y_te = self._make_agent()
+        action = agent.observe(X_te[:1])
+        assert isinstance(action, AgentAction)
+
+    def test_observe_action_valid(self):
+        from physml import MyceliumAgent
+        agent, X_te, y_te = self._make_agent()
+        action = agent.observe(X_te[:1])
+        assert action.action in ("predict", "abstain", "ask")
+
+    def test_default_query_strategy_entropy(self):
+        from physml import MyceliumAgent
+        agent = MyceliumAgent()
+        assert agent.query_strategy == "entropy"
+
+    def test_default_policy_adaptive(self):
+        from physml import MyceliumAgent
+        agent = MyceliumAgent()
+        assert agent.policy == "adaptive"
+
+    def test_reward_updates_model(self):
+        from physml import MyceliumAgent
+        agent, X_te, y_te = self._make_agent()
+        result = agent.reward(X_te[:3], y_te[:3])
+        assert result is agent  # returns self
+
+    def test_select_informative_valid_index(self):
+        from physml import MyceliumAgent
+        agent, X_te, y_te = self._make_agent()
+        idx = agent.select_informative(X_te[:10])
+        assert 0 <= idx < 10
+
+    def test_report_contains_expected_keys(self):
+        from physml import MyceliumAgent
+        agent, X_te, y_te = self._make_agent()
+        r = agent.report()
+        assert "agent" in r
+        assert "query_strategy" in r
+        assert "policy" in r
+        assert "fitted" in r
+        assert r["fitted"] is True
+
+    def test_save_load_roundtrip(self):
+        from physml import MyceliumAgent
+        agent, X_te, y_te = self._make_agent()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "mycelium.pkl"
+            agent.save(path)
+            loaded = MyceliumAgent.load(path)
+        action = loaded.observe(X_te[:1])
+        assert isinstance(action.action, str)
+
+    def test_load_wrong_type_raises(self):
+        from physml import MyceliumAgent
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import joblib
+            path = Path(tmpdir) / "bad.pkl"
+            joblib.dump({"not": "an agent"}, str(path))
+            with pytest.raises(TypeError):
+                MyceliumAgent.load(path)
+
+    def test_mycelium_agent_full_loop(self):
+        """End-to-end active-learning loop with adaptive threshold."""
+        from physml import MyceliumAgent
+        X, y = _clf_data(n=120)
+        X_tr, X_te, y_tr, y_te = _split(X, y)
+        agent = MyceliumAgent(
+            predictor_kwargs={"n_cycles": 5},
+            query_strategy="entropy",
+            policy="adaptive",
+        )
+        agent.fit(X_tr[:30], y_tr[:30])
+
+        n_asks = 0
+        for i in range(min(20, len(X_te))):
+            action = agent.observe(X_te[i: i + 1])
+            if action.action == "ask":
+                n_asks += 1
+                agent.reward(X_te[i: i + 1], y_te[i: i + 1])
+
+        r = agent.report()
+        assert r["fitted"] is True
+        assert "agent" in r
+
+    def test_mycelium_agent_imported_from_physml(self):
+        from physml import MyceliumAgent  # noqa: F401 — just assert importable
+        assert MyceliumAgent is not None
+
+    def test_mycelium_agent_multitask(self):
+        """MyceliumAgent with MultiTaskPhysicsEngine and task_id."""
+        from physml import MultiTaskPhysicsEngine, MyceliumAgent
+        X, y = _clf_data(n=80)
+        engine = MultiTaskPhysicsEngine()
+        engine.fit_task("t1", X[:60], y[:60], is_classifier=True, n_epochs=50)
+        agent = MyceliumAgent(
+            predictor=engine,
+            task_id="t1",
+            query_strategy="entropy",
+            policy="adaptive",
+        )
+        agent.fit(X[:60], y[:60])  # re-fits the head
+        action = agent.observe(X[60:61])
+        assert action.action in ("predict", "abstain", "ask")

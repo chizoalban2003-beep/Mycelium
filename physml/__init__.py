@@ -19,6 +19,9 @@ NeuralPhysicsEngine      MLP + feature-attention backend (Stage 1–3).
 PhysicsAgent             Autonomous observe/reward/adapt loop (Stage 4).
 DataStream               Mini-batch streaming for big data (Stage 5).
 PhysicsAgentSession      User-facing stateful session API (Stage 7).
+MultiTaskPhysicsEngine   Shared-trunk multi-task engine (Stage 9).
+MyceliumAgent            Flagship autonomous agent — the project's top-level
+                         branded class combining Stages 8–11.
 """
 
 from physml.predictor import (
@@ -48,6 +51,8 @@ from physml.estimator import PhysicsPredictor, PhysicsRegressor, PhysicsClassifi
 from physml.neural_engine import NeuralPhysicsEngine, run_neural_prediction
 from physml.agent import AgentAction, DataStream, PhysicsAgent
 from physml.agent_api import PhysicsAgentSession
+from physml.multitask_engine import MultiTaskPhysicsEngine
+from physml.mycelium_agent import MyceliumAgent
 
 __all__ = [
     "PhysicsPlane",
@@ -82,4 +87,8 @@ __all__ = [
     "DataStream",
     # Stage 7
     "PhysicsAgentSession",
+    # Stage 9
+    "MultiTaskPhysicsEngine",
+    # Stage 11 — flagship class
+    "MyceliumAgent",
 ]
