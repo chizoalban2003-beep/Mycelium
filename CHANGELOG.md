@@ -5,6 +5,46 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.17.0] — 2026-04-14
+
+### Added — Knowledge Graph, Reward Shaping, Curriculum Learning, Synthetic Data & Uncertainty (Stages 57–61)
+
+* **Stage 57 — KnowledgeGraph** (`physml/knowledge_graph.py`):
+  - `KnowledgeNode`: typed node with name, node_type, and free-form payload.
+  - `KnowledgeGraph`: directed (or undirected) graph with add/query/path-finding
+    API, BFS shortest-path, reachability, serialisation to/from dict.
+
+* **Stage 58 — RewardShaper** (`physml/reward_shaper.py`):
+  - `RewardShaper`: transforms raw rewards with clipping, Z-normalisation
+    (Welford online algorithm), potential-based shaping (Φ(s')−γΦ(s)), and
+    curiosity bonus proportional to prediction error.
+
+* **Stage 59 — CurriculumScheduler** (`physml/curriculum.py`):
+  - `CurriculumScheduler`: progresses training difficulty from easy to hard.
+    Supports `"linear"`, `"cosine"`, `"step"` (milestone-based), and
+    `"adaptive"` (accuracy-gated) strategies.  `filter_by_difficulty()`
+    generates boolean masks for dataset subsetting.
+
+* **Stage 60 — SyntheticDataGenerator** (`physml/synthetic_data.py`):
+  - `SyntheticDataGenerator`: generates labelled tabular data using Gaussian
+    mixtures, half-moons, blobs, or linear regression.  `augment()` adds
+    Gaussian-perturbed copies to existing datasets.
+
+* **Stage 61 — UncertaintyEstimator** (`physml/uncertainty.py`):
+  - `UncertaintyEstimator`: quantifies predictive uncertainty via ensemble
+    disagreement, temperature scaling, Monte-Carlo dropout, or Laplace
+    approximation. Provides entropy-based `uncertainty()`, `most_uncertain()`,
+    and `aleatoric_epistemic_split()`.
+
+### Fixed
+
+* **AutoMLOptimizer** (`physml/automl.py`): changed default CV estimator from
+  `CompetitiveEnsemblePredictor` to `LogisticRegression` so that test suites
+  run in seconds rather than minutes.  A `_CEP_PARAM_GRID` constant is
+  exported for callers that still want to tune CEP explicitly.
+
+---
+
 ## [0.16.0] — 2026-04-14
 
 ### Added — Replay, Scheduling, Anomaly Detection, Multi-Objective & Profiling (Stages 52–56)

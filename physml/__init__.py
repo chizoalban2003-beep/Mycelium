@@ -165,6 +165,21 @@ from physml.multiobjective import MultiObjectiveOptimizer, Solution
 # Stage 56 — AgentProfiler
 from physml.profiler import AgentProfiler, ProfileEntry
 
+# Stage 57 — KnowledgeGraph
+from physml.knowledge_graph import KnowledgeGraph, KnowledgeNode
+
+# Stage 58 — RewardShaper
+from physml.reward_shaper import RewardShaper
+
+# Stage 59 — CurriculumScheduler
+from physml.curriculum import CurriculumScheduler
+
+# Stage 60 — SyntheticDataGenerator
+from physml.synthetic_data import SyntheticDataGenerator
+
+# Stage 61 — UncertaintyEstimator
+from physml.uncertainty import UncertaintyEstimator
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -272,4 +287,15 @@ __all__ = [
     # Stage 56 — AgentProfiler
     "AgentProfiler",
     "ProfileEntry",
+    # Stage 57 — KnowledgeGraph
+    "KnowledgeGraph",
+    "KnowledgeNode",
+    # Stage 58 — RewardShaper
+    "RewardShaper",
+    # Stage 59 — CurriculumScheduler
+    "CurriculumScheduler",
+    # Stage 60 — SyntheticDataGenerator
+    "SyntheticDataGenerator",
+    # Stage 61 — UncertaintyEstimator
+    "UncertaintyEstimator",
 ]
