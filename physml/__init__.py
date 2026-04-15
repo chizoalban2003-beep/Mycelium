@@ -180,6 +180,27 @@ from physml.synthetic_data import SyntheticDataGenerator
 # Stage 61 — UncertaintyEstimator
 from physml.uncertainty import UncertaintyEstimator
 
+# Stage 62 — WorldModel
+from physml.world_model import WorldModel
+
+# Stage 63 — IntrinsicMotivation
+from physml.intrinsic import IntrinsicMotivation
+
+# Stage 64 — CompetitiveArena
+from physml.arena import CompetitiveArena, ArenaResult
+
+# Stage 65 — GoalConditionedPolicy
+from physml.goal_policy import GoalSpec, GoalConditionedPolicy
+
+# Stage 66 — SafetyMonitor
+from physml.safety import SafetyConstraint, SafetyViolation, SafetyMonitor
+
+# Stage 67 — AutonomousAgent (full integration)
+from physml.autonomous_agent import AutonomousAgent
+
+# Stage 68 — CompetitiveReport
+from physml.competitive_report import CompetitiveReport
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -298,4 +319,22 @@ __all__ = [
     "SyntheticDataGenerator",
     # Stage 61 — UncertaintyEstimator
     "UncertaintyEstimator",
+    # Stage 62 — WorldModel
+    "WorldModel",
+    # Stage 63 — IntrinsicMotivation
+    "IntrinsicMotivation",
+    # Stage 64 — CompetitiveArena
+    "CompetitiveArena",
+    "ArenaResult",
+    # Stage 65 — GoalConditionedPolicy
+    "GoalSpec",
+    "GoalConditionedPolicy",
+    # Stage 66 — SafetyMonitor
+    "SafetyConstraint",
+    "SafetyViolation",
+    "SafetyMonitor",
+    # Stage 67 — AutonomousAgent
+    "AutonomousAgent",
+    # Stage 68 — CompetitiveReport
+    "CompetitiveReport",
 ]
