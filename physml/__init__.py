@@ -241,6 +241,21 @@ from physml.experiment_tracker import ExperimentTracker, Run
 # Stage 79 — ModelDistillery (knowledge distillation)
 from physml.model_distillery import ModelDistillery, DistillationResult
 
+# Stage 80 — ActiveLearner (uncertainty-based active learning)
+from physml.active_learner import ActiveLearner, QueryResult
+
+# Stage 81 — FeatureEngineer (automated feature engineering)
+from physml.feature_engineer import FeatureEngineer, EngineeredFeatures
+
+# Stage 82 — ImbalancedHandler (class-imbalance mitigation)
+from physml.imbalanced import ImbalancedHandler, ImbalanceReport
+
+# Stage 83 — OnlineEvaluator (sliding-window incremental evaluation)
+from physml.online_evaluator import OnlineEvaluator, EvalWindow
+
+# Stage 84 — ModelZoo (curated model preset registry)
+from physml.model_zoo import ModelZoo, ZooEntry
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -407,4 +422,19 @@ __all__ = [
     # Stage 79 — ModelDistillery
     "ModelDistillery",
     "DistillationResult",
+    # Stage 80 — ActiveLearner
+    "ActiveLearner",
+    "QueryResult",
+    # Stage 81 — FeatureEngineer
+    "FeatureEngineer",
+    "EngineeredFeatures",
+    # Stage 82 — ImbalancedHandler
+    "ImbalancedHandler",
+    "ImbalanceReport",
+    # Stage 83 — OnlineEvaluator
+    "OnlineEvaluator",
+    "EvalWindow",
+    # Stage 84 — ModelZoo
+    "ModelZoo",
+    "ZooEntry",
 ]
