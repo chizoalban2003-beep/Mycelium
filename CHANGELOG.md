@@ -5,6 +5,33 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.19.0] — 2026-04-15
+
+### Added — Stage 69: LifelongLearner (Continuous Self-Improvement Loop)
+
+This release closes the autonomous loop: **Mycelium is now a fully
+autonomous, continuously self-improving competitive agent**.  The
+`LifelongLearner` wraps any agent (MyceliumAgent, AutonomousAgent, or plain
+sklearn estimator) in a chunk-based streaming pipeline that periodically
+self-evaluates and triggers retraining whenever performance dips — no human
+intervention required.
+
+* **Stage 69 — LifelongLearner** (`physml/lifelong.py`):
+  - `LifelongLearner`: processes data in configurable chunks; maintains a
+    rolling validation window; fires `self_improve()` (or falls back to
+    `fit()`) when accuracy drops below `improvement_threshold`.
+  - `RoundResult`: per-round snapshot (accuracy, improvement flag, delta,
+    samples seen, wall-clock time) with `as_dict()` for JSON export.
+  - `competitive_report(X_test, y_test)` convenience method runs a
+    `CompetitiveReport` (Stage 68) after all rounds complete.
+  - `step(X_chunk, y_chunk)` external streaming API for online use.
+  - `summary()` returns high-level telemetry (initial/final/peak accuracy,
+    improvement count, samples seen).
+  - Compatible with `MyceliumAgent`, `AutonomousAgent`, and any sklearn
+    estimator exposing `fit` + `predict`.
+
+---
+
 ## [0.18.0] — 2026-04-14
 
 ### Added — Full Competitive Autonomous Agent (Stages 62–68)

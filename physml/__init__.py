@@ -45,6 +45,8 @@ self_evaluate            Stage 39 — held-out accuracy/calibration self-evaluat
 self_improve             Stage 40 — auto-tune threshold based on self-eval (method on MyceliumAgent).
 introspect               Stage 41 — rich internal-state summary (method on MyceliumAgent).
 Stage 42 — bug fixes: O(1) memory eviction, no double inference, real partial_fit in self_improve.
+LifelongLearner          Stage 69 — continuous self-improvement loop (chunk-based streaming,
+                         auto self-improve when accuracy dips, competitive report on demand).
 ToolSpec                 Stage 44 — JSON-schema tool specification.
 ToolCall                 Stage 44 — structured tool call result.
 ToolPlanner              Stage 44 — embedding + memory-based tool selection.
@@ -201,6 +203,9 @@ from physml.autonomous_agent import AutonomousAgent
 # Stage 68 — CompetitiveReport
 from physml.competitive_report import CompetitiveReport
 
+# Stage 69 — LifelongLearner (continuous self-improvement loop)
+from physml.lifelong import LifelongLearner, RoundResult
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -337,4 +342,7 @@ __all__ = [
     "AutonomousAgent",
     # Stage 68 — CompetitiveReport
     "CompetitiveReport",
+    # Stage 69 — LifelongLearner
+    "LifelongLearner",
+    "RoundResult",
 ]
