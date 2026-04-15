@@ -209,6 +209,32 @@ class MyceliumAgent:
         self._last_action_str = str(getattr(action, "action", "predict"))
         return action
 
+    def predict(self, X: Any) -> np.ndarray:
+        """Batch predict class labels (classification) or target values (regression).
+
+        Delegates to the underlying predictor's ``predict`` method when
+        available; otherwise falls back to ``argmax`` over ``predict_proba``.
+
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+
+        Returns
+        -------
+        y_pred : ndarray of shape (n_samples,)
+        """
+        self._require_fitted()
+        predictor = self._predictor
+        if self.task_id is not None:
+            # Multi-task: use predict_task if available
+            if hasattr(predictor, "predict_task"):
+                return np.asarray(predictor.predict_task(self.task_id, X))
+        if hasattr(predictor, "predict"):
+            return np.asarray(predictor.predict(X))
+        # Fallback: argmax over predict_proba (classification)
+        proba = np.asarray(self._predictor.predict_proba(X))
+        return np.argmax(proba, axis=1)
+
     def select_informative(self, X_pool: Any) -> int:
         """Return the index of the most informative sample in *X_pool*.
 

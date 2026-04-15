@@ -256,6 +256,21 @@ from physml.online_evaluator import OnlineEvaluator, EvalWindow
 # Stage 84 — ModelZoo (curated model preset registry)
 from physml.model_zoo import ModelZoo, ZooEntry
 
+# Stage 85 — GraphLearner (sparse feature-correlation graph)
+from physml.graph_learner import GraphLearner, GraphResult
+
+# Stage 86 — ClusterEngine (KMeans unsupervised clustering)
+from physml.cluster_engine import ClusterEngine, ClusterReport
+
+# Stage 87 — BandpassFilter (variance-band feature filtering)
+from physml.bandpass_filter import BandpassFilter, FilterResult
+
+# Stage 88 — DataValidator (data quality checks)
+from physml.data_validator import DataValidator, ValidationReport
+
+# Stage 89 — PipelineBuilder (sklearn Pipeline factory)
+from physml.pipeline_builder import PipelineBuilder, PipelineStep
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -437,4 +452,19 @@ __all__ = [
     # Stage 84 — ModelZoo
     "ModelZoo",
     "ZooEntry",
+    # Stage 85 — GraphLearner
+    "GraphLearner",
+    "GraphResult",
+    # Stage 86 — ClusterEngine
+    "ClusterEngine",
+    "ClusterReport",
+    # Stage 87 — BandpassFilter
+    "BandpassFilter",
+    "FilterResult",
+    # Stage 88 — DataValidator
+    "DataValidator",
+    "ValidationReport",
+    # Stage 89 — PipelineBuilder
+    "PipelineBuilder",
+    "PipelineStep",
 ]
