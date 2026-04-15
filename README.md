@@ -1,9 +1,209 @@
-# Mycelium / PhysML — Physics-Inspired Autonomous Machine Learning
+# 🍄 Mycelium — Your Personal AI Assistant
 
 [![CI](https://github.com/chizoalban2003-beep/Mycelium/actions/workflows/ci.yml/badge.svg)](https://github.com/chizoalban2003-beep/Mycelium/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/physml.svg)](https://pypi.org/project/physml/)
 [![Python](https://img.shields.io/pypi/pyversions/physml.svg)](https://pypi.org/project/physml/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+> **Mycelium is an AI that learns *you*.** It runs on your own device, adapts to your habits and preferences, and gets smarter every day — without sending your data to the cloud.
+
+---
+
+## 👋 What is Mycelium?
+
+Mycelium is a **personal AI assistant** that lives on your device and grows with you. Like the mycelium fungus that quietly connects and nourishes a forest, this assistant works in the background — learning your patterns, predicting what you need, and helping you make better decisions every day.
+
+Unlike cloud-based assistants that send everything to remote servers, **Mycelium runs locally on your device**. Your data stays yours.
+
+---
+
+## ✨ What Can It Do For You?
+
+| I want to… | Mycelium can… |
+|---|---|
+| 🗂️ Sort and prioritise my tasks | Learn which tasks matter most to you and surface them at the right time |
+| 📊 Understand my own data | Analyse spreadsheets, habits, finances — no coding needed |
+| 🔮 Predict outcomes | Forecast trends in your personal data (budget, fitness, schedule) |
+| 🤔 Make smarter decisions | Ask it a question; it reasons from *your* history, not a generic answer |
+| 🔄 Keep getting better | It improves continuously — the longer you use it, the smarter it gets |
+| 🔒 Stay private | Everything processed on your device; nothing leaves without your permission |
+
+---
+
+## 🚀 Getting Started in 3 Steps
+
+### Step 1 — Install
+
+```bash
+pip install physml
+```
+
+> **Need Python?** Download it free from [python.org](https://www.python.org/downloads/). Python 3.10 or newer is required.
+
+### Step 2 — Meet Your Assistant
+
+```python
+from physml import myco
+
+# Create your personal assistant
+assistant = myco()
+```
+
+### Step 3 — Teach It, Then Let It Help
+
+```python
+import numpy as np
+
+# Feed it some examples from your life (e.g., daily data)
+# X = your input data, y = the outcome you care about
+assistant.fit(X_examples, y_outcomes)
+
+# Now let it watch and learn from new data
+for new_data_point in your_daily_stream:
+    action = assistant.observe(new_data_point)
+
+    if action.action == "ask":
+        # It's unsure — you give it feedback
+        assistant.reward(new_data_point, correct_answer)
+    else:
+        # It's confident — use its prediction
+        print("Mycelium says:", action.prediction)
+```
+
+**That's it.** Mycelium only asks for your input when it genuinely doesn't know — saving you time while getting smarter from your feedback.
+
+---
+
+## 🧠 How Does It Learn?
+
+Mycelium uses a technique inspired by how nature processes information — specifically how charged particles move through a gel (called *electrophoresis*). In plain English:
+
+- It figures out which pieces of your data actually matter
+- It ignores noise and redundant information automatically
+- It keeps a **memory** of what it has learned so it never forgets
+- It **self-heals** when something changes in your environment
+- It can run **100 different intelligent modules** simultaneously, from planning ahead to reflecting on past decisions
+
+You don't need to understand any of this. It just works — and it gets better the more you use it.
+
+---
+
+## 💾 Save Your Assistant and Pick Up Where You Left Off
+
+Your personalised assistant can be saved to your device and restored any time:
+
+```python
+# Save
+assistant.save("my_assistant.pkl")
+
+# Later — restore exactly where you left off
+assistant = myco.load("my_assistant.pkl")
+```
+
+---
+
+## 🖥️ Use It From the Command Line (No Coding!)
+
+If you have a CSV file with your data, you can run Mycelium directly:
+
+```bash
+physml fit my_data.csv --target outcome_column --out my_assistant.pkl
+```
+
+---
+
+## 🌐 Run It as a Local Web Service
+
+Want to connect Mycelium to other apps on your device? Start it as a local server:
+
+```bash
+uvicorn physml.server:app
+```
+
+Then send it requests from any app — it stays on your machine.
+
+---
+
+## 🔐 Privacy First
+
+- ✅ All processing happens **on your device**
+- ✅ No accounts, no sign-in required
+- ✅ Your data is never uploaded anywhere
+- ✅ Open source — you can inspect every line of code
+
+---
+
+## 🤝 Multiple Assistants, One Device
+
+Mycelium supports per-user sessions — perfect if multiple people share a device:
+
+```python
+from physml.agent_api import PhysicsAgentSession
+
+# Each person gets their own personalised assistant
+alice_session = PhysicsAgentSession(user_id="alice")
+bob_session   = PhysicsAgentSession(user_id="bob")
+```
+
+Each session learns and adapts independently.
+
+---
+
+## 📈 What's Under the Hood (For the Curious)
+
+Mycelium has completed **100 stages of development**, giving it capabilities including:
+
+- 🧩 **Active learning** — asks questions only when needed
+- 🗺️ **Knowledge graph** — builds a map of what it knows about you
+- 🔍 **Anomaly detection** — notices when something unusual happens
+- 🏆 **Self-play & competition** — tests itself to stay sharp
+- 🔁 **Lifelong learning** — never forgets, keeps improving
+- 🩺 **Self-healing** — recovers automatically from errors
+- 🌿 **Mycelium System** — all 100 subsystems working as one
+
+---
+
+## ⚙️ System Requirements
+
+| Requirement | Minimum |
+|---|---|
+| Operating System | Windows 10 / macOS 10.15 / Linux |
+| Python | 3.10 or newer |
+| RAM | 2 GB |
+| Storage | 200 MB |
+| Internet | Not required after install |
+
+---
+
+## 📦 Full Installation (With All Features)
+
+```bash
+pip install numpy pandas scipy scikit-learn
+pip install physml
+# Optional: richer data cleaning
+pip install feature-engine
+# Optional: local web server
+pip install fastapi uvicorn
+```
+
+---
+
+## 🐛 Something Not Working?
+
+1. Make sure Python 3.10+ is installed: `python --version`
+2. Re-install: `pip install --upgrade physml`
+3. [Open an issue](https://github.com/chizoalban2003-beep/Mycelium/issues) — we respond quickly
+
+---
+
+## 📜 License
+
+MIT — free to use, modify, and share.
+
+---
+
+<details>
+<summary>🔬 Technical Documentation (for developers)</summary>
 
 > **The headline class is `myco`** — an autonomous active-learning agent that
 > trains itself, asks for labels only when uncertain, and adapts in real-time.
@@ -311,3 +511,5 @@ python -m pytest tests/ -q
 ## License
 
 MIT
+
+</details>
