@@ -141,6 +141,28 @@ class SelfPlay:
 
         rng = np.random.default_rng(self.random_state)
 
+        # Determine initial split for the initial fit (round 0)
+        n_total = len(X_arr)
+        n_test0 = max(2, int(n_total * test_fraction))
+        n_train0 = n_total - n_test0
+        idx0 = rng.permutation(n_total)
+        X_train_init = X_arr[idx0[:n_train0]]
+        y_train_init = y_arr[idx0[:n_train0]]
+
+        # Fit both agents once on the initial split
+        _fitted_a = False
+        _fitted_b = False
+        try:
+            self.agent_a.fit(X_train_init, y_train_init)
+            _fitted_a = True
+        except Exception:
+            pass
+        try:
+            self.agent_b.fit(X_train_init, y_train_init)
+            _fitted_b = True
+        except Exception:
+            pass
+
         for round_idx in range(n_rounds):
             t0 = time.perf_counter()
 
@@ -157,15 +179,20 @@ class SelfPlay:
             X_test = X_arr[test_idx]
             y_test = y_arr[test_idx]
 
-            # Train both agents
-            try:
-                self.agent_a.fit(X_train, y_train)
-            except Exception:
-                pass
-            try:
-                self.agent_b.fit(X_train, y_train)
-            except Exception:
-                pass
+            # Incrementally update agents with partial_fit if available,
+            # otherwise skip per-round refitting (agents keep their initial fit)
+            if _fitted_a:
+                try:
+                    if hasattr(self.agent_a, "partial_fit"):
+                        self.agent_a.partial_fit(X_train, y_train)
+                except Exception:
+                    pass
+            if _fitted_b:
+                try:
+                    if hasattr(self.agent_b, "partial_fit"):
+                        self.agent_b.partial_fit(X_train, y_train)
+                except Exception:
+                    pass
 
             # Evaluate both agents
             acc_a = self._eval(self.agent_a, X_test, y_test)
