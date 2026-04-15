@@ -271,6 +271,21 @@ from physml.data_validator import DataValidator, ValidationReport
 # Stage 89 — PipelineBuilder (sklearn Pipeline factory)
 from physml.pipeline_builder import PipelineBuilder, PipelineStep
 
+# Stage 90 — RewardModel (learn reward from demonstrations)
+from physml.reward_model import RewardModel, RewardSample
+
+# Stage 91 — AgentMemory (episodic + semantic memory)
+from physml.agent_memory import AgentMemory, MemoryEntry
+
+# Stage 92 — TaskDecomposer (goal → subtask planner)
+from physml.task_decomposer import TaskDecomposer, SubTask
+
+# Stage 93 — AgentComms (multi-agent messaging bus)
+from physml.agent_comms import AgentComms, Message
+
+# Stage 94 — ReflectionEngine (self-evaluation loop)
+from physml.reflection_engine import ReflectionEngine, Reflection
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -467,4 +482,19 @@ __all__ = [
     # Stage 89 — PipelineBuilder
     "PipelineBuilder",
     "PipelineStep",
+    # Stage 90 — RewardModel
+    "RewardModel",
+    "RewardSample",
+    # Stage 91 — AgentMemory
+    "AgentMemory",
+    "MemoryEntry",
+    # Stage 92 — TaskDecomposer
+    "TaskDecomposer",
+    "SubTask",
+    # Stage 93 — AgentComms
+    "AgentComms",
+    "Message",
+    # Stage 94 — ReflectionEngine
+    "ReflectionEngine",
+    "Reflection",
 ]
