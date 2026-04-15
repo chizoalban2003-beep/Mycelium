@@ -236,9 +236,8 @@ session2 = PhysicsAgentSession.load("alice")  # restore
 | 5 | ✅ | `DataStream` mini-batch streaming |
 | 6 | ✅ | Save / load + curriculum pretraining (`pretrain`) |
 | 7 | ✅ | `PhysicsAgentSession` stateful per-user deployment |
-| 8 | 🔲 | Active learning: entropy-based query selection |
-| 9 | 🔲 | Multi-task head: shared representation across datasets |
-| 10 | 🔲 | Reward shaping: RL policy replacing the fixed threshold |
+| 8–99 | ✅ | Full autonomous subsystems (active learning, memory, planning, reflection, …) |
+| 100 | ✅ | `MyceliumSystem` — grand-finale integration of all 99 subsystems |
 
 ## Naming Conventions
 

@@ -301,6 +301,9 @@ from physml.belief_updater import BeliefUpdater, Belief
 # Stage 99 — AgentController (top-level autonomous control loop)
 from physml.agent_controller import AgentController, ControlStep
 
+# Stage 100 — MyceliumSystem (grand-finale integration)
+from physml.mycelium_system import MyceliumSystem, SystemMetrics
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -527,4 +530,7 @@ __all__ = [
     # Stage 99 — AgentController
     "AgentController",
     "ControlStep",
+    # Stage 100 — MyceliumSystem
+    "MyceliumSystem",
+    "SystemMetrics",
 ]
