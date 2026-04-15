@@ -5,6 +5,59 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.20.0] — 2026-04-15
+
+### Added — Stages 70–74: Fully Autonomous in Production
+
+These six stages complete the "fully autonomous in production" picture: the
+agent self-tunes, self-heals, serves real-time decisions, self-evaluates, and
+improves through adversarial self-play — all without human intervention.
+
+* **Stage 70 — HyperTuner** (`physml/hyper_tuner.py`):
+  - `HyperTuner`: wraps any agent with `AutoMLOptimizer`-driven periodic
+    hyperparameter search.  `tune(X, y)` runs one search round; `maybe_tune()`
+    fires every `tune_every` calls for seamless loop integration.
+  - `TuneResult`: per-round snapshot with best params, CV score, timing, and
+    a `stored_in_graph` flag.
+  - Optional `KnowledgeGraph` integration: best configs are persisted as
+    `KnowledgeNode` entries under the `"hyper_tune"` topic.
+
+* **Stage 71 — SelfHealer** (`physml/self_healer.py`):
+  - `SelfHealer`: monitors incoming data with `AnomalyGuard`; if the anomaly
+    rate exceeds `anomaly_threshold` **or** accuracy drops below
+    `collapse_threshold`, the agent rolls back to the last `AgentCheckpoint`
+    and optionally resets a `CurriculumScheduler` to `reset_difficulty`.
+  - `HealingIncident`: timestamped incident record (trigger reason, anomaly
+    rate, pre-heal accuracy, rollback path, curriculum reset flag).
+  - `auto_checkpoint=True` saves a fresh checkpoint after every clean pass.
+
+* **Stage 72 — Real-Time WebSocket API** (`physml/server.py`):
+  - `WS /ws/predict` endpoint: clients send `{"X": [[...]]}` and receive
+    `{"prediction": [...], "confidence": [...]}` in < 100 ms.
+  - Reuses existing `PhysicsAgentSession` sessions; graceful error replies for
+    unknown users and untrained agents.
+
+* **Stage 73 — EvalScheduler** (`physml/eval_scheduler.py`):
+  - `EvalScheduler`: schedules `CompetitiveReport` runs (on-demand or every
+    `eval_every` calls via `maybe_run()`).
+  - Emits an `alert` flag when the agent's competitive rank exceeds
+    `alert_rank_threshold`.
+  - Stores each report as a `KnowledgeNode` in the attached `KnowledgeGraph`.
+  - `ScheduledReport`: timestamped report snapshot with rank, accuracy, alert
+    status, and leaderboard winner.
+
+* **Stage 74 — SelfPlay** (`physml/self_play.py`):
+  - `SelfPlay`: manages two competing agents; each `run()` round trains both
+    on the same dataset, compares accuracy in a `CompetitiveArena`-style
+    head-to-head, and records the winner.
+  - Every `federate_every` rounds a `FederatedMyceliumAgent` round aggregates
+    MLP weights so each agent benefits from the other's experience.
+  - `PlayRound`: per-round snapshot (winner, per-agent accuracy, federation
+    flag, elapsed time).
+  - `leaderboard()` / `best_agent()` convenience methods.
+
+---
+
 ## [0.19.0] — 2026-04-15
 
 ### Added — Stage 69: LifelongLearner (Continuous Self-Improvement Loop)

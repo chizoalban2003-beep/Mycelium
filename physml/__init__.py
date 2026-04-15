@@ -47,6 +47,14 @@ introspect               Stage 41 — rich internal-state summary (method on Myc
 Stage 42 — bug fixes: O(1) memory eviction, no double inference, real partial_fit in self_improve.
 LifelongLearner          Stage 69 — continuous self-improvement loop (chunk-based streaming,
                          auto self-improve when accuracy dips, competitive report on demand).
+HyperTuner               Stage 70 — autonomous hyperparameter self-tuning (AutoML into self-improve
+                         cycle; best configs stored in KnowledgeGraph).
+SelfHealer               Stage 71 — self-healing / recovery (AnomalyGuard + AgentCheckpoint rollback
+                         + curriculum reset on anomaly or model collapse).
+EvalScheduler            Stage 73 — autonomous evaluation & reporting (scheduled CompetitiveReport
+                         runs, KnowledgeGraph logging, alert on rank drop).
+SelfPlay                 Stage 74 — multi-agent adversarial self-play (two AutonomousAgent instances
+                         compete in CompetitiveArena, exchange experience via FederatedMyceliumAgent).
 ToolSpec                 Stage 44 — JSON-schema tool specification.
 ToolCall                 Stage 44 — structured tool call result.
 ToolPlanner              Stage 44 — embedding + memory-based tool selection.
@@ -206,6 +214,18 @@ from physml.competitive_report import CompetitiveReport
 # Stage 69 — LifelongLearner (continuous self-improvement loop)
 from physml.lifelong import LifelongLearner, RoundResult
 
+# Stage 70 — HyperTuner (autonomous hyperparameter self-tuning)
+from physml.hyper_tuner import HyperTuner, TuneResult
+
+# Stage 71 — SelfHealer (anomaly-triggered checkpoint rollback)
+from physml.self_healer import SelfHealer, HealingIncident
+
+# Stage 73 — EvalScheduler (autonomous evaluation & reporting)
+from physml.eval_scheduler import EvalScheduler, ScheduledReport
+
+# Stage 74 — SelfPlay (multi-agent adversarial self-play)
+from physml.self_play import SelfPlay, PlayRound
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -345,4 +365,16 @@ __all__ = [
     # Stage 69 — LifelongLearner
     "LifelongLearner",
     "RoundResult",
+    # Stage 70 — HyperTuner
+    "HyperTuner",
+    "TuneResult",
+    # Stage 71 — SelfHealer
+    "SelfHealer",
+    "HealingIncident",
+    # Stage 73 — EvalScheduler
+    "EvalScheduler",
+    "ScheduledReport",
+    # Stage 74 — SelfPlay
+    "SelfPlay",
+    "PlayRound",
 ]

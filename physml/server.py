@@ -2,10 +2,11 @@
 
 Exposes four HTTP endpoints wrapping :class:`~physml.agent_api.PhysicsAgentSession`:
 
-* ``POST /train``    — Train or retrain an agent on labelled data.
-* ``POST /query``    — Predict for a new sample (or batch).
-* ``POST /feedback`` — Provide a ground-truth label (online learning).
-* ``GET  /report``   — Return session activity summary.
+* ``POST /train``       — Train or retrain an agent on labelled data.
+* ``POST /query``       — Predict for a new sample (or batch).
+* ``POST /feedback``    — Provide a ground-truth label (online learning).
+* ``GET  /report``      — Return session activity summary.
+* ``WS   /ws/predict``  — Stage 72: real-time WebSocket prediction endpoint.
 
 Usage
 -----
@@ -36,6 +37,14 @@ Example requests:
          -d '{"user_id": "alice", "X": [[1.5, 2.5]]}'
 
     curl http://localhost:8000/report?user_id=alice
+
+Stage 72 — WebSocket real-time prediction:
+
+::
+
+    # Connect to ws://localhost:8000/ws/predict?user_id=alice
+    # Send:  {"X": [[1.5, 2.5]]}
+    # Recv:  {"prediction": [1], "confidence": 0.82, "user_id": "alice"}
 """
 
 from __future__ import annotations
@@ -247,6 +256,97 @@ def create_app() -> Any:
             f"physml_active_sessions {n_sessions}",
         ]
         return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
+
+    # -----------------------------------------------------------------------
+    # Stage 72 — Real-Time WebSocket prediction endpoint
+    # -----------------------------------------------------------------------
+
+    try:
+        from fastapi import WebSocket, WebSocketDisconnect
+        import json as _json
+
+        @app.websocket("/ws/predict")
+        async def ws_predict(websocket: WebSocket, user_id: str = "default") -> None:
+            """Real-time prediction via WebSocket.
+
+            Protocol
+            --------
+            Client sends JSON messages of the form::
+
+                {"X": [[f1, f2, ...]]}          # one or more samples
+
+            Server replies with::
+
+                {"prediction": [...], "confidence": [...],
+                 "user_id": "...", "session_id": "..."}
+
+            If the session is not yet trained, the server replies with::
+
+                {"error": "not_trained"}
+
+            The connection is kept alive until the client closes it.
+            """
+            await websocket.accept()
+            try:
+                while True:
+                    raw = await websocket.receive_text()
+                    try:
+                        msg = _json.loads(raw)
+                    except Exception:
+                        await websocket.send_text(
+                            _json.dumps({"error": "invalid_json"})
+                        )
+                        continue
+
+                    x_list = msg.get("X")
+                    if x_list is None:
+                        await websocket.send_text(
+                            _json.dumps({"error": "missing_X"})
+                        )
+                        continue
+
+                    session = _get_or_create_session(user_id)
+                    if not session._fitted:
+                        await websocket.send_text(
+                            _json.dumps({"error": "not_trained"})
+                        )
+                        continue
+
+                    try:
+                        X = np.array(x_list, dtype=float)
+                        predictions = []
+                        confidences = []
+                        for i in range(len(X)):
+                            r = session.query(X[i : i + 1])
+                            pred = r["prediction"]
+                            conf = float(r["confidence"])
+                            predictions.append(
+                                pred.tolist()
+                                if hasattr(pred, "tolist")
+                                else pred
+                            )
+                            confidences.append(conf)
+
+                        await websocket.send_text(
+                            _json.dumps(
+                                {
+                                    "prediction": predictions,
+                                    "confidence": confidences,
+                                    "user_id": user_id,
+                                    "session_id": session.session_id,
+                                }
+                            )
+                        )
+                    except Exception as exc:
+                        await websocket.send_text(
+                            _json.dumps({"error": str(exc)})
+                        )
+            except WebSocketDisconnect:
+                pass
+
+    except ImportError:
+        # WebSocket support not available (older fastapi / missing dependency)
+        pass
 
     return app
 
