@@ -5,6 +5,61 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.21.0] — 2026-04-15
+
+### Added — Stages 75–79: Causal AI, Privacy, Time-Series, Experiment Tracking & Distillation
+
+* **Stage 75 — CausalGraph** (`physml/causal_graph.py`):
+  - `CausalGraph`: discovers a directed causal skeleton from observational
+    data using pairwise Pearson-correlation thresholds (skeleton discovery)
+    and a residual-variance asymmetry heuristic for edge orientation (ANM).
+  - `CausalEdge`: a directed or undirected edge with `source`, `target`,
+    `weight`, and `directed` fields.
+  - `discover(X, y)` learns the graph; `parents(node)` / `children(node)`
+    query it; `counterfactual(X, interventions)` estimates
+    post-intervention column means via linearised structural equations.
+  - Optional `include_target=True` treats *y* as a named node `"y"`.
+
+* **Stage 76 — PrivacyEngine** (`physml/privacy_engine.py`):
+  - `PrivacyEngine`: wraps any sklearn-compatible estimator with
+    (ε, δ)-differential-privacy noise injection.  Gaussian noise calibrated
+    to `sensitivity / ε` is added to all coefficient arrays after fitting.
+  - `PrivacyBudget`: tracks cumulative ε-spending and raises `RuntimeError`
+    when the lifetime budget is exhausted.
+  - `fit_private(X, y)` trains with DP guarantees; `privacy_report()`
+    exposes noise-σ history and remaining budget.
+
+* **Stage 77 — TimeSeriesAdapter** (`physml/timeseries_adapter.py`):
+  - `TimeSeriesAdapter`: converts univariate or multivariate time-series
+    data into a flat tabular feature matrix via lag features, rolling-window
+    mean & std, and first differences.
+  - `AdapterResult`: wrapper with `X_transformed`, `y_aligned`,
+    `feature_names`, and `n_dropped` (leading rows removed for alignment).
+  - `transform(X, y)` / `fit_transform(X, y)` are stateless and may be
+    piped directly into `MyceliumAgent.fit()`.
+
+* **Stage 78 — ExperimentTracker** (`physml/experiment_tracker.py`):
+  - `ExperimentTracker`: lightweight MLflow-style experiment tracker backed
+    by in-memory storage with optional JSON persistence.
+  - `Run`: a single training run with `log_param()`, `log_metric()`,
+    `log_artefact()`, `set_tag()`, and `end()`.
+  - `best_run(metric)`, `compare(metric)`, `filter_by_tag()` query helpers.
+  - `save(path)` / `ExperimentTracker.load(path)` for JSON round-trip.
+
+* **Stage 79 — ModelDistillery** (`physml/model_distillery.py`):
+  - `ModelDistillery`: compresses a high-capacity *teacher* model into a
+    lightweight *student* via Hinton et al. (2015) knowledge distillation.
+    Temperature τ softens the teacher's probability labels; higher τ
+    transfers more generalisation signal.
+  - `distil(X, y)` trains the student on soft teacher labels;
+    `evaluate(X, y)` compares teacher vs. student accuracy.
+  - `use_sample_weights=True` passes teacher-confidence-derived sample
+    weights to the student when the estimator supports them.
+  - `DistillationResult`: per-run snapshot with temperatures, accuracies,
+    gap, and elapsed time.
+
+---
+
 ## [0.20.0] — 2026-04-15
 
 ### Added — Stages 70–74: Fully Autonomous in Production

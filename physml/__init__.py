@@ -226,6 +226,21 @@ from physml.eval_scheduler import EvalScheduler, ScheduledReport
 # Stage 74 — SelfPlay (multi-agent adversarial self-play)
 from physml.self_play import SelfPlay, PlayRound
 
+# Stage 75 — CausalGraph (correlation-based causal discovery)
+from physml.causal_graph import CausalGraph, CausalEdge
+
+# Stage 76 — PrivacyEngine (differential-privacy wrapper)
+from physml.privacy_engine import PrivacyEngine, PrivacyBudget
+
+# Stage 77 — TimeSeriesAdapter (time-series → tabular features)
+from physml.timeseries_adapter import TimeSeriesAdapter, AdapterResult
+
+# Stage 78 — ExperimentTracker (lightweight ML experiment tracking)
+from physml.experiment_tracker import ExperimentTracker, Run
+
+# Stage 79 — ModelDistillery (knowledge distillation)
+from physml.model_distillery import ModelDistillery, DistillationResult
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -377,4 +392,19 @@ __all__ = [
     # Stage 74 — SelfPlay
     "SelfPlay",
     "PlayRound",
+    # Stage 75 — CausalGraph
+    "CausalGraph",
+    "CausalEdge",
+    # Stage 76 — PrivacyEngine
+    "PrivacyEngine",
+    "PrivacyBudget",
+    # Stage 77 — TimeSeriesAdapter
+    "TimeSeriesAdapter",
+    "AdapterResult",
+    # Stage 78 — ExperimentTracker
+    "ExperimentTracker",
+    "Run",
+    # Stage 79 — ModelDistillery
+    "ModelDistillery",
+    "DistillationResult",
 ]
