@@ -286,6 +286,21 @@ from physml.agent_comms import AgentComms, Message
 # Stage 94 — ReflectionEngine (self-evaluation loop)
 from physml.reflection_engine import ReflectionEngine, Reflection
 
+# Stage 95 — PlanExecutor (execute ordered subtask plans)
+from physml.plan_executor import PlanExecutor, ExecutionResult
+
+# Stage 96 — EnvironmentModel (track + predict env transitions)
+from physml.environment_model import EnvironmentModel, EnvState
+
+# Stage 97 — SkillLibrary (store and retrieve reusable skills)
+from physml.skill_library import SkillLibrary, Skill
+
+# Stage 98 — BeliefUpdater (Bayesian belief state)
+from physml.belief_updater import BeliefUpdater, Belief
+
+# Stage 99 — AgentController (top-level autonomous control loop)
+from physml.agent_controller import AgentController, ControlStep
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -497,4 +512,19 @@ __all__ = [
     # Stage 94 — ReflectionEngine
     "ReflectionEngine",
     "Reflection",
+    # Stage 95 — PlanExecutor
+    "PlanExecutor",
+    "ExecutionResult",
+    # Stage 96 — EnvironmentModel
+    "EnvironmentModel",
+    "EnvState",
+    # Stage 97 — SkillLibrary
+    "SkillLibrary",
+    "Skill",
+    # Stage 98 — BeliefUpdater
+    "BeliefUpdater",
+    "Belief",
+    # Stage 99 — AgentController
+    "AgentController",
+    "ControlStep",
 ]
