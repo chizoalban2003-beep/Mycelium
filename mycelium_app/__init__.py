@@ -1,1 +1,0 @@
-"""Mycelium application package."""

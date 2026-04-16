@@ -1,0 +1,47 @@
+site_name: PhysML / Mycelium
+site_description: Physics-inspired autonomous ML — the myco active-learning agent.
+site_url: https://chizoalban2003-beep.github.io/Mycelium/
+repo_url: https://github.com/chizoalban2003-beep/Mycelium
+repo_name: chizoalban2003-beep/Mycelium
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+  - How the Physics Works: physics.md
+  - API Reference: api_reference.md
+  - Changelog: changelog.md
+
+plugins:
+  - search

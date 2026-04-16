@@ -1,37 +1,37 @@
-# Myco Parent Hub (SaaS-ready)
-FROM python:3.11-slim
+# Dockerfile for the PhysML / myco REST API microservice (Stage 18).
+#
+# Build:
+#   docker build -t physml-server .
+#
+# Run:
+#   docker run -p 8000:8000 physml-server
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+FROM python:3.12-slim
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# System deps (kept minimal)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install Python dependencies first (cached layer)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Python deps first for better layer caching
-COPY requirements/ requirements/
-RUN python -m pip install --upgrade pip \
-    && python -m pip install --no-cache-dir -r requirements/prod.txt
+# Install server extras
+RUN pip install --no-cache-dir fastapi uvicorn[standard]
 
-# Copy app code + templates/static
-COPY mycelium_app/ mycelium_app/
-COPY templates/ templates/
-COPY static/ static/
+# Copy source
+COPY physml/ physml/
+COPY pyproject.toml* setup.py* setup.cfg* ./
 
-# Create storage dir (sqlite fallback, logs)
-RUN mkdir -p storage
-
-# Runtime defaults (override in platform env)
-ENV HOST=0.0.0.0 \
-    PORT=8000 \
-    HIVE_ENABLED=true
+# Install the physml package in editable mode if pyproject.toml exists,
+# otherwise just ensure the package is on the path
+RUN if [ -f pyproject.toml ] || [ -f setup.py ]; then \
+        pip install --no-cache-dir -e .; \
+    fi
 
 EXPOSE 8000
 
-# NOTE: For SQLite, keep workers=1. For Postgres, you can raise workers.
-# Railway (and many PaaS) inject a dynamic PORT env var. The JSON-array CMD does
-# not expand env vars, so we use a shell command here.
-CMD ["sh", "-c", "python -m uvicorn mycelium_app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips '*'"]
+CMD ["uvicorn", "physml.server:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -1,5 +1,0 @@
-# Optional benchmark-only dependencies
-#
-# Only needed for scripts/benchmark_*.py and related experiments.
-
-scikit-learn>=1.4,<2
