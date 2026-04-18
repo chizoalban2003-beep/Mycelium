@@ -489,18 +489,9 @@ class CompetitiveEnsemblePredictor(BaseEstimator):
                     type(est).__name__, _exc,
                 )
 
-        # Refit meta-learner
-        if self.use_meta and len(y_buf) >= 20:
-            try:
-                oof = self._oof_stack(X_t, y_buf)
-                if self.is_classifier_:
-                    meta = LogisticRegression(max_iter=500, C=1.0, random_state=self.random_seed)
-                else:
-                    meta = Ridge(alpha=1.0)
-                meta.fit(oof, y_buf)
-                self._meta_ = meta
-            except Exception as _exc:
-                _logger.warning("Ensemble meta-learner refit failed: %s", _exc)
+        # Keep existing meta-learner from the initial fit — re-running OOF
+        # stacking on every incremental update is prohibitively expensive and
+        # the stacking weights learned at fit() remain a reasonable prior.
 
         # Update homeostasis
         try:
