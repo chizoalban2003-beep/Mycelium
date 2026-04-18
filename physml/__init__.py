@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "0.27.0"
+__version__ = "0.28.0"
 
 from physml.predictor import (
     PhysicsPlane,
@@ -306,6 +306,19 @@ from physml.agent_controller import AgentController, ControlStep
 # Stage 100 — MyceliumSystem (grand-finale integration)
 from physml.mycelium_system import MyceliumSystem, SystemMetrics
 
+# Stages 101-105
+from physml.neural_search import NeuralSearchEngine
+from physml.trace_recorder import TraceRecorder
+from physml.policy_optimizer import PolicyOptimizer
+from physml.value_estimator import ValueEstimator
+from physml.action_selector import ActionSelector, SelectionResult
+
+# Stage 106 — NaturalLanguageRouter (text command → action routing)
+from physml.nl_router import NaturalLanguageRouter, Intent, RoutedAction
+
+# Stage 107 — LocalTaskExecutor (safe OS-level task execution)
+from physml.local_executor import LocalTaskExecutor, ExecutionPolicy, TaskResult
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -535,4 +548,19 @@ __all__ = [
     # Stage 100 — MyceliumSystem
     "MyceliumSystem",
     "SystemMetrics",
+    # Stages 101-105
+    "NeuralSearchEngine",
+    "TraceRecorder",
+    "PolicyOptimizer",
+    "ValueEstimator",
+    "ActionSelector",
+    "SelectionResult",
+    # Stage 106 — NaturalLanguageRouter
+    "NaturalLanguageRouter",
+    "Intent",
+    "RoutedAction",
+    # Stage 107 — LocalTaskExecutor
+    "LocalTaskExecutor",
+    "ExecutionPolicy",
+    "TaskResult",
 ]

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "physml"
-version = "0.27.0"
+version = "0.28.0"
 description = "Physics-inspired autonomous ML — the myco active-learning agent for tabular data."
 readme = "README.md"
 license = { text = "MIT" }
