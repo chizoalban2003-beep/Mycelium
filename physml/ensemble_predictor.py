@@ -57,6 +57,10 @@ from typing import Any
 
 import numpy as np
 
+from physml._log import get_logger
+
+_logger = get_logger(__name__)
+
 try:
     from sklearn.base import BaseEstimator
     from sklearn.ensemble import (
@@ -479,8 +483,11 @@ class CompetitiveEnsemblePredictor(BaseEstimator):
         for est in self._base_estimators_:
             try:
                 est.fit(X_t, y_buf)
-            except Exception:
-                pass
+            except Exception as _exc:
+                _logger.warning(
+                    "Ensemble base estimator %s failed to refit: %s",
+                    type(est).__name__, _exc,
+                )
 
         # Refit meta-learner
         if self.use_meta and len(y_buf) >= 20:
@@ -492,8 +499,8 @@ class CompetitiveEnsemblePredictor(BaseEstimator):
                     meta = Ridge(alpha=1.0)
                 meta.fit(oof, y_buf)
                 self._meta_ = meta
-            except Exception:
-                pass
+            except Exception as _exc:
+                _logger.warning("Ensemble meta-learner refit failed: %s", _exc)
 
         # Update homeostasis
         try:

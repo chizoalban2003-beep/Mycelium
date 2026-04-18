@@ -49,6 +49,10 @@ from typing import Any
 
 import numpy as np
 
+from physml._log import get_logger
+
+_logger = get_logger(__name__)
+
 
 class MyceliumAgent:
     """Top-level autonomous agent for the Mycelium project.
@@ -171,12 +175,11 @@ class MyceliumAgent:
         y_arr = np.atleast_1d(y)
 
         if self._predictor is None:
-            from physml.ensemble_predictor import CompetitiveEnsemblePredictor
-            import inspect
-            # Filter kwargs to only those accepted by CompetitiveEnsemblePredictor
-            _cep_params = set(inspect.signature(CompetitiveEnsemblePredictor.__init__).parameters) - {"self"}
-            kwargs = {k: v for k, v in self._predictor_kwargs.items() if k in _cep_params}
-            self._predictor = CompetitiveEnsemblePredictor(**kwargs)
+            from physml.estimator import PhysicsPredictor
+            kwargs = dict(self._predictor_kwargs)
+            kwargs.setdefault("backend", "neural")
+            kwargs.setdefault("n_cycles", 20)
+            self._predictor = PhysicsPredictor(**kwargs)
 
         if self.task_id is not None:
             # Multi-task mode: delegate to MultiTaskPhysicsEngine.fit_task
@@ -295,8 +298,8 @@ class MyceliumAgent:
                     action=self._last_action_str,
                     outcome=1.0,
                 )
-            except Exception:
-                pass  # memory recording is best-effort
+            except Exception as _exc:
+                _logger.debug("Episode memory store failed (best-effort): %s", _exc)
 
         return self
 
@@ -754,7 +757,8 @@ class MyceliumAgent:
                 best_params = opt.fit(X_arr, y_arr)
                 metrics["best_automl_params"] = best_params
                 metrics["best_automl_score"] = round(opt.best_score_, 4)
-            except Exception:
+            except Exception as _exc:
+                _logger.warning("AutoML tuning failed during self_improve: %s", _exc)
                 metrics["best_automl_params"] = {}
 
         metrics["threshold_before"] = round(threshold_before, 4)
@@ -797,7 +801,8 @@ class MyceliumAgent:
                     self._predictor.partial_fit(X_mem, y_mem)
             elif hasattr(self._predictor, "fit"):
                 self._predictor.fit(X_mem, y_mem)
-        except Exception:
+        except Exception as _exc:
+            _logger.warning("Memory-driven retraining failed: %s", _exc)
             return 0
 
         return len(high_reward_indices)

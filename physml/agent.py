@@ -69,6 +69,10 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from physml._log import get_logger
+
+_logger = get_logger(__name__)
+
 
 # ---------------------------------------------------------------------------
 # AgentAction — result of a single observe() call
@@ -414,8 +418,8 @@ class PhysicsAgent:
         if self.task_id is not None:
             try:
                 self.predictor.fit_task(self.task_id, X_batch, y_batch)
-            except Exception:
-                pass
+            except Exception as _exc:
+                _logger.warning("fit_task(%r) failed: %s", self.task_id, _exc)
             return
 
         backend = str(getattr(self.predictor, "backend", "physics")).lower().strip()
@@ -427,10 +431,10 @@ class PhysicsAgent:
                 # partial_fit doesn't accept ewc_lambda
                 try:
                     self.predictor.partial_fit(X_batch, y_batch)
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                except Exception as _exc:
+                    _logger.warning("partial_fit failed: %s", _exc)
+            except Exception as _exc:
+                _logger.warning("partial_fit failed: %s", _exc)
         else:
             # Physics backend: append to train_df_ and re-fit
             try:

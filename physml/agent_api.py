@@ -224,12 +224,14 @@ class PhysicsAgentSession:
             raise ImportError("joblib is required for session persistence") from exc
         save_path = Path(path) if path is not None else self._default_path()
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        # Store runtime state metadata for traceability
-        self._predictor.runtime_state_.metadata.update({
-            "user_id": self.user_id,
-            "session_id": self.session_id,
-            "last_seen_timestamp": self.last_seen,
-        })
+        # Best-effort: annotate runtime state for traceability if available
+        rs = getattr(self._predictor, "runtime_state_", None)
+        if rs is not None and hasattr(rs, "metadata"):
+            rs.metadata.update({
+                "user_id": self.user_id,
+                "session_id": self.session_id,
+                "last_seen_timestamp": self.last_seen,
+            })
         joblib.dump(self, str(save_path))
         return save_path
 

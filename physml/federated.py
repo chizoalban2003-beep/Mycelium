@@ -58,6 +58,10 @@ from typing import Any
 
 import numpy as np
 
+from physml._log import get_logger
+
+_logger = get_logger(__name__)
+
 
 class FederatedMyceliumAgent:
     """Coordinator for federated learning across multiple myco nodes.
@@ -172,8 +176,8 @@ class FederatedMyceliumAgent:
                     if key in self._global_weights:
                         try:
                             delta[key] = local_w[key] - self._global_weights[key]
-                        except Exception:
-                            pass
+                        except Exception as _exc:
+                            _logger.debug("Weight delta skipped for key %r: %s", key, _exc)
                 if delta:
                     deltas.append(delta)
 
@@ -187,8 +191,8 @@ class FederatedMyceliumAgent:
                     avg_delta[key] = np.mean(
                         [d[key] for d in deltas if key in d], axis=0
                     )
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    _logger.warning("Weight averaging failed for key %r: %s", key, _exc)
 
             # Update global weights
             for key, delta in avg_delta.items():
