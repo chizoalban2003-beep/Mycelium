@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "physml"
-version = "0.28.0"
-description = "Physics-inspired autonomous ML — the myco active-learning agent for tabular data."
+version = "0.29.0"
+description = "Physics-inspired autonomous ML — the Mycelium digital companion for local AI."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Mycelium Contributors" }]
@@ -40,9 +40,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-server = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
-docs   = ["mkdocs-material>=9"]
-dev    = ["pytest>=8", "pytest-cov", "pytest-timeout>=2.3", "ruff", "httpx"]
+server   = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
+docs     = ["mkdocs-material>=9"]
+dev      = ["pytest>=8", "pytest-cov", "pytest-timeout>=2.3", "ruff", "httpx"]
+llm      = ["anthropic>=0.40"]
+voice    = ["faster-whisper>=1.0", "sounddevice>=0.4"]
+companion = [
+    "anthropic>=0.40",
+    "faster-whisper>=1.0",
+    "sounddevice>=0.4",
+]
 
 [project.scripts]
 physml = "physml.cli:main"

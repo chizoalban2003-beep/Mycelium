@@ -462,7 +462,7 @@ class TestPhysicsAgentSession:
         sess = PhysicsAgentSession(
             user_id="test_user",
             model_dir=tmpdir,
-            predictor_kwargs={"n_cycles": 3, "max_iter": 30},
+            predictor_kwargs={"n_cycles": 3},
         )
         X, y = _clf_data(n=60)
         X_tr, X_te, y_tr, y_te = _split(X, y)

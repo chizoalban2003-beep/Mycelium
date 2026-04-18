@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "0.28.0"
+__version__ = "0.29.0"
 
 from physml.predictor import (
     PhysicsPlane,
@@ -319,6 +319,51 @@ from physml.nl_router import NaturalLanguageRouter, Intent, RoutedAction
 # Stage 107 — LocalTaskExecutor (safe OS-level task execution)
 from physml.local_executor import LocalTaskExecutor, ExecutionPolicy, TaskResult
 
+# Stage 108 — ConversationManager (multi-turn dialogue tracker)
+from physml.conversation import ConversationManager, Turn
+
+# Stage 109 — ScheduledTaskRunner (background task scheduler)
+from physml.scheduler_tasks import ScheduledTaskRunner, ScheduledTask
+
+# Stage 110 — DocumentProcessor (local document ingestion)
+from physml.doc_processor import DocumentProcessor, DocumentResult
+
+# Stage 111 — VoiceInputAdapter (voice-to-text transcription)
+from physml.voice_adapter import VoiceInputAdapter, VoiceResult
+
+# Stage 112 — PluginRegistry (user-installable plugin system)
+from physml.plugin_registry import PluginRegistry
+
+# Stage 113 — UserProfileLearner (persistent user preference learning)
+from physml.user_profile import UserProfileLearner
+
+# Stage 114 — ResponseFormatter (template-based NL responses)
+from physml.response_formatter import ResponseFormatter
+
+# Stage 115 — LocalREPL (interactive readline-based agent REPL)
+from physml.local_repl import LocalREPL
+
+# Stage 116 — DeviceMonitor (device state monitoring)
+from physml.device_monitor import DeviceMonitor, DeviceSnapshot
+
+# Stage 117 — SecureVault (encrypted local secrets store)
+from physml.secure_vault import SecureVault
+
+# Stage 118 — ProactiveAdvisor (drift/accuracy monitoring + proactive alerts)
+from physml.proactive_advisor import ProactiveAdvisor, Advice
+
+# Stage 119 — DigitalSoul (agent identity and personality layer)
+from physml.digital_soul import DigitalSoul, LifeEvent
+
+# Stage 120 — MyceliumCompanion (top-level digital companion integration)
+from physml.companion import MyceliumCompanion
+
+# Stage 121 — LLMIntegration (Claude API backbone)
+from physml.llm_integration import LLMIntegration, LLMConfig, LLMMessage, LLMResult
+
+# Stage 122 — VoiceOutputAdapter (text-to-speech synthesis)
+from physml.voice_output import VoiceOutputAdapter, TTSResult
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -563,4 +608,45 @@ __all__ = [
     "LocalTaskExecutor",
     "ExecutionPolicy",
     "TaskResult",
+    # Stage 108 — ConversationManager
+    "ConversationManager",
+    "Turn",
+    # Stage 109 — ScheduledTaskRunner
+    "ScheduledTaskRunner",
+    "ScheduledTask",
+    # Stage 110 — DocumentProcessor
+    "DocumentProcessor",
+    "DocumentResult",
+    # Stage 111 — VoiceInputAdapter
+    "VoiceInputAdapter",
+    "VoiceResult",
+    # Stage 112 — PluginRegistry
+    "PluginRegistry",
+    # Stage 113 — UserProfileLearner
+    "UserProfileLearner",
+    # Stage 114 — ResponseFormatter
+    "ResponseFormatter",
+    # Stage 115 — LocalREPL
+    "LocalREPL",
+    # Stage 116 — DeviceMonitor
+    "DeviceMonitor",
+    "DeviceSnapshot",
+    # Stage 117 — SecureVault
+    "SecureVault",
+    # Stage 118 — ProactiveAdvisor
+    "ProactiveAdvisor",
+    "Advice",
+    # Stage 119 — DigitalSoul
+    "DigitalSoul",
+    "LifeEvent",
+    # Stage 120 — MyceliumCompanion
+    "MyceliumCompanion",
+    # Stage 121 — LLMIntegration
+    "LLMIntegration",
+    "LLMConfig",
+    "LLMMessage",
+    "LLMResult",
+    # Stage 122 — VoiceOutputAdapter
+    "VoiceOutputAdapter",
+    "TTSResult",
 ]
