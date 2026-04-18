@@ -37,6 +37,9 @@ import joblib
 import numpy as np
 
 _CHECKPOINT_VERSION = "1.0"
+# All checkpoint format versions this release can read.  Add new entries here
+# when the format changes to preserve backward compatibility.
+_SUPPORTED_VERSIONS = {"1.0"}
 
 
 class AgentCheckpoint:
@@ -181,10 +184,10 @@ class AgentCheckpoint:
     def _validate_manifest(manifest: Any) -> None:
         if not isinstance(manifest, dict):
             raise ValueError("Checkpoint is not a valid manifest dict.")
-        if manifest.get("version") != _CHECKPOINT_VERSION:
+        if manifest.get("version") not in _SUPPORTED_VERSIONS:
             raise ValueError(
-                f"Checkpoint version mismatch: expected {_CHECKPOINT_VERSION!r}, "
-                f"got {manifest.get('version')!r}."
+                f"Unsupported checkpoint version {manifest.get('version')!r}. "
+                f"Supported versions: {sorted(_SUPPORTED_VERSIONS)}."
             )
         if "agent" not in manifest:
             raise ValueError("Checkpoint has no 'agent' key.")

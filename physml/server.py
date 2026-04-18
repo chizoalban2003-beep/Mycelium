@@ -49,7 +49,10 @@ Stage 72 — WebSocket real-time prediction:
 
 from __future__ import annotations
 
+import time
 from typing import Any
+
+_SESSION_TTL = 3600  # seconds before an idle session is evicted
 
 # FastAPI and pydantic are optional dependencies — import lazily so the
 # rest of physml is usable without them.
@@ -66,14 +69,25 @@ except ImportError:
         pass
 
 
-_sessions: dict[str, Any] = {}  # user_id → PhysicsAgentSession
+_sessions: dict[str, tuple[Any, float]] = {}  # user_id → (session, last_access_ts)
+
+
+def _evict_stale_sessions() -> None:
+    cutoff = time.time() - _SESSION_TTL
+    stale = [uid for uid, (_, ts) in _sessions.items() if ts < cutoff]
+    for uid in stale:
+        _sessions.pop(uid, None)
 
 
 def _get_or_create_session(user_id: str) -> Any:
     from physml.agent_api import PhysicsAgentSession
+    _evict_stale_sessions()
     if user_id not in _sessions:
-        _sessions[user_id] = PhysicsAgentSession(user_id=user_id)
-    return _sessions[user_id]
+        _sessions[user_id] = (PhysicsAgentSession(user_id=user_id), time.time())
+    else:
+        session, _ = _sessions[user_id]
+        _sessions[user_id] = (session, time.time())
+    return _sessions[user_id][0]
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +209,7 @@ def create_app() -> Any:
                 status_code=404,
                 detail=f"No session found for user {user_id!r}.",
             )
-        session = _sessions[user_id]
+        session, _ = _sessions[user_id]
         return session.report()
 
     @app.get("/metrics")
@@ -224,7 +238,7 @@ def create_app() -> Any:
         n_drift = 0
         ask_rates: list[float] = []
 
-        for session in _sessions.values():
+        for session, _ in _sessions.values():
             try:
                 r = session.report()
                 agent_r = r.get("agent", r)
@@ -262,6 +276,7 @@ def create_app() -> Any:
     # -----------------------------------------------------------------------
 
     try:
+        import asyncio as _asyncio
         from fastapi import WebSocket, WebSocketDisconnect
         import json as _json
 
@@ -317,7 +332,7 @@ def create_app() -> Any:
                         predictions = []
                         confidences = []
                         for i in range(len(X)):
-                            r = session.query(X[i : i + 1])
+                            r = await _asyncio.to_thread(session.query, X[i : i + 1])
                             pred = r["prediction"]
                             conf = float(r["confidence"])
                             predictions.append(

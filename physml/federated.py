@@ -4,7 +4,16 @@
 :class:`~physml.mycelium_agent.MyceliumAgent` nodes using **FedAvg** —
 federated averaging of MLP weights.  Each node trains on its own private
 data; only the flat model weight *deltas* (difference from the global model)
-are aggregated, so raw data never leaves the node.
+are aggregated across nodes.
+
+.. note::
+    **Privacy caveat:** each :class:`~physml.mycelium_agent.MyceliumAgent`
+    stores its training data in memory by default (for transductive prediction).
+    Raw features therefore *do* remain in process memory on the node unless you
+    pass ``store_training_data=False`` in ``predictor_kwargs`` — in which case
+    transductive re-scoring is disabled.  Weight deltas alone do not guarantee
+    differential privacy; combine with :class:`~physml.privacy.DifferentialPrivacyEngine`
+    for ε,δ-DP guarantees.
 
 This mirrors the fungal network metaphor beautifully: each mycelial node
 grows autonomously but periodically shares chemical signals (weight deltas)

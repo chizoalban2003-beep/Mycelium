@@ -275,6 +275,7 @@ class PhysicsPredictor(BaseEstimator):
 
     def _apply_isotopes(self, X_df: pd.DataFrame) -> pd.DataFrame:
         """Reconstruct isotope interaction columns from stored recipes."""
+        import warnings
         recipes: list[dict] = getattr(self, "isotope_recipes_", [])
         if not recipes:
             return X_df
@@ -288,11 +289,21 @@ class PhysicsPredictor(BaseEstimator):
             cat_col: str = recipe["categorical"]
             level: str = recipe["level"]
             if num_col not in result.columns or cat_col not in result.columns:
+                missing = [c for c in (num_col, cat_col) if c not in result.columns]
+                warnings.warn(
+                    f"Isotope column {col_name!r} cannot be reconstructed: "
+                    f"source column(s) {missing} absent at predict time. "
+                    "Filling with 0.0.",
+                    UserWarning,
+                    stacklevel=3,
+                )
                 result[col_name] = 0.0
                 continue
             x = pd.to_numeric(result[num_col], errors="coerce").fillna(0.0)
             x_centered = x - float(train_means.get(num_col, 0.0))
-            level_mask = (result[cat_col].astype("string").fillna("__MISSING__") == str(level)).astype(float)
+            # Use object dtype comparison to avoid pandas categorical/string mismatch
+            cat_series = result[cat_col].astype(object).fillna("__MISSING__")
+            level_mask = (cat_series == level).astype(float)
             result[col_name] = x_centered.values * level_mask.values
         return result
 

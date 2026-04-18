@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "physml"
@@ -42,7 +42,7 @@ dependencies = [
 [project.optional-dependencies]
 server = ["fastapi>=0.110", "uvicorn[standard]>=0.29"]
 docs   = ["mkdocs-material>=9"]
-dev    = ["pytest>=8", "pytest-cov", "ruff", "httpx"]
+dev    = ["pytest>=8", "pytest-cov", "pytest-timeout>=2.3", "ruff", "httpx"]
 
 [project.scripts]
 physml = "physml.cli:main"
@@ -56,9 +56,13 @@ Issues     = "https://github.com/chizoalban2003-beep/Mycelium/issues"
 where = ["."]
 include = ["physml*"]
 
+[tool.setuptools.package-data]
+physml = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts   = "-q --tb=short"
+addopts   = "-q --tb=short --timeout=120"
+timeout   = 120
 
 [tool.ruff]
 line-length = 100
