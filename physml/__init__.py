@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "0.29.0"
+__version__ = "0.30.0"
 
 from physml.predictor import (
     PhysicsPlane,
@@ -364,6 +364,18 @@ from physml.llm_integration import LLMIntegration, LLMConfig, LLMMessage, LLMRes
 # Stage 122 — VoiceOutputAdapter (text-to-speech synthesis)
 from physml.voice_output import VoiceOutputAdapter, TTSResult
 
+# Stage 123 — ModelManager (persistent ML model with auto-train and real prediction)
+from physml.model_manager import ModelManager, TrainResult, PredictResult
+
+# Stage 124 — ToolBridge (LLM tool-call execution bridge)
+from physml.tool_bridge import ToolBridge, build_tool_definitions
+
+# Stage 125 — VoiceLoop (continuous voice interaction pipeline)
+from physml.voice_loop import VoiceLoop
+
+# Stage 126 — VectorMemory (semantic memory with local embeddings)
+from physml.vector_memory import VectorMemory, MemoryEntry, SearchResult
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -649,4 +661,17 @@ __all__ = [
     # Stage 122 — VoiceOutputAdapter
     "VoiceOutputAdapter",
     "TTSResult",
+    # Stage 123 — ModelManager
+    "ModelManager",
+    "TrainResult",
+    "PredictResult",
+    # Stage 124 — ToolBridge
+    "ToolBridge",
+    "build_tool_definitions",
+    # Stage 125 — VoiceLoop
+    "VoiceLoop",
+    # Stage 126 — VectorMemory
+    "VectorMemory",
+    "MemoryEntry",
+    "SearchResult",
 ]

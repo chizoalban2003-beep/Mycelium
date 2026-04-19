@@ -285,6 +285,7 @@ class LLMIntegration:
         user_message: str,
         history: Optional[Sequence[LLMMessage]] = None,
         system: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
     ) -> LLMResult:
         """Send a message and get a response.
 
@@ -296,6 +297,10 @@ class LLMIntegration:
             Prior conversation turns (alternating user/assistant).
         system : str, optional
             System prompt.  If ``None``, a minimal default is used.
+        tools : list of dict, optional
+            Anthropic-format tool definitions.  When provided, Claude may
+            return tool_use blocks in the response.
+
         Returns
         -------
         LLMResult
@@ -316,6 +321,9 @@ class LLMIntegration:
                 "max_tokens": self.config.max_tokens,
                 "messages": messages,
             }
+
+            if tools:
+                req["tools"] = tools
 
             # Add system prompt with optional caching
             if self.config.use_caching:
@@ -364,6 +372,99 @@ class LLMIntegration:
 
         except Exception as exc:
             _logger.warning("LLMIntegration.chat failed: %s", exc)
+            return LLMResult(available=False, error=str(exc))
+
+    def chat_with_tool_results(
+        self,
+        tool_call_result_blocks: List[Dict[str, Any]],
+        tool_results: List[Dict[str, Any]],
+        history: Optional[Sequence[LLMMessage]] = None,
+        user_message: str = "",
+        system: Optional[str] = None,
+    ) -> LLMResult:
+        """Continue a conversation after executing tool calls.
+
+        Appends the assistant tool-use blocks and tool result blocks to the
+        message history, then makes a second API call so Claude can produce
+        a grounded final response.
+
+        Parameters
+        ----------
+        tool_call_result_blocks : list of dict
+            The raw tool call dicts from a previous :meth:`chat` result.
+        tool_results : list of dict
+            Results from :meth:`~physml.tool_bridge.ToolBridge.execute_all`.
+        history, user_message, system
+            Same as in :meth:`chat`.
+
+        Returns
+        -------
+        LLMResult
+        """
+        if not self._sdk_available or self._client is None:
+            return LLMResult(available=False, error="LLM not available")
+
+        try:
+            base_messages = _build_messages(history or [], user_message)
+
+            # Reconstruct assistant message with tool_use content blocks
+            assistant_content = []
+            for call in tool_call_result_blocks:
+                assistant_content.append(
+                    {
+                        "type": "tool_use",
+                        "id": call["id"],
+                        "name": call["name"],
+                        "input": call["input"],
+                    }
+                )
+
+            # Tool results go in a user turn
+            tool_result_content = []
+            for res in tool_results:
+                tool_result_content.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": res["tool_use_id"],
+                        "content": res["content"],
+                    }
+                )
+
+            extended = list(base_messages)
+            extended.append({"role": "assistant", "content": assistant_content})
+            extended.append({"role": "user", "content": tool_result_content})
+
+            system_prompt = system or (
+                "You are Mycelium, a helpful local AI companion. Be concise."
+            )
+            req: Dict[str, Any] = {
+                "model": self.config.model,
+                "max_tokens": self.config.max_tokens,
+                "messages": extended,
+            }
+            if self.config.use_caching:
+                req["system"] = [
+                    {"type": "text", "text": system_prompt,
+                     "cache_control": {"type": "ephemeral"}}
+                ]
+            else:
+                req["system"] = system_prompt
+
+            response = self._client.messages.create(**req)
+            text = "".join(
+                block.text for block in response.content if block.type == "text"
+            )
+            usage = response.usage
+            return LLMResult(
+                text=text.strip(),
+                available=True,
+                model=self.config.model,
+                input_tokens=getattr(usage, "input_tokens", 0) if usage else 0,
+                output_tokens=getattr(usage, "output_tokens", 0) if usage else 0,
+            )
+
+        except Exception as exc:
+            _logger.warning("LLMIntegration.chat_with_tool_results failed: %s", exc)
             return LLMResult(available=False, error=str(exc))
 
     # ------------------------------------------------------------------

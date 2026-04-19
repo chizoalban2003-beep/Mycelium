@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "physml"
-version = "0.29.0"
+version = "0.30.0"
 description = "Physics-inspired autonomous ML — the Mycelium digital companion for local AI."
 readme = "README.md"
 license = { text = "MIT" }
@@ -45,10 +45,13 @@ docs     = ["mkdocs-material>=9"]
 dev      = ["pytest>=8", "pytest-cov", "pytest-timeout>=2.3", "ruff", "httpx"]
 llm      = ["anthropic>=0.40"]
 voice    = ["faster-whisper>=1.0", "sounddevice>=0.4"]
+vector   = ["sentence-transformers>=2.0"]
 companion = [
     "anthropic>=0.40",
     "faster-whisper>=1.0",
     "sounddevice>=0.4",
+    "sentence-transformers>=2.0",
+    "pyttsx3>=2.90",
 ]
 
 [project.scripts]

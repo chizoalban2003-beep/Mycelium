@@ -49,24 +49,79 @@ Stage 72 — WebSocket real-time prediction:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import os
 import time
 from typing import Any
 
 _SESSION_TTL = 3600  # seconds before an idle session is evicted
 
+# ---------------------------------------------------------------------------
+# JWT auth helpers (stdlib-only, no PyJWT dependency)
+# ---------------------------------------------------------------------------
+
+import base64
+
+_JWT_SECRET = os.environ.get("MYCELIUM_SECRET", "mycelium-dev-secret-change-me")
+_JWT_EXPIRY = 86400  # 24 hours
+
+
+def _b64_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _b64_decode(s: str) -> bytes:
+    pad = 4 - len(s) % 4
+    return base64.urlsafe_b64decode(s + "=" * (pad % 4))
+
+
+def _create_token(user_id: str) -> str:
+    header = _b64_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = _b64_encode(
+        json.dumps({"sub": user_id, "exp": int(time.time()) + _JWT_EXPIRY}).encode()
+    )
+    sig_input = f"{header}.{payload}".encode()
+    sig = hmac.new(_JWT_SECRET.encode(), sig_input, hashlib.sha256).digest()
+    return f"{header}.{payload}.{_b64_encode(sig)}"
+
+
+def _verify_token(token: str) -> str:
+    """Verify token and return user_id, or raise ValueError."""
+    try:
+        header, payload, sig = token.split(".")
+    except ValueError:
+        raise ValueError("Malformed token")
+    sig_input = f"{header}.{payload}".encode()
+    expected = hmac.new(_JWT_SECRET.encode(), sig_input, hashlib.sha256).digest()
+    if not hmac.compare_digest(_b64_decode(sig), expected):
+        raise ValueError("Invalid signature")
+    data = json.loads(_b64_decode(payload))
+    if data.get("exp", 0) < time.time():
+        raise ValueError("Token expired")
+    return str(data["sub"])
+
+
 # FastAPI and pydantic are optional dependencies — import lazily so the
 # rest of physml is usable without them.
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Depends
+    from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from pydantic import BaseModel
     _FASTAPI_AVAILABLE = True
+    _bearer = HTTPBearer(auto_error=False)
 except ImportError:
     _FASTAPI_AVAILABLE = False
     FastAPI = None  # type: ignore
     HTTPException = RuntimeError  # type: ignore
+    Depends = None  # type: ignore
 
     class BaseModel:  # type: ignore
         pass
+
+    class HTTPAuthorizationCredentials:  # type: ignore
+        credentials: str = ""
 
 
 _sessions: dict[str, tuple[Any, float]] = {}  # user_id → (session, last_access_ts)
@@ -111,6 +166,16 @@ class FeedbackRequest(BaseModel):
     y: list[Any]
 
 
+class LoginRequest(BaseModel):
+    user_id: str
+    password: str = ""  # placeholder — extend with real auth as needed
+
+
+class ChatRequest(BaseModel):
+    message: str
+    user_id: str = "default"
+
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -129,12 +194,84 @@ def create_app() -> Any:
         )
 
     import numpy as np
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import HTMLResponse
 
     app = FastAPI(
-        title="PhysML / myco API",
-        description="REST microservice for the Mycelium autonomous learning agent.",
-        version="1.0.0",
+        title="Mycelium API",
+        description="REST + WebSocket API for the Mycelium local AI companion.",
+        version="0.29.0",
     )
+
+    # -----------------------------------------------------------------------
+    # Auth dependency
+    # -----------------------------------------------------------------------
+
+    def get_current_user(
+        creds: HTTPAuthorizationCredentials = Depends(_bearer),
+    ) -> str:
+        """Extract user_id from Bearer token, or return 'anonymous' if absent."""
+        if creds is None:
+            return "anonymous"
+        try:
+            return _verify_token(creds.credentials)
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # -----------------------------------------------------------------------
+    # Auth endpoints
+    # -----------------------------------------------------------------------
+
+    @app.post("/auth/token")
+    def login(req: LoginRequest) -> dict:
+        """Issue a JWT bearer token.
+
+        In production, replace the stub password check with real credentials.
+        """
+        # Stub: any user_id with any (or empty) password is accepted locally.
+        # Set MYCELIUM_SECRET env var to make tokens non-forgeable.
+        token = _create_token(req.user_id)
+        return {"access_token": token, "token_type": "bearer", "user_id": req.user_id}
+
+    # -----------------------------------------------------------------------
+    # Companion chat endpoint
+    # -----------------------------------------------------------------------
+
+    _companion: Any = None  # module-level singleton
+
+    def _get_companion() -> Any:
+        nonlocal _companion
+        if _companion is None:
+            try:
+                from physml.companion import MyceliumCompanion
+                _companion = MyceliumCompanion()
+                _companion.start()
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503, detail=f"Companion unavailable: {exc}"
+                )
+        return _companion
+
+    @app.post("/chat")
+    def chat(req: ChatRequest) -> dict:
+        """Send a message to the Mycelium companion and get a response."""
+        companion = _get_companion()
+        try:
+            response = companion.chat(req.message)
+            return {"response": response, "user_id": req.user_id}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/companion/status")
+    def companion_status() -> dict:
+        """Return companion system status."""
+        companion = _get_companion()
+        return companion.status()
+
+    @app.get("/", response_class=HTMLResponse)
+    def web_ui() -> str:
+        """Serve the built-in web chat UI."""
+        return _WEB_UI_HTML
 
     @app.post("/train")
     def train(req: TrainRequest) -> dict:
@@ -372,3 +509,95 @@ try:
     app = create_app()
 except ImportError:
     app = None  # type: ignore
+
+
+# ---------------------------------------------------------------------------
+# Built-in Web Chat UI (Stage 128)
+# ---------------------------------------------------------------------------
+
+_WEB_UI_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mycelium — Local AI Companion</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+       background:#0f1117;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
+  header{padding:14px 24px;background:#1a1d2e;border-bottom:1px solid #2d3148;
+         display:flex;align-items:center;gap:12px}
+  header h1{font-size:1.1rem;font-weight:600;color:#a78bfa}
+  header span{font-size:.75rem;color:#64748b;background:#1e2235;
+              padding:2px 8px;border-radius:999px}
+  #chat{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:72%;padding:10px 14px;border-radius:12px;line-height:1.55;font-size:.9rem;
+       white-space:pre-wrap;word-break:break-word}
+  .user{align-self:flex-end;background:#4f46e5;color:#fff;border-bottom-right-radius:2px}
+  .agent{align-self:flex-start;background:#1e2235;color:#cbd5e1;border-bottom-left-radius:2px}
+  .agent strong{color:#a78bfa}
+  footer{padding:12px 16px;background:#1a1d2e;border-top:1px solid #2d3148;
+         display:flex;gap:8px}
+  #input{flex:1;background:#0f1117;border:1px solid #2d3148;border-radius:8px;
+         color:#e2e8f0;padding:10px 14px;font-size:.9rem;outline:none;resize:none;
+         height:42px;max-height:120px;overflow:auto}
+  #input:focus{border-color:#4f46e5}
+  button{background:#4f46e5;color:#fff;border:none;border-radius:8px;
+         padding:0 18px;cursor:pointer;font-size:.9rem;font-weight:500;
+         transition:background .15s}
+  button:hover{background:#4338ca}
+  button:disabled{background:#374151;cursor:not-allowed}
+  .thinking{color:#64748b;font-style:italic;font-size:.85rem;padding:6px 14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#x1F344; Mycelium</h1>
+  <span>local AI companion</span>
+</header>
+<div id="chat">
+  <div class="msg agent"><strong>Mycelium</strong><br>Hello! I am your local AI companion. Everything runs on your device — your data never leaves. Try asking me to predict, train on a CSV, or just chat!</div>
+</div>
+<footer>
+  <textarea id="input" placeholder="Type a message…" rows="1"></textarea>
+  <button id="send" onclick="sendMsg()">Send</button>
+</footer>
+<script>
+const chat=document.getElementById('chat');
+const input=document.getElementById('input');
+const btn=document.getElementById('send');
+function addMsg(text,cls){
+  const d=document.createElement('div');
+  d.className='msg '+cls;
+  if(cls==='agent'){d.innerHTML='<strong>Mycelium</strong><br>'+escHtml(text);}
+  else{d.textContent=text;}
+  chat.appendChild(d);
+  chat.scrollTop=chat.scrollHeight;
+  return d;
+}
+function escHtml(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');}
+async function sendMsg(){
+  const text=input.value.trim();
+  if(!text)return;
+  input.value='';input.style.height='42px';
+  btn.disabled=true;
+  addMsg(text,'user');
+  const thinking=document.createElement('div');
+  thinking.className='thinking';thinking.textContent='Thinking…';
+  chat.appendChild(thinking);chat.scrollTop=chat.scrollHeight;
+  try{
+    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:text,user_id:'web_user'})});
+    const data=await r.json();
+    thinking.remove();
+    addMsg(data.response||data.detail||'Error','agent');
+  }catch(e){thinking.remove();addMsg('Connection error: '+e,'agent');}
+  btn.disabled=false;input.focus();
+}
+input.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}
+  setTimeout(()=>{input.style.height='42px';input.style.height=Math.min(input.scrollHeight,120)+'px';},0);
+});
+</script>
+</body>
+</html>"""
