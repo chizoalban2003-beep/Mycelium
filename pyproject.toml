@@ -46,11 +46,12 @@ dev      = ["pytest>=8", "pytest-cov", "pytest-timeout>=2.3", "ruff", "httpx"]
 llm      = ["anthropic>=0.40"]
 voice    = ["faster-whisper>=1.0", "sounddevice>=0.4"]
 vector   = ["sentence-transformers>=2.0"]
-screen    = ["pyautogui>=0.9", "mss>=9.0"]
-browser   = ["playwright>=1.40"]
-notify    = ["plyer>=2.1"]
-ocr       = ["pytesseract>=0.3", "Pillow>=10.0"]
-watcher   = ["watchdog>=4.0"]
+screen   = ["pyautogui>=0.9", "mss>=9.0"]
+browser  = ["playwright>=1.40"]
+notify   = ["plyer>=2.1"]
+ocr      = ["pytesseract>=0.3", "Pillow>=10.0"]
+watcher  = ["watchdog>=4.0"]
+dotenv   = ["python-dotenv>=1.0"]
 companion = [
     "anthropic>=0.40",
     "faster-whisper>=1.0",
@@ -59,6 +60,7 @@ companion = [
     "pyttsx3>=2.90",
     "plyer>=2.1",
     "watchdog>=4.0",
+    "python-dotenv>=1.0",
 ]
 full = [
     "anthropic>=0.40",
@@ -75,6 +77,7 @@ full = [
     "Pillow>=10.0",
     "pdfplumber>=0.10",
     "openpyxl>=3.1",
+    "python-dotenv>=1.0",
 ]
 
 [project.scripts]

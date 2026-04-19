@@ -127,6 +127,13 @@ class MyceliumCompanion:
         if self._started:
             return
 
+        # Auto-load .env if python-dotenv is installed — zero config for users
+        try:
+            from dotenv import load_dotenv as _ld
+            _ld(override=False)   # don't override already-set env vars
+        except ImportError:
+            pass
+
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         # DigitalSoul

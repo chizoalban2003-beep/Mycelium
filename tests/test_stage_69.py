@@ -282,12 +282,14 @@ class TestFinalAccuracy:
 class TestMyceliumAgentCompat:
     def test_runs_with_mycelium_agent(self):
         from physml import MyceliumAgent
+        from physml.ensemble_predictor import CompetitiveEnsemblePredictor
 
-        # Small dataset to stay within timeout; behaviour not data-size dependent
-        X, y = _make_data(n=80)
-        agent = MyceliumAgent()
+        # Minimal n_estimators to keep fit fast; behaviour is estimator-agnostic
+        fast_predictor = CompetitiveEnsemblePredictor(n_estimators=3)
+        agent = MyceliumAgent(predictor=fast_predictor)
+        X, y = _make_data(n=60)
         ll = LifelongLearner(agent, improvement_threshold=0.99, eval_every=2)
-        history = ll.run(X, y, chunk_size=40)
+        history = ll.run(X, y, chunk_size=30)
         assert len(history) >= 1
         assert ll._fitted is True
 

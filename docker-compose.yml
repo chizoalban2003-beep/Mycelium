@@ -1,0 +1,64 @@
+version: "3.9"
+
+# Mycelium — one-command local AI companion stack
+#
+# Quick start:
+#   cp .env.example .env          # add your ANTHROPIC_API_KEY
+#   docker compose up             # starts API + companion
+#
+# Data persists in ./data/ on your host machine.
+
+services:
+  # -------------------------------------------------------------------------
+  # REST API — the HTTP interface to the companion
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    image: mycelium-api:latest
+    container_name: mycelium-api
+    restart: unless-stopped
+    ports:
+      - "${MYCO_PORT:-8000}:8000"
+    volumes:
+      - mycelium-data:/data/.mycelium
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MYCO_NAME: ${MYCO_NAME:-Myco}
+      MYCO_DATA_DIR: /data/.mycelium
+      MYCO_VERBOSITY: ${MYCO_VERBOSITY:-normal}
+      MYCO_SECRET_KEY: ${MYCO_SECRET_KEY:-change-me}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # -------------------------------------------------------------------------
+  # Companion worker — runs the background goal loop + scheduled goals
+  # -------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    image: mycelium-worker:latest
+    container_name: mycelium-worker
+    restart: unless-stopped
+    volumes:
+      - mycelium-data:/data/.mycelium
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      MYCO_NAME: ${MYCO_NAME:-Myco}
+      MYCO_DATA_DIR: /data/.mycelium
+      MYCO_VERBOSITY: ${MYCO_VERBOSITY:-normal}
+      MYCO_WATCH_DIRS: ${MYCO_WATCH_DIRS:-}
+    depends_on:
+      - api
+
+volumes:
+  mycelium-data:
+    driver: local
