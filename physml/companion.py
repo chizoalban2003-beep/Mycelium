@@ -116,6 +116,9 @@ class MyceliumCompanion:
         self.task_decomposer: Any = None       # Stage 92 + LLM
         self.goal_engine: Any = None           # Stage 137 — autonomous goal loop
         self.scheduler: Any = None             # Stage 138 — recurring scheduled goals
+        self.comm_bridge: Any = None           # Stage 143 — digital communication
+        self.desktop_bridge: Any = None        # Stage 144 — desktop automation
+        self.voice_loop: Any = None            # Stage 145 — voice interaction loop
         self._last_features: Optional[List[float]] = None  # for feedback loop
 
     # ------------------------------------------------------------------
@@ -331,6 +334,31 @@ class MyceliumCompanion:
             notifier=self.notifier,
             state_dir=str(self.data_dir / "schedule"),
         )
+
+        # CommBridge — digital communication (Stage 143)
+        from physml.comm_bridge import CommBridge
+        self.comm_bridge = CommBridge(companion=self)
+
+        # Register CommBridge handlers in GoalEngine
+        def _comm_handler(desc: str, goal: Any) -> str:
+            return self.comm_bridge.dispatch(desc)
+
+        for kw in ("send email", "email", "send message", "send sms", "text message",
+                   "sms", "whatsapp", "slack", "notify contact"):
+            self.goal_engine.register_handler(kw, _comm_handler)
+
+        # DesktopBridge — desktop automation (Stage 144)
+        from physml.desktop_bridge import DesktopBridge
+        self.desktop_bridge = DesktopBridge(companion=self)
+
+        # Register DesktopBridge handlers in GoalEngine
+        def _desktop_handler(desc: str, goal: Any) -> str:
+            return self.desktop_bridge.dispatch(desc)
+
+        for kw in ("open app", "open file", "read file", "write file", "list files",
+                   "delete file", "copy to clipboard", "paste clipboard", "screenshot",
+                   "run command", "execute command", "open url"):
+            self.goal_engine.register_handler(kw, _desktop_handler)
 
         # Register digest handler in GoalEngine
         def _digest_handler(desc: str, goal: Any) -> str:
@@ -1098,6 +1126,64 @@ class MyceliumCompanion:
     # Status
     # ------------------------------------------------------------------
 
+    # ------------------------------------------------------------------
+    # Voice loop  (Stage 145)
+    # ------------------------------------------------------------------
+
+    def start_voice(
+        self,
+        wake_word: Optional[str] = None,
+        record_seconds: float = 5.0,
+        speak_response: bool = True,
+    ) -> str:
+        """Start the continuous voice interaction loop.
+
+        Requires: ``pip install faster-whisper sounddevice pyttsx3``
+
+        Parameters
+        ----------
+        wake_word : str or None
+            Phrase that activates processing (e.g. ``"hey myco"``).
+            ``None`` processes every utterance.
+        record_seconds : float
+            Duration of each recording window.
+        speak_response : bool
+            Whether to speak the companion's response via TTS.
+
+        Returns
+        -------
+        str
+            Status message.
+        """
+        if not self._started:
+            self.start()
+        if self.voice_loop is not None and getattr(self.voice_loop, "_running", False):
+            return "Voice loop is already running."
+        try:
+            from physml.voice_loop import VoiceLoop
+            self.voice_loop = VoiceLoop(
+                companion=self,
+                wake_word=wake_word or self.personalisation.get("wake_word") if self.personalisation else wake_word,
+                record_seconds=record_seconds,
+                speak_response=speak_response,
+            )
+            self.voice_loop.start()
+            _logger.info("MyceliumCompanion: voice loop started")
+            return "Voice loop started. I'm listening."
+        except Exception as exc:
+            return f"Voice loop failed to start: {exc}"
+
+    def stop_voice(self) -> str:
+        """Stop the voice interaction loop."""
+        if self.voice_loop is None or not getattr(self.voice_loop, "_running", False):
+            return "Voice loop is not running."
+        try:
+            self.voice_loop.stop()
+            _logger.info("MyceliumCompanion: voice loop stopped")
+            return "Voice loop stopped."
+        except Exception as exc:
+            return f"Error stopping voice loop: {exc}"
+
     def status(self) -> Dict[str, Any]:
         """Return full system status.
 
@@ -1136,6 +1222,12 @@ class MyceliumCompanion:
             s["goals"] = self.goal_engine.status()
         if self.scheduler:
             s["scheduled_goals"] = self.scheduler.status()["total"]
+        if self.comm_bridge:
+            s["comm_channels"] = self.comm_bridge.status()
+        if self.desktop_bridge:
+            s["desktop"] = self.desktop_bridge.status()
+        if self.voice_loop:
+            s["voice_active"] = getattr(self.voice_loop, "_running", False)
         return s
 
     # ------------------------------------------------------------------

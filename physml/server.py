@@ -717,6 +717,63 @@ def create_app() -> Any:
         text = companion.daily_digest()
         return {"digest": text}
 
+    # -----------------------------------------------------------------------
+    # Voice loop endpoints — Stage 145
+    # -----------------------------------------------------------------------
+
+    @app.get("/voice/status")
+    def voice_status() -> dict:
+        """Return voice loop status."""
+        companion = _get_companion()
+        vl = getattr(companion, "voice_loop", None)
+        return {
+            "running": vl is not None and getattr(vl, "_running", False),
+            "available": True,
+        }
+
+    @app.post("/voice/start")
+    def voice_start(wake_word: str = "", record_seconds: float = 5.0) -> dict:
+        """Start the voice interaction loop."""
+        companion = _get_companion()
+        msg = companion.start_voice(
+            wake_word=wake_word or None,
+            record_seconds=record_seconds,
+        )
+        return {"message": msg}
+
+    @app.post("/voice/stop")
+    def voice_stop() -> dict:
+        """Stop the voice interaction loop."""
+        companion = _get_companion()
+        msg = companion.stop_voice()
+        return {"message": msg}
+
+    # -----------------------------------------------------------------------
+    # CommBridge status endpoint — Stage 143
+    # -----------------------------------------------------------------------
+
+    @app.get("/comm/status")
+    def comm_status() -> dict:
+        """Return communication channel configuration status."""
+        companion = _get_companion()
+        cb = getattr(companion, "comm_bridge", None)
+        if cb is None:
+            return {"error": "CommBridge not initialised"}
+        return cb.status()
+
+    # -----------------------------------------------------------------------
+    # DesktopBridge status endpoint — Stage 144
+    # -----------------------------------------------------------------------
+
+    @app.get("/desktop/status")
+    def desktop_status() -> dict:
+        """Return desktop automation capability status."""
+        companion = _get_companion()
+        db = getattr(companion, "desktop_bridge", None)
+        if db is None:
+            return {"error": "DesktopBridge not initialised"}
+        return db.status()
+
     return app
 
 

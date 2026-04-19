@@ -409,6 +409,12 @@ from physml.scheduled_goals import ScheduledGoals, ScheduledGoal, Schedule
 # Stage 139 — GoalFeedbackStore (learn from past goal outcomes)
 from physml.goal_feedback import GoalFeedbackStore, GoalOutcome
 
+# Stage 143 — CommBridge (digital communication tool handlers)
+from physml.comm_bridge import CommBridge, CommResult
+
+# Stage 144 — DesktopBridge (local desktop task automation)
+from physml.desktop_bridge import DesktopBridge, DesktopResult
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -736,4 +742,10 @@ __all__ = [
     # Stage 139 — GoalFeedbackStore
     "GoalFeedbackStore",
     "GoalOutcome",
+    # Stage 143 — CommBridge
+    "CommBridge",
+    "CommResult",
+    # Stage 144 — DesktopBridge
+    "DesktopBridge",
+    "DesktopResult",
 ]
