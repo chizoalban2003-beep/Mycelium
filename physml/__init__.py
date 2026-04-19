@@ -376,6 +376,30 @@ from physml.voice_loop import VoiceLoop
 # Stage 126 — VectorMemory (semantic memory with local embeddings)
 from physml.vector_memory import VectorMemory, MemoryEntry, SearchResult
 
+# Stage 129 — ScreenAgent (screen/UI automation)
+from physml.screen_agent import ScreenAgent
+
+# Stage 130 — BrowserAgent (local browser automation)
+from physml.browser_agent import BrowserAgent
+
+# Stage 131 — PermissionManager (OS action gating)
+from physml.permission_manager import PermissionManager, PermissionLevel
+
+# Stage 132 — FileWatcher (proactive file learning)
+from physml.file_watcher import FileWatcher
+
+# Stage 133 — Notifier (desktop notifications)
+from physml.notifier import Notifier
+
+# Stage 134 — KnowledgeExtractor (auto-extract facts from chat)
+from physml.knowledge_extractor import KnowledgeExtractor
+
+# Stage 135 — FeedbackLoop (live model correction from user)
+from physml.feedback_loop import FeedbackLoop, CorrectionRecord
+
+# Stage 136 — PersonalisationManager (manual + auto config)
+from physml.personalisation import PersonalisationManager
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -674,4 +698,22 @@ __all__ = [
     "VectorMemory",
     "MemoryEntry",
     "SearchResult",
+    # Stage 129 — ScreenAgent
+    "ScreenAgent",
+    # Stage 130 — BrowserAgent
+    "BrowserAgent",
+    # Stage 131 — PermissionManager
+    "PermissionManager",
+    "PermissionLevel",
+    # Stage 132 — FileWatcher
+    "FileWatcher",
+    # Stage 133 — Notifier
+    "Notifier",
+    # Stage 134 — KnowledgeExtractor
+    "KnowledgeExtractor",
+    # Stage 135 — FeedbackLoop
+    "FeedbackLoop",
+    "CorrectionRecord",
+    # Stage 136 — PersonalisationManager
+    "PersonalisationManager",
 ]

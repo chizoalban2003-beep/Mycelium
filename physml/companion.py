@@ -16,6 +16,15 @@ Subsystems wired together:
 * :class:`~physml.digital_soul.DigitalSoul` — agent identity
 * :class:`~physml.secure_vault.SecureVault` — secrets store
 * :class:`~physml.doc_processor.DocumentProcessor` — document ingestion
+* :class:`~physml.knowledge_extractor.KnowledgeExtractor` — auto-fact extraction
+* :class:`~physml.feedback_loop.FeedbackLoop` — live model corrections
+* :class:`~physml.personalisation.PersonalisationManager` — manual + auto config
+* :class:`~physml.file_watcher.FileWatcher` — proactive file learning
+* :class:`~physml.notifier.Notifier` — desktop notifications
+* :class:`~physml.permission_manager.PermissionManager` — OS action gating
+* :class:`~physml.screen_agent.ScreenAgent` — screen/UI automation
+* :class:`~physml.browser_agent.BrowserAgent` — browser control
+* :class:`~physml.task_decomposer.TaskDecomposer` — LLM-driven task planning
 
 Usage
 -----
@@ -84,7 +93,7 @@ class MyceliumCompanion:
         self.profile: Any = None
         self.formatter: Any = None
         self.router: Any = None
-        self.llm: Any = None          # LLMIntegration (Stage 121)
+        self.llm: Any = None              # LLMIntegration (Stage 121)
         self.conversation: Any = None
         self.executor: Any = None
         self.doc_processor: Any = None
@@ -92,9 +101,19 @@ class MyceliumCompanion:
         self.device_monitor: Any = None
         self.advisor: Any = None
         self.vault: Any = None
-        self.model_manager: Any = None  # ModelManager (Stage 123)
-        self.tool_bridge: Any = None    # ToolBridge (Stage 124)
-        self.vector_memory: Any = None  # VectorMemory (Stage 126)
+        self.model_manager: Any = None    # ModelManager (Stage 123)
+        self.tool_bridge: Any = None      # ToolBridge (Stage 124)
+        self.vector_memory: Any = None    # VectorMemory (Stage 126)
+        self.knowledge_extractor: Any = None   # Stage 134
+        self.feedback_loop: Any = None         # Stage 135
+        self.personalisation: Any = None       # Stage 136
+        self.file_watcher: Any = None          # Stage 132
+        self.notifier: Any = None              # Stage 133
+        self.permission_manager: Any = None    # Stage 131
+        self.screen_agent: Any = None          # Stage 129
+        self.browser_agent: Any = None         # Stage 130
+        self.task_decomposer: Any = None       # Stage 92 + LLM
+        self._last_features: Optional[List[float]] = None  # for feedback loop
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -218,13 +237,183 @@ class MyceliumCompanion:
             len(self.vector_memory), self.vector_memory.active_backend,
         )
 
+        # PermissionManager — gate OS actions
+        from physml.permission_manager import PermissionManager
+        self.permission_manager = PermissionManager(
+            config_path=str(self.data_dir / "permissions.json"),
+        )
+
+        # PersonalisationManager — manual + auto config
+        from physml.personalisation import PersonalisationManager
+        from physml.knowledge_graph import KnowledgeGraph
+        _kg = KnowledgeGraph()
+        self.personalisation = PersonalisationManager(
+            config_path=str(self.data_dir / "config.json"),
+            user_profile=self.profile,
+            knowledge_graph=_kg,
+        )
+
+        # KnowledgeExtractor — auto-extract facts from chat
+        from physml.knowledge_extractor import KnowledgeExtractor
+        self.knowledge_extractor = KnowledgeExtractor(
+            knowledge_graph=_kg,
+            vector_memory=self.vector_memory,
+            llm=self.llm if self.llm and self.llm.available else None,
+        )
+
+        # FeedbackLoop — live model corrections
+        from physml.feedback_loop import FeedbackLoop
+        self.feedback_loop = FeedbackLoop(
+            model_manager=self.model_manager,
+            vector_memory=self.vector_memory,
+        )
+
+        # Notifier — desktop notifications
+        from physml.notifier import Notifier
+        self.notifier = Notifier(app_name=self.name)
+
+        # FileWatcher — proactive learning from new files
+        from physml.file_watcher import FileWatcher
+        watch_dirs = self.personalisation.get("watch_dirs", []) or []
+        self.file_watcher = FileWatcher(
+            watch_dirs=watch_dirs,
+            callback=self._on_new_file,
+        )
+        if watch_dirs:
+            self.file_watcher.start()
+
+        # ScreenAgent — screenshot / UI automation (lazy, no auto-start)
+        from physml.screen_agent import ScreenAgent
+        self.screen_agent = ScreenAgent(
+            screenshot_dir=str(self.data_dir / "screenshots"),
+        )
+
+        # BrowserAgent — browser automation (lazy, no auto-start)
+        from physml.browser_agent import BrowserAgent
+        self.browser_agent = BrowserAgent(headless=True)
+
+        # TaskDecomposer — LLM-driven goal planning (Stage 92 + LLM)
+        from physml.task_decomposer import TaskDecomposer
+        self.task_decomposer = TaskDecomposer(
+            llm=self.llm if self.llm and self.llm.available else None,
+        )
+
+        # Apply personalisation to formatter verbosity
+        verbosity = self.personalisation.get("verbosity", self.verbosity)
+        if hasattr(self.formatter, "verbosity"):
+            self.formatter.verbosity = verbosity
+
         self._started = True
-        _logger.info("MyceliumCompanion %r started (v0.29.0)", self.name)
+        _logger.info("MyceliumCompanion %r started (v0.30.0)", self.name)
+
+    def personalise(self, key: str, value: Any) -> str:
+        """Set a personalisation preference and return confirmation.
+
+        Parameters
+        ----------
+        key : str
+            One of: name, language, verbosity, agent_name, wake_word,
+            timezone, notifications, watch_dirs, theme, …
+        value : any
+            The new value.
+        """
+        if not self._started:
+            self.start()
+        try:
+            self.personalisation.set(key, value)
+            # Apply immediately if we can
+            if key == "verbosity" and hasattr(self.formatter, "verbosity"):
+                self.formatter.verbosity = value
+            elif key == "watch_dirs" and isinstance(value, list):
+                if self.file_watcher is not None:
+                    self.file_watcher.stop()
+                    self.file_watcher.watch_dirs = value
+                    if value:
+                        self.file_watcher.start()
+            return f"Got it — {key} set to {value!r}."
+        except ValueError as exc:
+            return f"Invalid value: {exc}"
+
+    def plan(self, goal: str) -> str:
+        """Decompose a goal into a step-by-step plan using Claude (or heuristics).
+
+        Parameters
+        ----------
+        goal : str
+            High-level goal description.
+        """
+        if not self._started:
+            self.start()
+        if self.task_decomposer is not None:
+            return self.task_decomposer.decompose_and_summarise(goal)
+        return f"Plan: {goal}"
+
+    def take_screenshot(self) -> str:
+        """Capture the screen and return the saved file path."""
+        if not self._started:
+            self.start()
+        if self.screen_agent is None:
+            return "Screen agent not initialised."
+        if not self.permission_manager.check("screen.screenshot"):
+            return "Permission denied for screen.screenshot."
+        path = self.screen_agent.screenshot()
+        if path:
+            if self.notifier:
+                self.notifier.send("Screenshot saved", path)
+            return f"Screenshot saved: {path}"
+        return "Screenshot failed (install mss or pyautogui)."
+
+    def browse(self, url: str) -> str:
+        """Fetch a URL and return its text content."""
+        if not self._started:
+            self.start()
+        if not self.permission_manager.check("browser.navigate"):
+            return "Permission denied for browser.navigate."
+        result = self.doc_processor.process(url)
+        if result.success:
+            preview = result.text[:500]
+            if self.vector_memory:
+                self.vector_memory.add(f"Browsed {url}: {preview}", {"type": "url"})
+            return f"Page: {url}\n\n{preview}{'...' if len(result.text) > 500 else ''}"
+        return f"Could not fetch {url}: {result.error}"
+
+    def _on_new_file(self, path: str) -> None:
+        """Callback fired by FileWatcher when a new file appears."""
+        _logger.info("MyceliumCompanion: new file detected — %s", path)
+        try:
+            result = self.doc_processor.process(path)
+            if result.success:
+                summary = result.text[:200]
+                if self.vector_memory:
+                    self.vector_memory.add(
+                        f"Auto-ingested file {path}: {summary}",
+                        {"type": "auto_file"},
+                    )
+                if result.df is not None and self.model_manager is not None:
+                    # Auto-train on CSV files
+                    tr = self.model_manager.train_from_csv(path)
+                    if tr.success:
+                        self.model_manager.save()
+                        if self.notifier:
+                            self.notifier.send_success(
+                                f"Auto-trained on {path} ({tr.n_rows} rows)"
+                            )
+                        self.soul.record_event("auto_train", description=tr.message)
+                        return
+                if self.notifier:
+                    self.notifier.send("New file", f"Ingested: {path}")
+        except Exception as exc:
+            _logger.warning("MyceliumCompanion: _on_new_file error: %s", exc)
 
     def stop(self) -> None:
         """Gracefully shut down all subsystems."""
         if not self._started:
             return
+        if self.file_watcher is not None:
+            try:
+                self.file_watcher.stop()
+            except Exception:
+                pass
         if self.device_monitor is not None:
             try:
                 self.device_monitor.stop()
@@ -278,6 +467,31 @@ class MyceliumCompanion:
 
         # Profile: record interaction
         self.profile.record_interaction(intent=intent, topic=intent)
+
+        # Auto-extract facts from what the user says
+        if self.knowledge_extractor is not None:
+            try:
+                facts = self.knowledge_extractor.extract_and_store(text)
+                if facts:
+                    # Persist newly learned name into personalisation
+                    for f in facts:
+                        if f["predicate"] == "name" and not self.personalisation.get("name"):
+                            self.personalisation.set("name", f["object"])
+            except Exception as _ke:
+                _logger.debug("knowledge_extractor error: %s", _ke)
+
+        # Check if user is giving a correction/feedback
+        if self.feedback_loop is not None:
+            try:
+                feedback_reply = self.feedback_loop.parse_and_record(
+                    text, last_features=self._last_features
+                )
+                if feedback_reply is not None:
+                    self.conversation.add_turn("agent", feedback_reply)
+                    self.soul.increment_stat("total_interactions")
+                    return feedback_reply
+            except Exception as _fe:
+                _logger.debug("feedback_loop error: %s", _fe)
 
         # Dispatch by intent
         response = self._dispatch(text, intent, entities)
@@ -333,6 +547,15 @@ class MyceliumCompanion:
             return self.formatter.format_report(self.status())
         elif intent in ("profile", "learn_about", "about_me"):
             return self._handle_profile_query()
+        elif intent == "plan":
+            return self.plan(text)
+        elif intent in ("browse", "fetch", "open_url"):
+            urls = [e for e in entities.get("paths", []) if e.startswith("http")]
+            if urls:
+                return self.browse(urls[0])
+            return self._handle_generic(text)
+        elif intent == "screenshot":
+            return self.take_screenshot()
         elif intent == "help":
             return _HELP_TEXT
         else:
@@ -352,6 +575,7 @@ class MyceliumCompanion:
                     f"Try: 'train on <yourfile.csv>' so I can learn from your data first."
                 )
             if numbers:
+                self._last_features = numbers  # for feedback loop
                 result = self.model_manager.predict(numbers)
                 if result.error:
                     return f"Prediction error: {result.error}"
@@ -515,10 +739,15 @@ class MyceliumCompanion:
                 if snippets:
                     memory_context = f"\nRelevant memory:\n{snippets}"
 
+        # Personalisation additions
+        personal_extra = ""
+        if self.personalisation is not None:
+            personal_extra = self.personalisation.system_prompt_additions()
+
         system = self.llm.build_system_prompt(
             soul=self.soul,
             profile=self.profile,
-            extra=memory_context,
+            extra=(personal_extra + "\n" + memory_context).strip(),
         )
 
         # First LLM call — may return tool calls
@@ -596,6 +825,19 @@ class MyceliumCompanion:
             s["conversation_turns"] = len(self.conversation.turns)
         if self.plugin_registry:
             s["plugins_loaded"] = len(self.plugin_registry.loaded)
+        if self.personalisation:
+            s["user_name"] = self.personalisation.get("name")
+            s["verbosity"] = self.personalisation.get("verbosity")
+        if self.feedback_loop:
+            s["corrections_applied"] = self.feedback_loop.status()["total_applied"]
+        if self.knowledge_extractor:
+            s["facts_learned"] = self.knowledge_extractor.status()["facts_stored"]
+        if self.screen_agent:
+            s["screen_automation"] = self.screen_agent.available
+        if self.browser_agent:
+            s["browser_automation"] = self.browser_agent.available
+        if self.file_watcher:
+            s["file_watcher"] = self.file_watcher.status()
         return s
 
     # ------------------------------------------------------------------
@@ -635,14 +877,31 @@ class MyceliumCompanion:
 # ---------------------------------------------------------------------------
 
 _HELP_TEXT = """
-Mycelium Companion — available commands:
-  predict [values...]      — run a prediction
-  train on <file>          — learn from a data file
-  read / process <file>    — process a document
-  show report / status     — system report
-  save                     — save state to disk
-  what have you learned about me? — profile summary
-  /help                    — show this message
+Mycelium (Myco) — your local AI companion
+
+PREDICTIONS & LEARNING
+  predict [values...]          — run a prediction with your model
+  train on <file.csv>          — train on a CSV file
+  that's wrong, it should be X — correct a prediction (live model update)
+
+DOCUMENTS & WEB
+  read / process <file>        — analyse a local file (CSV, PDF, TXT, image)
+  open https://example.com     — fetch and read a webpage
+
+AUTOMATION
+  take a screenshot            — capture your screen
+  plan <goal>                  — break a goal into steps (LLM-powered)
+
+PERSONALISATION
+  call companion.personalise("name", "Alex")   — set your name
+  call companion.personalise("verbosity", "concise")
+  call companion.personalise("watch_dirs", ["/home/me/Downloads"])
+
+STATUS & SYSTEM
+  show report / status         — full system status
+  what have you learned about me? — profile + known facts
+  save                         — save state to disk
+  /help                        — show this message
 """.strip()
 
 

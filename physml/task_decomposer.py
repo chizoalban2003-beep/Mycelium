@@ -15,7 +15,7 @@ TaskDecomposer
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
@@ -64,9 +64,14 @@ class TaskDecomposer:
         Registered decomposition rules.
     """
 
-    def __init__(self, default_steps: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        default_steps: Optional[List[str]] = None,
+        llm: Any = None,
+    ) -> None:
         self.rules_: Dict[str, Callable[[str], List[str]]] = {}
         self._default_steps = default_steps or []
+        self._llm = llm
 
     # ------------------------------------------------------------------
     def register_rule(self, keyword: str, fn: Callable[[str], List[str]]) -> None:
@@ -97,9 +102,19 @@ class TaskDecomposer:
         list[SubTask]
         """
         descriptions = self._apply_rules(goal)
+        if not descriptions and self._llm is not None:
+            descriptions = self._llm_decompose(goal)
         if not descriptions:
             descriptions = self._heuristic_split(goal)
         return [SubTask(index=i, description=d) for i, d in enumerate(descriptions)]
+
+    def decompose_and_summarise(self, goal: str) -> str:
+        """Decompose *goal* and return a numbered plan string."""
+        tasks = self.decompose(goal)
+        lines = [f"Plan for: {goal}"]
+        for t in tasks:
+            lines.append(f"  {t.index + 1}. {t.description}")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     def _apply_rules(self, goal: str) -> List[str]:
@@ -107,6 +122,35 @@ class TaskDecomposer:
         for keyword, fn in self.rules_.items():
             if keyword in lower:
                 return fn(goal)
+        return []
+
+    def _llm_decompose(self, goal: str) -> List[str]:
+        """Ask Claude to break the goal into numbered steps."""
+        try:
+            prompt = (
+                f"Break the following goal into 3-7 concrete, actionable steps.\n"
+                f"Reply with a numbered list only (no extra text).\n\n"
+                f"Goal: {goal}"
+            )
+            result = self._llm.complete(
+                prompt,
+                system="You are a task planning assistant. Return a numbered list of steps only.",
+            )
+            if result.available and result.text:
+                import re
+                lines = result.text.strip().splitlines()
+                steps = []
+                for line in lines:
+                    line = line.strip()
+                    m = re.match(r"^\d+[\.\)]\s*(.+)$", line)
+                    if m:
+                        steps.append(m.group(1).strip())
+                    elif line and not line.startswith("#"):
+                        steps.append(line)
+                if steps:
+                    return steps
+        except Exception:
+            pass
         return []
 
     def _heuristic_split(self, goal: str) -> List[str]:

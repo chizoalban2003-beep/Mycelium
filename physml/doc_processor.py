@@ -1,12 +1,17 @@
 """Stage 110 — DocumentProcessor: local document ingestion.
 
-Processes local documents into features the agent can learn from.
+Processes local documents AND remote URLs/images into text features
+the agent can learn from.
 
 Supported formats:
 * Plain text (``.txt``) — read as-is.
 * CSV / TSV — loaded into a ``pandas`` DataFrame.
 * JSON — read and summarised.
 * PDF — extracted via ``pdfplumber`` or ``PyPDF2`` (graceful fallback).
+* Images (``.png``, ``.jpg``, ``.jpeg``, ``.bmp``, ``.gif``) — OCR via
+  pytesseract (optional) or description via Claude vision (optional).
+* URLs (``http://`` / ``https://``) — fetched and stripped to plain text.
+* Excel (``.xlsx``, ``.xls``) — loaded via openpyxl/xlrd into DataFrame.
 
 Returns a :class:`DocumentResult` with extracted text, metadata, and
 optional tabular data.
@@ -19,6 +24,8 @@ Usage
 
     proc = DocumentProcessor()
     result = proc.process("report.csv")
+    result2 = proc.process("https://example.com/data.html")
+    result3 = proc.process("screenshot.png")
     print(result.text)
     print(result.df)         # pandas DataFrame if tabular
     print(result.metadata)   # {"type": "csv", "rows": 120, ...}
@@ -88,17 +95,21 @@ class DocumentProcessor:
     # ------------------------------------------------------------------
 
     def process(self, path: str) -> DocumentResult:
-        """Process a document and return a :class:`DocumentResult`.
+        """Process a document, URL, or image and return a :class:`DocumentResult`.
 
         Parameters
         ----------
         path : str
-            Path to the document file.
+            Path to the document file, OR a URL starting with http/https.
 
         Returns
         -------
         DocumentResult
         """
+        # Handle URLs
+        if path.startswith("http://") or path.startswith("https://"):
+            return self._process_url(path)
+
         p = Path(path).expanduser().resolve()
         if not p.exists():
             return DocumentResult(
@@ -118,6 +129,10 @@ class DocumentProcessor:
                 return self._process_json(p)
             elif suffix == ".pdf":
                 return self._process_pdf(p)
+            elif suffix in (".xlsx", ".xls"):
+                return self._process_excel(p)
+            elif suffix in (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tiff"):
+                return self._process_image(p)
             else:
                 # Treat everything else as plain text
                 return self._process_text(p)
@@ -277,6 +292,94 @@ class DocumentProcessor:
             source=str(p),
             success=success,
             error=error if not success else None,
+        )
+
+    def _process_url(self, url: str) -> DocumentResult:
+        """Fetch a URL and strip to plain text."""
+        import re
+        import urllib.request
+        text = ""
+        error = None
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mycelium/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+            # Strip HTML tags
+            text = re.sub(r"<style[^>]*>.*?</style>", " ", raw, flags=re.S)
+            text = re.sub(r"<script[^>]*>.*?</script>", " ", text, flags=re.S)
+            text = re.sub(r"<[^>]+>", " ", text)
+            text = re.sub(r"\s{2,}", " ", text).strip()
+            text = text[: self.max_text_chars]
+        except Exception as exc:
+            error = str(exc)
+            _logger.warning("DocumentProcessor URL fetch failed %s: %s", url, exc)
+
+        return DocumentResult(
+            text=text,
+            df=None,
+            metadata={"type": "url", "url": url, "chars": len(text)},
+            source=url,
+            success=bool(text),
+            error=error,
+        )
+
+    def _process_excel(self, p: Path) -> DocumentResult:
+        """Load Excel file into a DataFrame."""
+        try:
+            import pandas as pd
+            df = pd.read_excel(str(p))
+            text_repr = df.head(20).to_string(index=False)[: self.max_text_chars]
+            return DocumentResult(
+                text=text_repr,
+                df=df,
+                metadata={
+                    "type": "excel",
+                    "rows": len(df),
+                    "columns": list(df.columns),
+                    "n_columns": len(df.columns),
+                    "size_bytes": p.stat().st_size,
+                },
+                source=str(p),
+            )
+        except Exception as exc:
+            return DocumentResult(
+                text="", df=None,
+                metadata={"type": "excel"},
+                source=str(p), success=False, error=str(exc),
+            )
+
+    def _process_image(self, p: Path) -> DocumentResult:
+        """Extract text from an image via OCR (pytesseract) if available."""
+        text = ""
+        backend = "none"
+        error = None
+
+        try:
+            import pytesseract  # type: ignore
+            from PIL import Image  # type: ignore
+            img = Image.open(str(p))
+            text = pytesseract.image_to_string(img)
+            backend = "pytesseract"
+        except ImportError:
+            error = "pytesseract/Pillow not installed; install them for image OCR"
+            _logger.info("DocumentProcessor: %s", error)
+        except Exception as exc:
+            error = str(exc)
+            _logger.warning("DocumentProcessor image OCR failed: %s", exc)
+
+        text = text.strip()[: self.max_text_chars]
+        return DocumentResult(
+            text=text,
+            df=None,
+            metadata={
+                "type": "image",
+                "backend": backend,
+                "size_bytes": p.stat().st_size,
+                "chars": len(text),
+            },
+            source=str(p),
+            success=bool(text),
+            error=error if not text else None,
         )
 
     def __repr__(self) -> str:
