@@ -115,6 +115,7 @@ class MyceliumCompanion:
         self.browser_agent: Any = None         # Stage 130
         self.task_decomposer: Any = None       # Stage 92 + LLM
         self.goal_engine: Any = None           # Stage 137 — autonomous goal loop
+        self.scheduler: Any = None             # Stage 138 — recurring scheduled goals
         self._last_features: Optional[List[float]] = None  # for feedback loop
 
     # ------------------------------------------------------------------
@@ -316,6 +317,14 @@ class MyceliumCompanion:
             state_dir=str(self.data_dir / "goals"),
         )
 
+        # ScheduledGoals — recurring goal scheduler (Stage 138)
+        from physml.scheduled_goals import ScheduledGoals
+        self.scheduler = ScheduledGoals(
+            goal_engine=self.goal_engine,
+            notifier=self.notifier,
+            state_dir=str(self.data_dir / "schedule"),
+        )
+
         self._started = True
         _logger.info("MyceliumCompanion %r started (v0.31.0)", self.name)
 
@@ -389,6 +398,33 @@ class MyceliumCompanion:
             f"Check progress with: companion.goals()"
         )
 
+    def schedule_goal(self, description: str, schedule: str = "daily") -> str:
+        """Register a recurring goal on a schedule.
+
+        Parameters
+        ----------
+        description : str
+            Natural-language goal.
+        schedule : str
+            When to run: ``"hourly"``, ``"daily"``, ``"weekly"``,
+            ``"every 30 minutes"``, ``"every 2 hours"``, etc.
+
+        Returns
+        -------
+        str
+            Confirmation with the schedule ID.
+        """
+        if not self._started:
+            self.start()
+        try:
+            sid = self.scheduler.add(description, schedule=schedule)
+            return (
+                f"Scheduled (id: {sid}): {description[:50]!r} — {schedule}.\n"
+                f"Call companion.scheduler.start() to activate background scheduling."
+            )
+        except ValueError as exc:
+            return f"Invalid schedule: {exc}"
+
     def goals(self, status: Optional[str] = None) -> str:
         """Return a formatted summary of all goals.
 
@@ -411,7 +447,7 @@ class MyceliumCompanion:
             n_steps = len(g.steps)
             done = sum(1 for s in g.steps if s.get("status") == "ok")
             progress = f" [{done}/{n_steps} steps]" if n_steps else ""
-            lines.append(f"  [{g.status}] {g.id}: {g.description[:60]}{progress}{elapsed}")
+            lines.append(f"  [{g.status.value}] {g.id}: {g.description[:60]}{progress}{elapsed}")
         return "\n".join(lines)
 
     def take_screenshot(self) -> str:
@@ -475,6 +511,11 @@ class MyceliumCompanion:
         """Gracefully shut down all subsystems."""
         if not self._started:
             return
+        if self.scheduler is not None:
+            try:
+                self.scheduler.stop()
+            except Exception:
+                pass
         if self.goal_engine is not None:
             try:
                 self.goal_engine.stop_loop()
@@ -915,6 +956,8 @@ class MyceliumCompanion:
             s["file_watcher"] = self.file_watcher.status()
         if self.goal_engine:
             s["goals"] = self.goal_engine.status()
+        if self.scheduler:
+            s["scheduled_goals"] = self.scheduler.status()["total"]
         return s
 
     # ------------------------------------------------------------------

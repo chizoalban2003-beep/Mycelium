@@ -109,7 +109,7 @@ class GoalRecord:
         return {
             "id": self.id,
             "description": self.description,
-            "status": self.status,
+            "status": self.status.value,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
@@ -192,6 +192,7 @@ class GoalEngine:
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._running = False
+        self._handlers: Dict[str, Callable] = {}   # instance-level, not shared
 
         self._load_state()
 
@@ -436,9 +437,6 @@ class GoalEngine:
         _logger.info("GoalEngine: no handler for step %r — logged only", description)
         return f"Noted: {description}"
 
-    # Custom handler registry
-    _handlers: Dict[str, Callable] = {}
-
     def register_handler(self, keyword: str, fn: Callable) -> None:
         """Register a custom step handler.
 
@@ -448,7 +446,7 @@ class GoalEngine:
             If this word appears in a step description, *fn* is called.
         fn : callable(description, goal) -> str
         """
-        GoalEngine._handlers[keyword.lower()] = fn
+        self._handlers[keyword.lower()] = fn
 
     # ------------------------------------------------------------------
     # Built-in step handlers

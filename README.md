@@ -342,6 +342,18 @@ Raw tabular data
   PredictionResult       (test accuracy/R², feature weights, diagnostics)
 ```
 
+### Benchmark Results
+
+Evaluated with `benchmark_agent` (seed=20, oracle_budget=60, `myco()` defaults).
+
+| Dataset | Samples | Features | Final Accuracy |
+|---|---|---|---|
+| iris | 150 | 4 | 93.8% |
+| breast_cancer | 569 | 30 | 87.6% |
+| wine | 178 | 13 | 56.3% |
+
+Reproduce: `python benchmarks/run_benchmarks.py`
+
 ### Key parameters
 
 | Parameter | Default | Description |

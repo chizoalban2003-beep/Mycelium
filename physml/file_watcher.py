@@ -32,7 +32,7 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
-from typing import Callable, List, Optional, Set
+from typing import Any, Callable, List, Optional, Set
 
 from physml._log import get_logger
 

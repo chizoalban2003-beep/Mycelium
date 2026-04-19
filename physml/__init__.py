@@ -403,6 +403,9 @@ from physml.personalisation import PersonalisationManager
 # Stage 137 — GoalEngine (autonomous goal execution loop)
 from physml.goal_engine import GoalEngine, GoalRecord, GoalStatus
 
+# Stage 138 — ScheduledGoals (recurring goal scheduler)
+from physml.scheduled_goals import ScheduledGoals, ScheduledGoal, Schedule
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -723,4 +726,8 @@ __all__ = [
     "GoalEngine",
     "GoalRecord",
     "GoalStatus",
+    # Stage 138 — ScheduledGoals
+    "ScheduledGoals",
+    "ScheduledGoal",
+    "Schedule",
 ]
