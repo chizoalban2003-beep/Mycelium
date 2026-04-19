@@ -753,7 +753,7 @@ class MyceliumAgent:
             try:
                 X_arr = np.asarray(X_test, dtype=float)
                 y_arr = np.asarray(y_test)
-                opt = AutoMLOptimizer(n_candidates=6, cv=3, random_state=42)
+                opt = AutoMLOptimizer(n_candidates=3, cv=2, random_state=42)
                 best_params = opt.fit(X_arr, y_arr)
                 metrics["best_automl_params"] = best_params
                 metrics["best_automl_score"] = round(opt.best_score_, 4)

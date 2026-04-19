@@ -106,7 +106,7 @@ class CompetitiveEnsemblePredictor(BaseEstimator):
     random_seed : int, default 42
     quantile_transform : bool, default True
         Rank-normalise numeric features before fitting base models.
-    n_estimators : int, default 100
+    n_estimators : int, default 20
         Number of trees for RandomForest and HistGradientBoosting.
     use_meta : bool, default True
         Whether to fit a meta-learner on OOF predictions.
@@ -126,7 +126,7 @@ class CompetitiveEnsemblePredictor(BaseEstimator):
         self,
         random_seed: int = 42,
         quantile_transform: bool = True,
-        n_estimators: int = 100,
+        n_estimators: int = 20,
         use_meta: bool = True,
         replay_size: int = 2000,
         min_retrain: int = 10,

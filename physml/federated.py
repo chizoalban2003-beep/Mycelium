@@ -123,14 +123,14 @@ class FederatedMyceliumAgent:
         """
         from physml.mycelium_agent import MyceliumAgent
 
+        X_arr = np.atleast_2d(X)
+        y_arr = np.atleast_1d(y)
         if agent is None:
             agent = MyceliumAgent(
                 calibrate=self.calibrate,
                 predictor_kwargs=self._predictor_kwargs or None,
             )
-        X_arr = np.atleast_2d(X)
-        y_arr = np.atleast_1d(y)
-        agent.fit(X_arr, y_arr)
+            agent.fit(X_arr, y_arr)
         self._nodes[name] = agent
 
         # Initialise global weights from the first node
