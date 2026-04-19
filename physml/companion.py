@@ -18,6 +18,7 @@ Subsystems wired together:
 * :class:`~physml.doc_processor.DocumentProcessor` — document ingestion
 * :class:`~physml.knowledge_extractor.KnowledgeExtractor` — auto-fact extraction
 * :class:`~physml.feedback_loop.FeedbackLoop` — live model corrections
+* :class:`~physml.goal_engine.GoalEngine` — autonomous goal execution (Stage 137)
 * :class:`~physml.personalisation.PersonalisationManager` — manual + auto config
 * :class:`~physml.file_watcher.FileWatcher` — proactive file learning
 * :class:`~physml.notifier.Notifier` — desktop notifications
@@ -113,6 +114,7 @@ class MyceliumCompanion:
         self.screen_agent: Any = None          # Stage 129
         self.browser_agent: Any = None         # Stage 130
         self.task_decomposer: Any = None       # Stage 92 + LLM
+        self.goal_engine: Any = None           # Stage 137 — autonomous goal loop
         self._last_features: Optional[List[float]] = None  # for feedback loop
 
     # ------------------------------------------------------------------
@@ -303,8 +305,19 @@ class MyceliumCompanion:
         if hasattr(self.formatter, "verbosity"):
             self.formatter.verbosity = verbosity
 
+        # GoalEngine — autonomous goal execution loop (Stage 137)
+        from physml.goal_engine import GoalEngine
+        self.goal_engine = GoalEngine(
+            task_decomposer=self.task_decomposer,
+            companion=self,
+            notifier=self.notifier,
+            permission_manager=self.permission_manager,
+            llm=self.llm if self.llm and self.llm.available else None,
+            state_dir=str(self.data_dir / "goals"),
+        )
+
         self._started = True
-        _logger.info("MyceliumCompanion %r started (v0.30.0)", self.name)
+        _logger.info("MyceliumCompanion %r started (v0.31.0)", self.name)
 
     def personalise(self, key: str, value: Any) -> str:
         """Set a personalisation preference and return confirmation.
@@ -347,6 +360,59 @@ class MyceliumCompanion:
         if self.task_decomposer is not None:
             return self.task_decomposer.decompose_and_summarise(goal)
         return f"Plan: {goal}"
+
+    def add_goal(self, description: str, run_immediately: bool = False) -> str:
+        """Add an autonomous goal for the GoalEngine to execute.
+
+        Parameters
+        ----------
+        description : str
+            Natural-language goal (e.g. "Read sales.csv and summarise trends").
+        run_immediately : bool
+            When True, execute the goal now (synchronous) instead of queuing.
+
+        Returns
+        -------
+        str
+            Confirmation message with the goal ID.
+        """
+        if not self._started:
+            self.start()
+        goal_id = self.goal_engine.add_goal(description, run_immediately=run_immediately)
+        if run_immediately:
+            goal = self.goal_engine.get(goal_id)
+            status = goal.status if goal else "unknown"
+            return f"Goal executed — status: {status} (id: {goal_id})"
+        return (
+            f"Goal queued (id: {goal_id}). "
+            f"I'll work on it in the background. "
+            f"Check progress with: companion.goals()"
+        )
+
+    def goals(self, status: Optional[str] = None) -> str:
+        """Return a formatted summary of all goals.
+
+        Parameters
+        ----------
+        status : str, optional
+            Filter by status: "pending", "active", "completed", "failed", "blocked".
+        """
+        if not self._started:
+            self.start()
+        from physml.goal_engine import GoalStatus
+        filt = GoalStatus(status) if status else None
+        records = self.goal_engine.goals(filt)
+        if not records:
+            label = f" with status={status!r}" if status else ""
+            return f"No goals{label}."
+        lines = [f"Goals ({len(records)}):"]
+        for g in records:
+            elapsed = f" ({g.elapsed:.0f}s)" if g.completed_at else ""
+            n_steps = len(g.steps)
+            done = sum(1 for s in g.steps if s.get("status") == "ok")
+            progress = f" [{done}/{n_steps} steps]" if n_steps else ""
+            lines.append(f"  [{g.status}] {g.id}: {g.description[:60]}{progress}{elapsed}")
+        return "\n".join(lines)
 
     def take_screenshot(self) -> str:
         """Capture the screen and return the saved file path."""
@@ -409,6 +475,11 @@ class MyceliumCompanion:
         """Gracefully shut down all subsystems."""
         if not self._started:
             return
+        if self.goal_engine is not None:
+            try:
+                self.goal_engine.stop_loop()
+            except Exception:
+                pass
         if self.file_watcher is not None:
             try:
                 self.file_watcher.stop()
@@ -549,6 +620,10 @@ class MyceliumCompanion:
             return self._handle_profile_query()
         elif intent == "plan":
             return self.plan(text)
+        elif intent in ("goal", "run_goal", "do_goal", "execute_goal"):
+            return self.add_goal(text)
+        elif intent == "goals":
+            return self.goals()
         elif intent in ("browse", "fetch", "open_url"):
             urls = [e for e in entities.get("paths", []) if e.startswith("http")]
             if urls:
@@ -838,6 +913,8 @@ class MyceliumCompanion:
             s["browser_automation"] = self.browser_agent.available
         if self.file_watcher:
             s["file_watcher"] = self.file_watcher.status()
+        if self.goal_engine:
+            s["goals"] = self.goal_engine.status()
         return s
 
     # ------------------------------------------------------------------

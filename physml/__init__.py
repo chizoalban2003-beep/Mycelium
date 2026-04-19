@@ -400,6 +400,9 @@ from physml.feedback_loop import FeedbackLoop, CorrectionRecord
 # Stage 136 — PersonalisationManager (manual + auto config)
 from physml.personalisation import PersonalisationManager
 
+# Stage 137 — GoalEngine (autonomous goal execution loop)
+from physml.goal_engine import GoalEngine, GoalRecord, GoalStatus
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -716,4 +719,8 @@ __all__ = [
     "CorrectionRecord",
     # Stage 136 — PersonalisationManager
     "PersonalisationManager",
+    # Stage 137 — GoalEngine
+    "GoalEngine",
+    "GoalRecord",
+    "GoalStatus",
 ]
