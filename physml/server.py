@@ -181,6 +181,16 @@ class ChatRequest(BaseModel):
     user_id: str = "default"
 
 
+class GoalCreateRequest(BaseModel):
+    description: str
+    run_immediately: bool = False
+
+
+class ScheduleCreateRequest(BaseModel):
+    description: str
+    schedule: str = "daily"
+
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
@@ -552,6 +562,161 @@ def create_app() -> Any:
         # WebSocket support not available (older fastapi / missing dependency)
         pass
 
+    # -----------------------------------------------------------------------
+    # Goals REST API (Stage 140)
+    # -----------------------------------------------------------------------
+
+    @app.get("/goals")
+    def list_goals(status: str = None) -> dict:
+        """List all goals, optionally filtered by status.
+
+        Query params: ``?status=pending|active|completed|failed|blocked|cancelled``
+        """
+        companion = _get_companion()
+        from physml.goal_engine import GoalStatus
+        filt = None
+        if status:
+            try:
+                filt = GoalStatus(status)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Unknown status {status!r}")
+        goals = companion.goal_engine.goals(filt)
+        return {
+            "total": len(goals),
+            "status_filter": status,
+            "goals": [g.to_dict() for g in goals],
+        }
+
+    @app.post("/goals", status_code=201)
+    def create_goal(req: GoalCreateRequest) -> dict:
+        """Queue (or immediately run) a new goal."""
+        companion = _get_companion()
+        goal_id = companion.goal_engine.add_goal(
+            req.description,
+            run_immediately=req.run_immediately,
+        )
+        goal = companion.goal_engine.get(goal_id)
+        return {
+            "id": goal_id,
+            "status": goal.status.value if goal else "queued",
+            "message": f"Goal {'executed' if req.run_immediately else 'queued'}: {req.description[:60]}",
+        }
+
+    @app.get("/goals/{goal_id}")
+    def get_goal(goal_id: str) -> dict:
+        """Get a single goal by ID."""
+        companion = _get_companion()
+        goal = companion.goal_engine.get(goal_id)
+        if goal is None:
+            raise HTTPException(status_code=404, detail=f"Goal {goal_id!r} not found")
+        return goal.to_dict()
+
+    @app.delete("/goals/{goal_id}")
+    def cancel_goal(goal_id: str) -> dict:
+        """Cancel a pending or active goal."""
+        companion = _get_companion()
+        cancelled = companion.goal_engine.cancel_goal(goal_id)
+        if not cancelled:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Goal {goal_id!r} not found or already terminal",
+            )
+        return {"id": goal_id, "status": "cancelled"}
+
+    # -----------------------------------------------------------------------
+    # Schedules REST API
+    # -----------------------------------------------------------------------
+
+    @app.get("/schedules")
+    def list_schedules() -> dict:
+        """List all scheduled recurring goals."""
+        companion = _get_companion()
+        return companion.scheduler.status()
+
+    @app.post("/schedules", status_code=201)
+    def create_schedule(req: ScheduleCreateRequest) -> dict:
+        """Register a new recurring goal."""
+        companion = _get_companion()
+        try:
+            sid = companion.scheduler.add(req.description, schedule=req.schedule)
+            return {
+                "id": sid,
+                "description": req.description,
+                "schedule": req.schedule,
+                "message": f"Scheduled: {req.description[:60]!r} — {req.schedule}",
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @app.delete("/schedules/{schedule_id}")
+    def remove_schedule(schedule_id: str) -> dict:
+        """Remove a scheduled goal."""
+        companion = _get_companion()
+        removed = companion.scheduler.remove(schedule_id)
+        if not removed:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Schedule {schedule_id!r} not found",
+            )
+        return {"id": schedule_id, "status": "removed"}
+
+    # -----------------------------------------------------------------------
+    # Streaming chat (SSE) — Stage 141
+    # -----------------------------------------------------------------------
+
+    try:
+        import asyncio as _asyncio
+        from fastapi.responses import StreamingResponse as _StreamingResponse
+        import json as _json_sse
+
+        @app.post("/chat/stream")
+        async def chat_stream(req: ChatRequest) -> _StreamingResponse:
+            """Stream a chat response as Server-Sent Events.
+
+            Each event is a JSON object::
+
+                data: {"token": "Hello"}
+                data: {"token": " world"}
+                data: [DONE]
+
+            The client should append tokens as they arrive.
+            """
+            companion = _get_companion()
+
+            async def _generate():
+                try:
+                    async for chunk in companion.chat_stream(req.message):
+                        payload = _json_sse.dumps({"token": chunk})
+                        yield f"data: {payload}\n\n"
+                except Exception as exc:
+                    err = _json_sse.dumps({"error": str(exc)})
+                    yield f"data: {err}\n\n"
+                finally:
+                    yield "data: [DONE]\n\n"
+
+            return _StreamingResponse(
+                _generate(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
+    except ImportError:
+        pass
+
+    # -----------------------------------------------------------------------
+    # Daily digest endpoint — Stage 142
+    # -----------------------------------------------------------------------
+
+    @app.get("/digest")
+    def get_digest() -> dict:
+        """Return the daily activity digest."""
+        companion = _get_companion()
+        text = companion.daily_digest()
+        return {"digest": text}
+
     return app
 
 
@@ -577,79 +742,195 @@ _WEB_UI_HTML = """<!DOCTYPE html>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
        background:#0f1117;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
-  header{padding:14px 24px;background:#1a1d2e;border-bottom:1px solid #2d3148;
-         display:flex;align-items:center;gap:12px}
-  header h1{font-size:1.1rem;font-weight:600;color:#a78bfa}
-  header span{font-size:.75rem;color:#64748b;background:#1e2235;
-              padding:2px 8px;border-radius:999px}
-  #chat{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px}
-  .msg{max-width:72%;padding:10px 14px;border-radius:12px;line-height:1.55;font-size:.9rem;
+  header{padding:12px 20px;background:#1a1d2e;border-bottom:1px solid #2d3148;
+         display:flex;align-items:center;gap:10px}
+  header h1{font-size:1.05rem;font-weight:600;color:#a78bfa;flex:1}
+  .hbtn{background:none;border:1px solid #2d3148;color:#94a3b8;border-radius:6px;
+        padding:4px 10px;font-size:.75rem;cursor:pointer;transition:all .15s}
+  .hbtn:hover{border-color:#a78bfa;color:#a78bfa}
+  #main{display:flex;flex:1;overflow:hidden}
+  #chat-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  #goals-panel{width:260px;background:#111827;border-left:1px solid #1e2235;
+               display:flex;flex-direction:column;transition:width .2s}
+  #goals-panel.hidden{width:0;overflow:hidden;border:none}
+  #goals-hdr{padding:10px 14px;background:#1a1d2e;border-bottom:1px solid #2d3148;
+             font-size:.8rem;font-weight:600;color:#a78bfa;display:flex;align-items:center;gap:6px}
+  #goals-list{flex:1;overflow-y:auto;padding:8px}
+  .goal-item{padding:7px 9px;margin-bottom:5px;border-radius:7px;background:#1e2235;
+             font-size:.78rem;line-height:1.4;border-left:3px solid #374151}
+  .goal-item.completed{border-color:#10b981}
+  .goal-item.failed,.goal-item.blocked{border-color:#ef4444}
+  .goal-item.active{border-color:#f59e0b}
+  .goal-item.pending{border-color:#6366f1}
+  .goal-status{font-size:.68rem;color:#64748b;margin-bottom:2px;text-transform:uppercase}
+  #add-goal{padding:8px;border-top:1px solid #1e2235}
+  #goal-input{width:100%;background:#0f1117;border:1px solid #2d3148;border-radius:6px;
+              color:#e2e8f0;padding:6px 8px;font-size:.78rem;outline:none}
+  #goal-input:focus{border-color:#6366f1}
+  #chat{flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:9px}
+  .msg{max-width:74%;padding:10px 13px;border-radius:12px;line-height:1.55;font-size:.88rem;
        white-space:pre-wrap;word-break:break-word}
   .user{align-self:flex-end;background:#4f46e5;color:#fff;border-bottom-right-radius:2px}
   .agent{align-self:flex-start;background:#1e2235;color:#cbd5e1;border-bottom-left-radius:2px}
   .agent strong{color:#a78bfa}
-  footer{padding:12px 16px;background:#1a1d2e;border-top:1px solid #2d3148;
-         display:flex;gap:8px}
+  footer{padding:10px 14px;background:#1a1d2e;border-top:1px solid #2d3148;display:flex;gap:7px}
   #input{flex:1;background:#0f1117;border:1px solid #2d3148;border-radius:8px;
-         color:#e2e8f0;padding:10px 14px;font-size:.9rem;outline:none;resize:none;
-         height:42px;max-height:120px;overflow:auto}
+         color:#e2e8f0;padding:9px 13px;font-size:.88rem;outline:none;resize:none;
+         height:40px;max-height:120px;overflow:auto}
   #input:focus{border-color:#4f46e5}
   button{background:#4f46e5;color:#fff;border:none;border-radius:8px;
-         padding:0 18px;cursor:pointer;font-size:.9rem;font-weight:500;
-         transition:background .15s}
+         padding:0 16px;cursor:pointer;font-size:.88rem;font-weight:500;
+         transition:background .15s;white-space:nowrap}
   button:hover{background:#4338ca}
   button:disabled{background:#374151;cursor:not-allowed}
-  .thinking{color:#64748b;font-style:italic;font-size:.85rem;padding:6px 14px}
+  .thinking{color:#64748b;font-style:italic;font-size:.82rem;padding:5px 13px;align-self:flex-start}
+  #digest-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;
+                align-items:center;justify-content:center}
+  #digest-modal.show{display:flex}
+  #digest-box{background:#1a1d2e;border:1px solid #2d3148;border-radius:12px;
+              padding:20px 24px;max-width:520px;width:90%;max-height:70vh;overflow-y:auto}
+  #digest-box h2{color:#a78bfa;font-size:1rem;margin-bottom:12px}
+  #digest-text{font-size:.83rem;white-space:pre-wrap;line-height:1.6;color:#cbd5e1}
+  #digest-close{margin-top:14px;background:#374151;padding:6px 16px;font-size:.82rem}
 </style>
 </head>
 <body>
 <header>
   <h1>&#x1F344; Mycelium</h1>
-  <span>local AI companion</span>
+  <button class="hbtn" onclick="toggleGoals()">Goals</button>
+  <button class="hbtn" onclick="showDigest()">Digest</button>
 </header>
-<div id="chat">
-  <div class="msg agent"><strong>Mycelium</strong><br>Hello! I am your local AI companion. Everything runs on your device — your data never leaves. Try asking me to predict, train on a CSV, or just chat!</div>
+<div id="main">
+  <div id="chat-panel">
+    <div id="chat">
+      <div class="msg agent"><strong>Mycelium</strong><br>Hello! I am your local AI companion. Everything runs on your device — nothing leaves. Ask me to predict, train on a CSV, run a goal, or just chat.</div>
+    </div>
+    <footer>
+      <textarea id="input" placeholder="Type a message… (Enter to send)" rows="1"></textarea>
+      <button id="send" onclick="sendMsg()">Send</button>
+    </footer>
+  </div>
+  <div id="goals-panel" class="hidden">
+    <div id="goals-hdr">
+      &#x26A1; Goals
+      <span id="goals-count" style="margin-left:auto;color:#64748b;font-weight:400">—</span>
+    </div>
+    <div id="goals-list"></div>
+    <div id="add-goal">
+      <input id="goal-input" placeholder="Add goal…" onkeydown="if(event.key==='Enter')addGoal()">
+    </div>
+  </div>
 </div>
-<footer>
-  <textarea id="input" placeholder="Type a message…" rows="1"></textarea>
-  <button id="send" onclick="sendMsg()">Send</button>
-</footer>
+<div id="digest-modal">
+  <div id="digest-box">
+    <h2>&#x1F4C5; Daily Digest</h2>
+    <div id="digest-text">Loading…</div>
+    <button id="digest-close" onclick="closeDigest()">Close</button>
+  </div>
+</div>
 <script>
 const chat=document.getElementById('chat');
 const input=document.getElementById('input');
 const btn=document.getElementById('send');
-function addMsg(text,cls){
+let goalsVisible=false;
+
+function escHtml(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');}
+function addMsg(text,cls,streaming){
   const d=document.createElement('div');
   d.className='msg '+cls;
-  if(cls==='agent'){d.innerHTML='<strong>Mycelium</strong><br>'+escHtml(text);}
+  if(cls==='agent'){d.innerHTML='<strong>Mycelium</strong><br>'+(streaming?'':escHtml(text));}
   else{d.textContent=text;}
-  chat.appendChild(d);
-  chat.scrollTop=chat.scrollHeight;
+  chat.appendChild(d);chat.scrollTop=chat.scrollHeight;
   return d;
 }
-function escHtml(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\\n/g,'<br>');}
 async function sendMsg(){
-  const text=input.value.trim();
-  if(!text)return;
-  input.value='';input.style.height='42px';
-  btn.disabled=true;
+  const text=input.value.trim();if(!text)return;
+  input.value='';input.style.height='40px';btn.disabled=true;
   addMsg(text,'user');
-  const thinking=document.createElement('div');
-  thinking.className='thinking';thinking.textContent='Thinking…';
-  chat.appendChild(thinking);chat.scrollTop=chat.scrollHeight;
+  const thk=document.createElement('div');thk.className='thinking';thk.textContent='Thinking…';
+  chat.appendChild(thk);chat.scrollTop=chat.scrollHeight;
+  const agentDiv=addMsg('','agent',true);
+  const contentSpan=agentDiv.querySelector('br').nextSibling||agentDiv.appendChild(document.createTextNode(''));
+  let buf='';
   try{
-    const r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await fetch('/chat/stream',{method:'POST',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({message:text,user_id:'web_user'})});
-    const data=await r.json();
-    thinking.remove();
-    addMsg(data.response||data.detail||'Error','agent');
-  }catch(e){thinking.remove();addMsg('Connection error: '+e,'agent');}
+    if(!r.ok){
+      const e=await r.json();
+      thk.remove();agentDiv.innerHTML='<strong>Mycelium</strong><br>'+escHtml(e.detail||'Error');
+      btn.disabled=false;input.focus();return;
+    }
+    thk.remove();
+    const reader=r.body.getReader();const dec=new TextDecoder();
+    let partial='';
+    while(true){
+      const {done,value}=await reader.read();if(done)break;
+      partial+=dec.decode(value,{stream:true});
+      const lines=partial.split('\\n');partial=lines.pop();
+      for(const line of lines){
+        if(!line.startsWith('data: '))continue;
+        const raw=line.slice(6);
+        if(raw==='[DONE]')break;
+        try{const {token,error}=JSON.parse(raw);
+          if(error){buf+='[Error: '+error+']';}else{buf+=token;}
+          agentDiv.innerHTML='<strong>Mycelium</strong><br>'+escHtml(buf);
+          chat.scrollTop=chat.scrollHeight;
+        }catch(e){}
+      }
+    }
+    if(!buf)agentDiv.innerHTML='<strong>Mycelium</strong><br>(no response)';
+  }catch(e){thk.remove();agentDiv.innerHTML='<strong>Mycelium</strong><br>Connection error: '+e;}
   btn.disabled=false;input.focus();
+  if(goalsVisible)refreshGoals();
 }
 input.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}
-  setTimeout(()=>{input.style.height='42px';input.style.height=Math.min(input.scrollHeight,120)+'px';},0);
+  setTimeout(()=>{input.style.height='40px';input.style.height=Math.min(input.scrollHeight,120)+'px';},0);
 });
+function toggleGoals(){
+  goalsVisible=!goalsVisible;
+  document.getElementById('goals-panel').classList.toggle('hidden',!goalsVisible);
+  if(goalsVisible)refreshGoals();
+}
+async function refreshGoals(){
+  try{
+    const r=await fetch('/goals');const data=await r.json();
+    const list=document.getElementById('goals-list');list.innerHTML='';
+    document.getElementById('goals-count').textContent=data.total;
+    const goals=data.goals||[];
+    if(!goals.length){list.innerHTML='<div style="color:#64748b;font-size:.78rem;padding:10px">No goals yet.</div>';return;}
+    // Show most recent first
+    goals.slice().reverse().slice(0,20).forEach(g=>{
+      const d=document.createElement('div');
+      d.className='goal-item '+g.status;
+      const done=g.steps?g.steps.filter(s=>s.status==='ok').length:0;
+      const total=g.steps?g.steps.length:0;
+      d.innerHTML='<div class="goal-status">'+g.status+(total?' '+done+'/'+total:'')+'</div>'+
+                  escHtml(g.description.slice(0,70));
+      list.appendChild(d);
+    });
+  }catch(e){document.getElementById('goals-list').textContent='Error loading goals.';}
+}
+async function addGoal(){
+  const inp=document.getElementById('goal-input');
+  const desc=inp.value.trim();if(!desc)return;
+  inp.value='';
+  try{
+    await fetch('/goals',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({description:desc,run_immediately:false})});
+    refreshGoals();
+  }catch(e){alert('Error adding goal: '+e);}
+}
+async function showDigest(){
+  document.getElementById('digest-modal').classList.add('show');
+  document.getElementById('digest-text').textContent='Loading…';
+  try{
+    const r=await fetch('/digest');const data=await r.json();
+    document.getElementById('digest-text').textContent=data.digest||'No digest available.';
+  }catch(e){document.getElementById('digest-text').textContent='Error: '+e;}
+}
+function closeDigest(){document.getElementById('digest-modal').classList.remove('show');}
 </script>
 </body>
 </html>"""

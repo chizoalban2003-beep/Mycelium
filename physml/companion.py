@@ -332,6 +332,26 @@ class MyceliumCompanion:
             state_dir=str(self.data_dir / "schedule"),
         )
 
+        # Register digest handler in GoalEngine
+        def _digest_handler(desc: str, goal: Any) -> str:
+            return self.daily_digest()
+
+        for kw in ("digest", "daily digest", "daily report", "daily summary"):
+            self.goal_engine.register_handler(kw, _digest_handler)
+
+        # Register nightly digest schedule (disabled by default — user enables via personalisation)
+        _digest_enabled = self.personalisation.get("daily_digest", False)
+        if _digest_enabled:
+            _digest_hour = int(self.personalisation.get("digest_hour", 20))
+            from physml.scheduled_goals import Schedule
+            self.scheduler.add(
+                "Generate daily digest and notify",
+                schedule=Schedule.daily(hour=_digest_hour),
+            )
+            _logger.info(
+                "MyceliumCompanion: daily digest scheduled at %02d:00", _digest_hour
+            )
+
         self._started = True
         _logger.info("MyceliumCompanion %r started (v0.31.0)", self.name)
 
@@ -513,6 +533,157 @@ class MyceliumCompanion:
                     self.notifier.send("New file", f"Ingested: {path}")
         except Exception as exc:
             _logger.warning("MyceliumCompanion: _on_new_file error: %s", exc)
+
+    async def chat_stream(self, text: str):
+        """Async generator that yields response tokens for SSE streaming.
+
+        If the LLM is available the Anthropic streaming API is used so tokens
+        arrive as Claude produces them.  Otherwise the full response is
+        computed synchronously and yielded in word-sized chunks so the web UI
+        still animates.
+
+        Parameters
+        ----------
+        text : str
+            User input.
+
+        Yields
+        ------
+        str
+            Text chunks (tokens or words).
+        """
+        if not self._started:
+            self.start()
+
+        # Use LLM streaming when available
+        if self.llm is not None and self.llm.available:
+            try:
+                async for chunk in self.llm.stream(text, history=self._build_history()):
+                    yield chunk
+                # Also record in conversation after streaming completes
+                full = await self._collect_stream(text)
+                return
+            except Exception as exc:
+                _logger.warning("chat_stream LLM error: %s", exc)
+                # Fall through to synchronous path
+
+        # Synchronous fallback — compute response, yield word by word
+        import asyncio
+        response = self.chat(text)
+        words = response.split(" ")
+        for i, word in enumerate(words):
+            yield (word + " ") if i < len(words) - 1 else word
+            await asyncio.sleep(0)   # yield control between words
+
+    def _build_history(self):
+        """Return conversation history as LLMMessage list for streaming."""
+        from physml.llm_integration import LLMMessage
+        if self.conversation is None:
+            return []
+        history = []
+        for turn in self.conversation.history[-10:]:
+            role = "user" if turn.role == "user" else "assistant"
+            history.append(LLMMessage(role=role, content=turn.text))
+        return history
+
+    async def _collect_stream(self, text: str) -> str:
+        """Consume stream and record the conversation turn."""
+        chunks = []
+        async for chunk in self.llm.stream(text, history=self._build_history()):
+            chunks.append(chunk)
+        full_response = "".join(chunks)
+        self.conversation.add_turn("agent", full_response)
+        return full_response
+
+    def daily_digest(self) -> str:
+        """Generate a plain-text summary of the last 24 hours of activity.
+
+        Covers: goals completed/failed/blocked, scheduled goal counts,
+        model training events, and a headline written by the LLM when available.
+
+        Returns
+        -------
+        str
+            Multi-line digest text.
+        """
+        if not self._started:
+            self.start()
+
+        import time as _time
+        cutoff = _time.time() - 86400
+
+        # Goal stats
+        from physml.goal_engine import GoalStatus
+        all_goals = self.goal_engine.goals() if self.goal_engine else []
+        recent = [g for g in all_goals if (g.completed_at or g.created_at) >= cutoff]
+        completed = [g for g in recent if g.status == GoalStatus.COMPLETED]
+        failed = [g for g in recent if g.status == GoalStatus.FAILED]
+        blocked = [g for g in recent if g.status == GoalStatus.BLOCKED]
+        pending = [g for g in all_goals if g.status == GoalStatus.PENDING]
+
+        # Schedule stats
+        sched_status = self.scheduler.status() if self.scheduler else {}
+        n_schedules = sched_status.get("total", 0)
+        n_enabled = sched_status.get("enabled", 0)
+
+        # Model stats
+        model_status = self.model_manager.status() if self.model_manager else {}
+        n_rows = model_status.get("n_training_rows", 0)
+        fitted = model_status.get("fitted", False)
+
+        # Soul interaction count
+        interactions = 0
+        try:
+            interactions = self.soul.stats.get("total_interactions", 0)
+        except Exception:
+            pass
+
+        lines = [
+            f"=== {self.name} Daily Digest ===",
+            f"",
+            f"Goals (last 24 h):",
+            f"  Completed : {len(completed)}",
+            f"  Failed    : {len(failed)}",
+            f"  Blocked   : {len(blocked)}",
+            f"  Pending   : {len(pending)}",
+        ]
+        if completed:
+            lines.append("  Recent completions:")
+            for g in completed[-3:]:
+                lines.append(f"    ✓ {g.description[:60]}")
+        if failed or blocked:
+            lines.append("  Needs attention:")
+            for g in (failed + blocked)[-3:]:
+                lines.append(f"    ✗ {g.description[:60]}")
+
+        lines += [
+            f"",
+            f"Schedules : {n_schedules} registered, {n_enabled} enabled",
+            f"Model     : {'trained (' + str(n_rows) + ' rows)' if fitted else 'not trained'}",
+            f"Interactions today: {interactions}",
+        ]
+
+        # LLM headline
+        if self.llm is not None and self.llm.available:
+            try:
+                summary_prompt = "\n".join(lines)
+                result = self.llm.complete(
+                    f"Write a 1–2 sentence headline summary of this activity digest:\n\n{summary_prompt}",
+                    system="You are Myco, a concise AI companion. Write a brief, friendly headline.",
+                )
+                if result.available and result.text:
+                    lines.insert(1, f"TL;DR: {result.text.strip()}")
+                    lines.insert(2, "")
+            except Exception:
+                pass
+
+        digest = "\n".join(lines)
+        if self.notifier:
+            try:
+                self.notifier.send(f"{self.name} Digest", lines[0] if lines else "")
+            except Exception:
+                pass
+        return digest
 
     def stop(self) -> None:
         """Gracefully shut down all subsystems."""

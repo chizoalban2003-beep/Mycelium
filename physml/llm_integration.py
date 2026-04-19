@@ -475,18 +475,66 @@ class LLMIntegration:
     # ------------------------------------------------------------------
 
     def complete(self, prompt: str, system: Optional[str] = None) -> LLMResult:
-        """Single-turn completion without history.
-
-        Parameters
-        ----------
-        prompt : str
-        system : str, optional
-
-        Returns
-        -------
-        LLMResult
-        """
+        """Single-turn completion without history."""
         return self.chat(user_message=prompt, history=[], system=system)
+
+    async def stream(
+        self,
+        user_message: str,
+        history: Optional[Sequence] = None,
+        system: Optional[str] = None,
+    ):
+        """Async generator that yields text tokens from a streaming completion.
+
+        Falls back to yielding the full response as one chunk when the SDK is
+        unavailable or streaming fails.
+
+        Yields
+        ------
+        str
+            Raw text tokens as they arrive from the API.
+        """
+        if not self._sdk_available or self._client is None:
+            # No SDK — compute full response synchronously and yield it
+            result = self.chat(user_message=user_message, history=history or [], system=system)
+            yield result.text or ""
+            return
+
+        import asyncio
+        try:
+            messages = []
+            for m in (history or []):
+                messages.append({"role": m.role, "content": m.content})
+            messages.append({"role": "user", "content": user_message})
+
+            system_prompt = system or (
+                "You are Myco, a helpful local AI companion. "
+                "Be concise and friendly."
+            )
+            req = {
+                "model": self.config.model,
+                "max_tokens": self.config.max_tokens,
+                "messages": messages,
+                "system": system_prompt,
+            }
+
+            # Run blocking stream() in a thread so the async generator doesn't block
+            loop = asyncio.get_event_loop()
+            chunks: List[str] = []
+
+            def _run_stream():
+                with self._client.messages.stream(**req) as stream:
+                    for text in stream.text_stream:
+                        chunks.append(text)
+
+            await loop.run_in_executor(None, _run_stream)
+            self._call_count += 1
+            for chunk in chunks:
+                yield chunk
+        except Exception as exc:
+            _logger.warning("LLMIntegration.stream error: %s", exc)
+            result = self.chat(user_message=user_message, history=history or [], system=system)
+            yield result.text or ""
 
     # ------------------------------------------------------------------
     # Repr
