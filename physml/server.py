@@ -56,6 +56,11 @@ import os
 import time
 from typing import Any
 
+from physml._log import configure_logging, get_logger
+
+configure_logging()
+_logger = get_logger(__name__)
+
 _SESSION_TTL = 3600  # seconds before an idle session is evicted
 
 # ---------------------------------------------------------------------------
@@ -389,6 +394,29 @@ def create_app() -> Any:
         mean_ask_rate = float(np.mean(ask_rates)) if ask_rates else 0.0
         n_sessions = len(_sessions)
 
+        # Goal-engine + scheduler metrics
+        goals_pending = goals_active = goals_completed = goals_failed = goals_blocked = 0
+        scheduler_total = scheduler_enabled = 0
+        llm_calls = 0
+        try:
+            companion = _get_companion()
+            if companion is not None:
+                if getattr(companion, "goal_engine", None) is not None:
+                    gs = companion.goal_engine.status()
+                    goals_pending = gs.get("pending", 0)
+                    goals_active = gs.get("active", 0)
+                    goals_completed = gs.get("completed", 0)
+                    goals_failed = gs.get("failed", 0)
+                    goals_blocked = gs.get("blocked", 0)
+                if getattr(companion, "scheduler", None) is not None:
+                    ss = companion.scheduler.status()
+                    scheduler_total = ss.get("total", 0)
+                    scheduler_enabled = ss.get("enabled", 0)
+                if getattr(companion, "llm", None) is not None:
+                    llm_calls = int(getattr(companion.llm, "_call_count", 0))
+        except Exception:
+            pass
+
         lines = [
             "# HELP physml_n_observations_total Total observe() calls across all sessions",
             "# TYPE physml_n_observations_total counter",
@@ -405,6 +433,30 @@ def create_app() -> Any:
             "# HELP physml_active_sessions Number of active user sessions",
             "# TYPE physml_active_sessions gauge",
             f"physml_active_sessions {n_sessions}",
+            "# HELP myco_goals_pending Goals waiting to be executed",
+            "# TYPE myco_goals_pending gauge",
+            f"myco_goals_pending {goals_pending}",
+            "# HELP myco_goals_active Goals currently executing",
+            "# TYPE myco_goals_active gauge",
+            f"myco_goals_active {goals_active}",
+            "# HELP myco_goals_completed_total Goals completed successfully",
+            "# TYPE myco_goals_completed_total counter",
+            f"myco_goals_completed_total {goals_completed}",
+            "# HELP myco_goals_failed_total Goals that failed after all retries",
+            "# TYPE myco_goals_failed_total counter",
+            f"myco_goals_failed_total {goals_failed}",
+            "# HELP myco_goals_blocked_total Goals blocked (max retries exceeded)",
+            "# TYPE myco_goals_blocked_total counter",
+            f"myco_goals_blocked_total {goals_blocked}",
+            "# HELP myco_scheduler_total Total scheduled recurring goals",
+            "# TYPE myco_scheduler_total gauge",
+            f"myco_scheduler_total {scheduler_total}",
+            "# HELP myco_scheduler_enabled Enabled scheduled recurring goals",
+            "# TYPE myco_scheduler_enabled gauge",
+            f"myco_scheduler_enabled {scheduler_enabled}",
+            "# HELP myco_llm_calls_total Total LLM API calls made",
+            "# TYPE myco_llm_calls_total counter",
+            f"myco_llm_calls_total {llm_calls}",
         ]
         return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain")
 

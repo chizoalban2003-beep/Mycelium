@@ -339,6 +339,7 @@ class TestStage45OnlineRLHF:
         result = rlhf.step()
         assert result["updated"] is False
 
+    @pytest.mark.slow
     def test_step_updates_when_enough_data(self):
         agent = _make_agent()
         buf = FeedbackBuffer(capacity=200)

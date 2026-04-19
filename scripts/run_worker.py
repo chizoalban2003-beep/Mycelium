@@ -31,6 +31,9 @@ except ImportError:
 
 
 def main() -> None:
+    from physml._log import configure_logging
+    configure_logging()
+
     name = os.environ.get("MYCO_NAME", "Myco")
     data_dir = os.environ.get("MYCO_DATA_DIR", "~/.mycelium")
     verbosity = os.environ.get("MYCO_VERBOSITY", "normal")

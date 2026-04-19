@@ -406,6 +406,9 @@ from physml.goal_engine import GoalEngine, GoalRecord, GoalStatus
 # Stage 138 — ScheduledGoals (recurring goal scheduler)
 from physml.scheduled_goals import ScheduledGoals, ScheduledGoal, Schedule
 
+# Stage 139 — GoalFeedbackStore (learn from past goal outcomes)
+from physml.goal_feedback import GoalFeedbackStore, GoalOutcome
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -730,4 +733,7 @@ __all__ = [
     "ScheduledGoals",
     "ScheduledGoal",
     "Schedule",
+    # Stage 139 — GoalFeedbackStore
+    "GoalFeedbackStore",
+    "GoalOutcome",
 ]

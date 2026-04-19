@@ -149,6 +149,7 @@ class LLMIntegration:
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._client: Any = None
         self._sdk_available: bool = False
+        self._call_count: int = 0
         self._init_client()
 
     # ------------------------------------------------------------------
@@ -338,6 +339,7 @@ class LLMIntegration:
                 req["system"] = system_prompt
 
             response = self._client.messages.create(**req)
+            self._call_count += 1
 
             # Parse response
             text = ""
@@ -451,6 +453,7 @@ class LLMIntegration:
                 req["system"] = system_prompt
 
             response = self._client.messages.create(**req)
+            self._call_count += 1
             text = "".join(
                 block.text for block in response.content if block.type == "text"
             )

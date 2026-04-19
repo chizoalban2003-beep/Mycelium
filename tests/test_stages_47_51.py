@@ -310,6 +310,7 @@ class TestExplainer:
         exp.fit(lr, X_te, y_te)
         assert exp.importances_ is not None
 
+    @pytest.mark.slow
     def test_permutation_path_no_model_attrs(self, iris_data):
         """Use a wrapped model without feature_importances_ or coef_."""
         X_tr, X_te, y_tr, y_te = iris_data

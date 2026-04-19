@@ -547,6 +547,7 @@ class TestSelfPlay:
         assert "agent_b" in lb
         assert "n_rounds" in lb
 
+    @pytest.mark.slow
     def test_best_agent_returns_agent(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay

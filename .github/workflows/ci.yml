@@ -32,8 +32,31 @@ jobs:
           python -m pip install --upgrade pip setuptools
           pip install -e ".[dev]"
 
-      - name: Run tests
-        run: python -m pytest tests/ -q --tb=short
+      - name: Run fast tests
+        run: python -m pytest tests/ -q --tb=short --timeout=90 -m "not slow"
 
       - name: Lint (ruff)
         run: ruff check physml/ --select E,F,W --ignore E501
+
+  slow-tests:
+    name: slow tests (Python 3.11)
+    runs-on: ubuntu-latest
+    # Run on main push only — slow suite is too heavy for every PR branch
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools
+          pip install -e ".[dev]"
+
+      - name: Run slow tests
+        run: python -m pytest tests/ -q --tb=short --timeout=120 -m "slow"

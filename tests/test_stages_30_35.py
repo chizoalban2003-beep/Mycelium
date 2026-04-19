@@ -217,6 +217,7 @@ class TestStage32GoalPlanner:
             assert isinstance(st.feature_vec, np.ndarray)
             assert isinstance(st.depends_on, list)
 
+    @pytest.mark.slow
     def test_plan_linear_dependency_chain(self):
         planner = self._make_planner(n_subtasks=3)
         subtasks = planner.plan("step one then step two then step three")

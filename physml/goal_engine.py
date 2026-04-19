@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from physml._log import get_logger
+from physml.goal_feedback import GoalFeedbackStore
 
 _logger = get_logger(__name__)
 
@@ -193,6 +194,7 @@ class GoalEngine:
         self._stop_event = threading.Event()
         self._running = False
         self._handlers: Dict[str, Callable] = {}   # instance-level, not shared
+        self._feedback = GoalFeedbackStore(state_dir=str(self._state_dir))
 
         self._load_state()
 
@@ -382,6 +384,7 @@ class GoalEngine:
             self._notify(f"Goal failed: {goal.description[:60]}", title="⚠ Myco")
 
         self._save_state()
+        self._feedback.record(goal)
         return goal
 
     # ------------------------------------------------------------------
@@ -578,7 +581,18 @@ class GoalEngine:
     # ------------------------------------------------------------------
 
     def _decompose(self, description: str):
-        """Return a list of SubTask objects for *description*."""
+        """Return a list of SubTask objects for *description*.
+
+        First checks the feedback store for a similar past successful goal.
+        If one is found its step sequence is reused directly, avoiding a full
+        decomposition pass.  Falls back to the normal TaskDecomposer otherwise.
+        """
+        from physml.task_decomposer import SubTask
+
+        past_steps = self._feedback.best_steps_for(description)
+        if past_steps:
+            return [SubTask(index=i, description=s) for i, s in enumerate(past_steps)]
+
         if self._td is not None:
             return self._td.decompose(description)
         from physml.task_decomposer import TaskDecomposer
