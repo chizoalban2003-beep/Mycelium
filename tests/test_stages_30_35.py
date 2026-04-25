@@ -226,6 +226,7 @@ class TestStage32GoalPlanner:
         assert len(subtasks[1].depends_on) == 1
         assert len(subtasks[2].depends_on) == 1
 
+    @pytest.mark.slow
     def test_execute_returns_dict(self):
         planner = self._make_planner(n_subtasks=3)
         result = planner.execute("gather data and process results then summarise")

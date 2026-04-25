@@ -509,6 +509,7 @@ class TestSelfPlay:
 
         assert SelfPlay is SP
 
+    @pytest.mark.slow
     def test_run_returns_list_of_play_rounds(self):
         from physml import MyceliumAgent
         from physml.self_play import PlayRound, SelfPlay
@@ -527,6 +528,7 @@ class TestSelfPlay:
         for r in history:
             assert r.winner in ("agent_a", "agent_b")
 
+    @pytest.mark.slow
     def test_federated_fires(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay

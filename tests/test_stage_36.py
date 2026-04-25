@@ -162,6 +162,7 @@ class TestMyceliumAgentStage36:
         acc = accuracy_score(y_te, preds)
         assert acc >= 0.80, f"Expected ≥80% accuracy, got {acc:.2%}"
 
+    @pytest.mark.slow
     def test_unknown_kwargs_ignored(self):
         """predictor_kwargs with PhysicsPredictor-only params must not crash MyceliumAgent.fit()."""
         from physml.mycelium_agent import MyceliumAgent

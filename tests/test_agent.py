@@ -515,6 +515,7 @@ class TestPhysicsAgentSession:
             path = sess.save()
             assert path.exists()
 
+    @pytest.mark.slow
     def test_save_load_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             sess, X_te, y_te = self._make_session(tmpdir)
@@ -712,6 +713,7 @@ class TestActiveLearning:
         idx = agent.select_informative(X_te[:5])
         assert 0 <= idx < 5
 
+    @pytest.mark.slow
     def test_select_informative_single_sample(self):
         clf, X_te, y_te = _fitted_neural_clf()
         agent = PhysicsAgent(clf, query_strategy="entropy")

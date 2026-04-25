@@ -212,6 +212,7 @@ class TestStage44ToolPlanner:
         planner.register(ToolSpec(name="search", description="search the web for information", fn=lambda s: "srch:" + s))
         return planner
 
+    @pytest.mark.slow
     def test_plan_returns_tool_call(self):
         planner = self._make_planner()
         tc = planner.plan("classify some rows")

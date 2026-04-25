@@ -162,6 +162,7 @@ class TestCalibration:
         # Rows should sum to ~1
         np.testing.assert_allclose(proba.sum(axis=1), 1.0, atol=1e-5)
 
+    @pytest.mark.slow
     def test_calibration_regression_returns_one(self):
         from physml.calibration import calibrate_temperature
         from physml import PhysicsPredictor
@@ -176,6 +177,7 @@ class TestCalibration:
 # ── Stage 14 — Evaluation harness ───────────────────────────────────────────
 
 class TestEvaluationHarness:
+    @pytest.mark.slow
     def test_benchmark_returns_result(self):
         X, y = _clf_data(n=100)
         agent = myco(calibrate=False)
@@ -402,6 +404,7 @@ class TestFederatedLearning:
         assert "A" in fed.list_nodes()
         assert "B" in fed.list_nodes()
 
+    @pytest.mark.slow
     def test_aggregate_runs(self):
         fed = FederatedMyceliumAgent()
         X, y = _clf_data(n=80)
