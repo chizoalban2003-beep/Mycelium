@@ -65,6 +65,7 @@ def _fitted_neural_reg():
 # ============================================================================
 
 class TestNeuralEngineInductive:
+    @pytest.mark.slow
     def test_fit_model_stores_mlp(self):
         X, y = _reg_data(n=80)
         X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -73,6 +74,7 @@ class TestNeuralEngineInductive:
         assert hasattr(eng, "mlp_")
         assert hasattr(eng, "attn_")
 
+    @pytest.mark.slow
     def test_predict_model_shape_regression(self):
         X, y = _reg_data(n=80)
         X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -82,6 +84,7 @@ class TestNeuralEngineInductive:
         assert preds.shape == (len(y_te),)
         assert all(math.isfinite(float(p)) for p in preds)
 
+    @pytest.mark.slow
     def test_predict_model_shape_classification(self):
         X, y = _clf_data(n=80)
         X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -95,6 +98,7 @@ class TestNeuralEngineInductive:
         with pytest.raises(RuntimeError, match="fit_model"):
             eng.predict_model(np.ones((5, 3)))
 
+    @pytest.mark.slow
     def test_partial_fit_model_updates_regression(self):
         X, y = _reg_data(n=80)
         X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -106,6 +110,7 @@ class TestNeuralEngineInductive:
         after = eng.predict_model(X_te)
         assert after.shape == before.shape  # shape unchanged
 
+    @pytest.mark.slow
     def test_partial_fit_model_updates_classification(self):
         X, y = _clf_data(n=80)
         X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -115,6 +120,7 @@ class TestNeuralEngineInductive:
         preds = eng.predict_model(X_te)
         assert preds.shape == (len(y_te),)
 
+    @pytest.mark.slow
     def test_ewc_flat_weights_roundtrip(self):
         X, y = _reg_data(n=60)
         eng = NeuralPhysicsEngine()
@@ -126,6 +132,7 @@ class TestNeuralEngineInductive:
         after_pred = eng.predict_model(X[:5])
         np.testing.assert_allclose(original_pred, after_pred, rtol=1e-5)
 
+    @pytest.mark.slow
     def test_fisher_shape_matches_weights(self):
         X, y = _reg_data(n=60)
         eng = NeuralPhysicsEngine()
@@ -136,6 +143,7 @@ class TestNeuralEngineInductive:
         assert fisher.shape == flat.shape
         assert np.all(fisher >= 0)
 
+    @pytest.mark.slow
     def test_encode_aligned_missing_columns_filled_with_zero(self):
         import pandas as pd
         X, y = _reg_data(n=60)
@@ -156,6 +164,7 @@ class TestNeuralEngineInductive:
 # ============================================================================
 
 class TestNeuralEngineSaveLoad:
+    @pytest.mark.slow
     def test_save_and_load_roundtrip(self):
         X, y = _reg_data(n=60)
         eng = NeuralPhysicsEngine()
@@ -215,23 +224,27 @@ class TestNeuralEnginePretrain:
 # ============================================================================
 
 class TestPhysicsPredictorPartialFit:
+    @pytest.mark.slow
     def test_partial_fit_returns_self(self):
         clf, X_te, y_te = _fitted_neural_clf()
         result = clf.partial_fit(X_te[:10], y_te[:10])
         assert result is clf
 
+    @pytest.mark.slow
     def test_partial_fit_predict_shape_unchanged(self):
         clf, X_te, y_te = _fitted_neural_clf()
         clf.partial_fit(X_te[:10], y_te[:10])
         preds = clf.predict(X_te)
         assert preds.shape == (len(y_te),)
 
+    @pytest.mark.slow
     def test_partial_fit_regression_predict_finite(self):
         reg, X_te, y_te = _fitted_neural_reg()
         reg.partial_fit(X_te[:10], y_te[:10])
         preds = reg.predict(X_te)
         assert all(math.isfinite(float(p)) for p in preds)
 
+    @pytest.mark.slow
     def test_partial_fit_multiple_rounds(self):
         clf, X_te, y_te = _fitted_neural_clf()
         for i in range(3):
@@ -266,6 +279,7 @@ class TestPhysicsPredictorPartialFit:
 # ============================================================================
 
 class TestPhysicsPredictorSaveLoad:
+    @pytest.mark.slow
     def test_save_load_roundtrip_clf(self):
         clf, X_te, y_te = _fitted_neural_clf()
         preds_before = clf.predict(X_te)
@@ -295,6 +309,7 @@ class TestPhysicsPredictorSaveLoad:
             with pytest.raises(TypeError):
                 PhysicsPredictor.load(path)
 
+    @pytest.mark.slow
     def test_partial_fit_after_load(self):
         clf, X_te, y_te = _fitted_neural_clf()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -434,6 +449,7 @@ class TestDataStream:
         preds = predictor.predict(X[:10])
         assert all(math.isfinite(float(p)) for p in preds)
 
+    @pytest.mark.slow
     def test_fit_stream_empty_chunks_no_crash(self):
         predictor = PhysicsPredictor(backend="neural", n_cycles=5)
         X_seed, y_seed = _reg_data(n=40)

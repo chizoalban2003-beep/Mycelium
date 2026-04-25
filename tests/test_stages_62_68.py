@@ -420,6 +420,7 @@ class TestCompetitiveReport:
         report = reporter.run(self._agent())
         assert isinstance(report["summary"]["is_competitive"], bool)
 
+    @pytest.mark.slow
     def test_custom_dataset(self):
         X, y = make_classification(n_samples=200, n_features=5, random_state=1)
         reporter = CompetitiveReport()

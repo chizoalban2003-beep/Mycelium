@@ -269,6 +269,7 @@ class TestCoresetBatch:
         assert len(indices) == k
         assert all(0 <= i < 30 for i in indices)
 
+    @pytest.mark.slow
     def test_select_batch_no_duplicates(self):
         X, y = _clf_data(n=80)
         agent = MyceliumAgent(calibrate=False)

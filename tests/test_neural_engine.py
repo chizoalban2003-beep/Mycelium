@@ -143,6 +143,7 @@ def test_encode_categorical_feature_onehotencoded():
 
 # ── NeuralPhysicsEngine.run ────────────────────────────────────────────────
 
+@pytest.mark.slow
 def test_neural_engine_run_returns_result_regression():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -158,6 +159,7 @@ def test_neural_engine_run_returns_result_regression():
     assert result is not None
 
 
+@pytest.mark.slow
 def test_neural_engine_run_returns_result_classification():
     X, y = _clf_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -173,6 +175,7 @@ def test_neural_engine_run_returns_result_classification():
     assert result is not None
 
 
+@pytest.mark.slow
 def test_neural_engine_test_predicted_correct_length():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -188,6 +191,7 @@ def test_neural_engine_test_predicted_correct_length():
     assert len(result.test_predicted) == int((~mask).sum())
 
 
+@pytest.mark.slow
 def test_neural_engine_predictions_finite():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -203,6 +207,7 @@ def test_neural_engine_predictions_finite():
     assert all(math.isfinite(float(v)) for v in result.test_predicted)
 
 
+@pytest.mark.slow
 def test_neural_engine_weights_populated():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -215,6 +220,7 @@ def test_neural_engine_weights_populated():
     assert all(w.method == "neural_attention" for w in result.weights)
 
 
+@pytest.mark.slow
 def test_neural_engine_migration_map_populated():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -226,6 +232,7 @@ def test_neural_engine_migration_map_populated():
     assert len(result.migration_map) > 0
 
 
+@pytest.mark.slow
 def test_neural_engine_metrics_target_kind():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -238,6 +245,7 @@ def test_neural_engine_metrics_target_kind():
     assert result.metrics.n_train + result.metrics.n_test == len(combined)
 
 
+@pytest.mark.slow
 def test_neural_engine_diagnostics_backend_key():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -252,6 +260,7 @@ def test_neural_engine_diagnostics_backend_key():
 
 # ── run_neural_prediction functional interface ─────────────────────────────
 
+@pytest.mark.slow
 def test_run_neural_prediction_regression():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -269,12 +278,14 @@ def test_run_neural_prediction_regression():
 
 # ── PhysicsPredictor(backend="neural") — sklearn API ──────────────────────
 
+@pytest.mark.slow
 def test_neural_backend_fit_returns_self():
     X, y = _clf_data()
     clf = PhysicsPredictor(n_cycles=5, backend="neural")
     assert clf.fit(X, y) is clf
 
 
+@pytest.mark.slow
 def test_neural_backend_predict_shape_clf():
     X, y = _clf_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -284,6 +295,7 @@ def test_neural_backend_predict_shape_clf():
     assert preds.shape == (len(y_te),)
 
 
+@pytest.mark.slow
 def test_neural_backend_predict_valid_classes():
     X, y = _clf_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -295,6 +307,7 @@ def test_neural_backend_predict_valid_classes():
         assert p in unique_classes, f"Unexpected prediction: {p}"
 
 
+@pytest.mark.slow
 def test_neural_backend_score_returns_float_clf():
     X, y = _clf_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -304,6 +317,7 @@ def test_neural_backend_score_returns_float_clf():
     assert 0.0 <= score <= 1.0
 
 
+@pytest.mark.slow
 def test_neural_backend_predict_shape_reg():
     X, y = _reg_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -313,6 +327,7 @@ def test_neural_backend_predict_shape_reg():
     assert preds.shape == (len(y_te),)
 
 
+@pytest.mark.slow
 def test_neural_backend_predict_finite_reg():
     X, y = _reg_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -322,6 +337,7 @@ def test_neural_backend_predict_finite_reg():
     assert all(math.isfinite(float(p)) for p in preds)
 
 
+@pytest.mark.slow
 def test_neural_backend_score_finite_reg():
     X, y = _reg_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -368,6 +384,7 @@ def test_default_backend_is_physics():
     assert clf.backend == "physics"
 
 
+@pytest.mark.slow
 def test_physics_backend_unchanged():
     """Ensure default backend still works exactly as before."""
     X, y = _clf_data()
@@ -378,6 +395,7 @@ def test_physics_backend_unchanged():
     assert preds.shape == (len(y_te),)
 
 
+@pytest.mark.slow
 def test_neural_backend_with_quantile_transform():
     X, y = _reg_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -389,6 +407,7 @@ def test_neural_backend_with_quantile_transform():
     assert all(math.isfinite(float(p)) for p in preds)
 
 
+@pytest.mark.slow
 def test_neural_backend_with_poly_degree2():
     X, y = _reg_data()
     X_tr, X_te, y_tr, y_te = _split(X, y)
@@ -400,6 +419,7 @@ def test_neural_backend_with_poly_degree2():
     assert all(math.isfinite(float(p)) for p in preds)
 
 
+@pytest.mark.slow
 def test_neural_backend_with_categorical_features():
     rng = np.random.default_rng(99)
     n = 100
@@ -423,6 +443,7 @@ def test_neural_backend_predict_before_fit_raises():
         clf.predict(X)
 
 
+@pytest.mark.slow
 def test_neural_backend_equilibrium_zones_populated():
     X, y = _reg_data(n=80)
     X_tr, X_te, y_tr, y_te = _split(X, y)

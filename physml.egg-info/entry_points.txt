@@ -1,0 +1,2 @@
+[console_scripts]
+physml = physml.cli:main

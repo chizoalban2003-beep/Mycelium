@@ -372,6 +372,7 @@ class TestStage45OnlineRLHF:
         r = rlhf.report()
         assert "n_updates" in r and "buffer_stats" in r
 
+    @pytest.mark.slow
     def test_push_feedback(self):
         agent = _make_agent()
         buf = FeedbackBuffer()

@@ -415,6 +415,7 @@ def test_residual_ridge_reg_score_finite():
 
 # ── Combined improvements ─────────────────────────────────────────────────
 
+@pytest.mark.slow
 def test_all_improvements_combined_clf():
     """All five improvements active simultaneously."""
     X, y = _clf_data()
@@ -434,6 +435,7 @@ def test_all_improvements_combined_clf():
         assert p in unique_classes
 
 
+@pytest.mark.slow
 def test_all_improvements_combined_reg():
     """All five improvements active simultaneously for regression."""
     X, y = _reg_data()

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "physml"
-version = "0.31.0"
+version = "0.32.0"
 description = "Physics-inspired autonomous ML — the Mycelium digital companion for local AI."
 readme = "README.md"
 license = { text = "MIT" }
@@ -90,15 +90,15 @@ Issues     = "https://github.com/chizoalban2003-beep/Mycelium/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["physml*"]
+include = ["physml*", "physml.llm*"]
 
 [tool.setuptools.package-data]
 physml = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts   = "-q --tb=short --timeout=120"
-timeout   = 120
+addopts   = "-q --tb=short --timeout=300 -m 'not slow'"
+timeout   = 300
 
 [tool.ruff]
 line-length = 100

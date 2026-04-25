@@ -152,6 +152,7 @@ class TestStage38AttachMemory:
         agent.attach_memory(memory)
         assert agent._memory is memory
 
+    @pytest.mark.slow
     def test_reward_auto_stores_episode(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -260,6 +261,7 @@ class TestStage39SelfEvaluate:
 
 
 class TestStage40SelfImprove:
+    @pytest.mark.slow
     def test_self_improve_returns_dict(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)

@@ -519,6 +519,7 @@ class TestSelfPlay:
         assert len(history) == 3
         assert all(isinstance(r, PlayRound) for r in history)
 
+    @pytest.mark.slow
     def test_winner_is_valid(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay

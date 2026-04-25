@@ -414,6 +414,13 @@ from physml.desktop_bridge import DesktopBridge, DesktopResult
 #: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
 myco = MyceliumAgent
 
+# Phase 4 — LLM integration package
+from physml.llm import ClaudeClient, ChatResult, ToolCallResult, PromptSystem, PromptAction
+
+# Phase 5 — Quick wins: ExperimentRunner and ConversationStore
+from physml.experiment_runner import ExperimentRunner, BenchmarkSummary, ExperimentResult
+from physml.conversation_store import ConversationStore
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -747,4 +754,15 @@ __all__ = [
     # Stage 144 — DesktopBridge
     "DesktopBridge",
     "DesktopResult",
+    # Phase 4 — LLM package
+    "ClaudeClient",
+    "ChatResult",
+    "ToolCallResult",
+    "PromptSystem",
+    "PromptAction",
+    # Phase 5 — Quick wins
+    "ExperimentRunner",
+    "BenchmarkSummary",
+    "ExperimentResult",
+    "ConversationStore",
 ]
