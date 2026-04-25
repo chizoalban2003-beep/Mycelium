@@ -29,7 +29,6 @@ Usage
 
 from __future__ import annotations
 
-import time
 from typing import Any, Dict, List, Optional
 
 from physml._log import get_logger
@@ -182,7 +181,7 @@ class BrowserAgent:
                 "a[href]",
                 "els => els.map(el => ({text: el.innerText.trim(), href: el.href}))",
             )
-            return [l for l in links if l.get("href")]
+            return [link for link in links if link.get("href")]
         except Exception:
             return []
 

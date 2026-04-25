@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Callable, List, Optional
+from typing import List, Optional
 
 from physml._log import get_logger
 

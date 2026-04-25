@@ -78,11 +78,10 @@ from physml.predictor import (
     PhysicsPlane,
     PredictionResult,
     PredictorRuntimeState,
-    _safe_feature_slug,  # type: ignore[attr-defined]
     infer_target_kind,
     run_physics_prediction,
 )
-from physml.neural_engine import NeuralPhysicsEngine, _encode_dataframe, run_neural_prediction
+from physml.neural_engine import NeuralPhysicsEngine, _encode_dataframe
 
 
 def _to_dataframe(X: Any, feature_names: list[str] | None = None) -> pd.DataFrame:

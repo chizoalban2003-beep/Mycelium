@@ -45,11 +45,16 @@ Usage
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from physml._log import get_logger
+
+if TYPE_CHECKING:
+    from physml.tools import ToolRegistry
+    from physml.memory import EpisodicMemory
+    from physml.featurizer import Featurizer
 
 _logger = get_logger(__name__)
 
@@ -450,7 +455,6 @@ class MyceliumAgent:
         -------
         str — raw output from the tool.
         """
-        from physml.tools import ToolRegistry  # local import avoids circular deps
 
         result: str = registry.call(tool_name, input_str)
         return result
@@ -474,7 +478,6 @@ class MyceliumAgent:
         -------
         np.ndarray, shape (n_samples, n_features + n_neighbors * 2)
         """
-        from physml.memory import EpisodicMemory  # local import
 
         return memory.augment_features(X)
 

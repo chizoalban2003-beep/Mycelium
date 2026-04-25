@@ -95,7 +95,7 @@ class IntrinsicMotivation:
         """
         s = np.asarray(state, dtype=np.float64).ravel()
         s_next = np.asarray(next_state, dtype=np.float64).ravel()
-        n = s_next.shape[0]
+        s_next.shape[0]
 
         # Prediction-error bonus
         if self._fitted:

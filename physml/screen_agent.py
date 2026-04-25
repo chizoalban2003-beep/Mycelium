@@ -20,17 +20,15 @@ Usage
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Optional, Tuple
 
 from physml._log import get_logger
 
 _logger = get_logger(__name__)
 
 try:
-    import pyautogui  # type: ignore
     import pyautogui as _pag
     _PAG_OK = True
     _pag.FAILSAFE = True

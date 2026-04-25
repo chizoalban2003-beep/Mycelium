@@ -24,7 +24,7 @@ Usage
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from physml._log import get_logger
 
@@ -97,7 +97,7 @@ class KnowledgeExtractor:
         list of dict with keys ``subject``, ``predicate``, ``object``.
         """
         facts: List[Dict[str, str]] = []
-        lower = text.lower()
+        text.lower()
 
         for pattern, predicate in _PATTERNS:
             for match in re.finditer(pattern, text, re.IGNORECASE):

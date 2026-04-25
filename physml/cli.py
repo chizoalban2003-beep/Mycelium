@@ -64,7 +64,6 @@ def _load_agent(path: str) -> Any:
 
 def _cmd_fit(args: argparse.Namespace) -> None:
     """Train a MyceliumAgent on a CSV and save it to disk."""
-    import numpy as np
     from physml.mycelium_agent import MyceliumAgent
 
     df, cols = _load_csv(args.csv)
@@ -93,8 +92,6 @@ def _cmd_fit(args: argparse.Namespace) -> None:
 
 def _cmd_query(args: argparse.Namespace) -> None:
     """Load a saved agent and predict on a CSV file."""
-    import numpy as np
-    import pandas as pd
 
     agent = _load_agent(args.agent)
 

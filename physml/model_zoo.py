@@ -16,7 +16,7 @@ ModelZoo
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 
@@ -213,7 +213,7 @@ class ModelZoo:
             try:
                 model.fit(X_tr, y_tr)
                 score = float(model.score(X_te, y_te))
-            except Exception as exc:
+            except Exception:
                 score = float("nan")
             results.append(
                 {

@@ -211,7 +211,6 @@ class VoiceInputAdapter:
         """
         try:
             import sounddevice as sd  # type: ignore
-            import numpy as np
             import wave
             import tempfile
             import os

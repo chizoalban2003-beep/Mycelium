@@ -730,7 +730,6 @@ class PhysicsAgent:
         try:
             from sklearn.gaussian_process import GaussianProcessClassifier, GaussianProcessRegressor
             from sklearn.gaussian_process.kernels import RBF, WhiteKernel
-            from sklearn.preprocessing import StandardScaler
 
             X_train = np.vstack(self._gp_X)
             y_train = np.concatenate(self._gp_y)

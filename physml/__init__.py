@@ -105,10 +105,6 @@ from physml.agent import AgentAction, DataStream, PhysicsAgent
 from physml.agent_api import PhysicsAgentSession
 from physml.multitask_engine import MultiTaskPhysicsEngine
 from physml.mycelium_agent import MyceliumAgent
-
-#: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
-myco = MyceliumAgent
-
 from physml.drift import DriftDetector
 from physml.federated import FederatedMyceliumAgent
 from physml.evaluation import benchmark_agent, BenchmarkResult
@@ -121,7 +117,7 @@ from physml.featurizer import Featurizer
 from physml.tools import Tool, ToolRegistry, AutonomousLoop
 
 # Stage 32 — Goal planner
-from physml.planner import GoalPlanner, SubTask
+from physml.planner import GoalPlanner
 
 # Stage 33 — Episodic memory
 from physml.memory import EpisodicMemory
@@ -277,7 +273,7 @@ from physml.pipeline_builder import PipelineBuilder, PipelineStep
 from physml.reward_model import RewardModel, RewardSample
 
 # Stage 91 — AgentMemory (episodic + semantic memory)
-from physml.agent_memory import AgentMemory, MemoryEntry
+from physml.agent_memory import AgentMemory
 
 # Stage 92 — TaskDecomposer (goal → subtask planner)
 from physml.task_decomposer import TaskDecomposer, SubTask
@@ -414,6 +410,9 @@ from physml.comm_bridge import CommBridge, CommResult
 
 # Stage 144 — DesktopBridge (local desktop task automation)
 from physml.desktop_bridge import DesktopBridge, DesktopResult
+
+#: Short alias — ``myco`` is identical to :class:`MyceliumAgent`.
+myco = MyceliumAgent
 
 __all__ = [
     "PhysicsPlane",

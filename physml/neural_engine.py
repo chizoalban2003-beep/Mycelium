@@ -42,15 +42,13 @@ for GPU/autograd support in future extensions.
 from __future__ import annotations
 
 import math
-from collections import deque
 from pathlib import Path
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 
 from physml.predictor import (
-    BondInfo,
     EquilibriumZone,
     IterationInfo,
     MigrationInfo,
@@ -811,7 +809,7 @@ class NeuralPhysicsEngine:
             alpha=alpha,
         )
         n_epochs_first = int(np.clip(n_cycles * 10, 100, 2000))
-        n_epochs_cont = max(50, n_epochs_first // 4)
+        max(50, n_epochs_first // 4)
         lr = float(np.clip(cycle_learning_rate * 0.01, 1e-4, 0.01))
 
         for task_idx, df in enumerate(datasets):
@@ -981,7 +979,7 @@ class NeuralPhysicsEngine:
                 if n_test > 0 else np.array([])
             )
             y_test_dec = label_enc.inverse_transform(y_test.astype(int))
-            y_pred_train_dec = label_enc.inverse_transform(y_pred_train.astype(int))
+            label_enc.inverse_transform(y_pred_train.astype(int))
             test_predicted_raw = list(y_pred_test_dec)
             test_actual_raw = list(y_test_dec)
             accuracy = float(np.mean(y_pred_test_dec == y_test_dec)) if n_test > 0 else None

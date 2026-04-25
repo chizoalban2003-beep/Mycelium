@@ -562,7 +562,6 @@ class GoalEngine:
     def _step_llm(self, desc: str, goal: GoalRecord) -> str:
         """Delegate an open-ended step to the LLM."""
         try:
-            context = f"Goal: {goal.description}\nCurrent step: {desc}"
             result = self._llm.complete(
                 f"Execute this step as part of completing the goal below.\n\n"
                 f"Goal: {goal.description}\n"

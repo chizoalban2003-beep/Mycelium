@@ -49,6 +49,7 @@ Stage 72 — WebSocket real-time prediction:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -66,8 +67,6 @@ _SESSION_TTL = 3600  # seconds before an idle session is evicted
 # ---------------------------------------------------------------------------
 # JWT auth helpers (stdlib-only, no PyJWT dependency)
 # ---------------------------------------------------------------------------
-
-import base64
 
 _JWT_SECRET = os.environ.get("MYCELIUM_SECRET", "mycelium-dev-secret-change-me")
 _JWT_EXPIRY = 86400  # 24 hours
@@ -209,7 +208,6 @@ def create_app() -> Any:
         )
 
     import numpy as np
-    from fastapi.staticfiles import StaticFiles
     from fastapi.responses import HTMLResponse
 
     app = FastAPI(

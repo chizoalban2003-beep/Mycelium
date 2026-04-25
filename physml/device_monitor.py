@@ -33,7 +33,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import List, Optional
 
 from physml._log import get_logger
 

@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence
 
 
 # ---------------------------------------------------------------------------
@@ -190,7 +190,6 @@ class NaturalLanguageRouter:
         if self.use_tfidf:
             try:
                 from sklearn.feature_extraction.text import TfidfVectorizer
-                import numpy as np
                 self._vectorizer = TfidfVectorizer(
                     ngram_range=(1, 2),
                     min_df=1,
