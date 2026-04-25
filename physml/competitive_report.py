@@ -13,8 +13,7 @@ CompetitiveReport
 
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -23,7 +22,7 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
-from physml.arena import CompetitiveArena, ArenaResult
+from physml.arena import CompetitiveArena
 
 
 @dataclass

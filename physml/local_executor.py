@@ -53,7 +53,7 @@ import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 from physml._log import get_logger
 
@@ -381,8 +381,8 @@ class LocalTaskExecutor:
                     ["tasklist", "/fo", "csv", "/nh"],
                     capture_output=True, text=True, timeout=5,
                 )
-                lines = [l.strip('"') for l in result.stdout.splitlines()]
-                procs = [{"name": l.split('","')[0], "pid": l.split('","')[1]} for l in lines if '","' in l]
+                lines = [ln.strip('"') for ln in result.stdout.splitlines()]
+                procs = [{"name": ln.split('","')[0], "pid": ln.split('","')[1]} for ln in lines if '","' in ln]
             else:
                 result = subprocess.run(
                     ["ps", "-eo", "pid,comm"],

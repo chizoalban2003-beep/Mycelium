@@ -166,7 +166,7 @@ class DesktopBridge:
         # Fallback for Linux (xclip/xsel) without pyperclip
         for cmd in (["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]):
             try:
-                proc = subprocess.run(
+                subprocess.run(
                     cmd, input=text.encode(), timeout=5, check=True
                 )
                 return DesktopResult(True, "clipboard_copy", f"Copied to clipboard via {cmd[0]}")

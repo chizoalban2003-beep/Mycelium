@@ -81,7 +81,7 @@ class BenchmarkResult:
         final_acc = self.accuracy_curve[-1] if self.accuracy_curve else float("nan")
         final_ask = self.ask_rate_curve[-1] if self.ask_rate_curve else float("nan")
         lines = [
-            f"BenchmarkResult",
+            "BenchmarkResult",
             f"  total_steps          : {self.total_steps}",
             f"  oracle_calls         : {self.oracle_calls}",
             f"  budget_exhausted_at  : {self.budget_exhausted_at}",

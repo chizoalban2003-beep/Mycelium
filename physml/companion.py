@@ -46,7 +46,6 @@ Usage
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -159,7 +158,6 @@ class MyceliumCompanion:
         self.formatter = ResponseFormatter(verbosity=verbosity)
 
         # NaturalLanguageRouter
-        from physml.nl_router import NaturalLanguageRouter, Intent
         self.router = _build_default_router()
 
         # ConversationManager
@@ -589,7 +587,7 @@ class MyceliumCompanion:
                 async for chunk in self.llm.stream(text, history=self._build_history()):
                     yield chunk
                 # Also record in conversation after streaming completes
-                full = await self._collect_stream(text)
+                await self._collect_stream(text)
                 return
             except Exception as exc:
                 _logger.warning("chat_stream LLM error: %s", exc)
@@ -668,8 +666,8 @@ class MyceliumCompanion:
 
         lines = [
             f"=== {self.name} Daily Digest ===",
-            f"",
-            f"Goals (last 24 h):",
+            "",
+            "Goals (last 24 h):",
             f"  Completed : {len(completed)}",
             f"  Failed    : {len(failed)}",
             f"  Blocked   : {len(blocked)}",
@@ -685,7 +683,7 @@ class MyceliumCompanion:
                 lines.append(f"    ✗ {g.description[:60]}")
 
         lines += [
-            f"",
+            "",
             f"Schedules : {n_schedules} registered, {n_enabled} enabled",
             f"Model     : {'trained (' + str(n_rows) + ' rows)' if fitted else 'not trained'}",
             f"Interactions today: {interactions}",
@@ -893,8 +891,8 @@ class MyceliumCompanion:
         if self.model_manager is not None:
             if not self.model_manager.fitted:
                 return (
-                    f"I don't have a trained model yet. "
-                    f"Try: 'train on <yourfile.csv>' so I can learn from your data first."
+                    "I don't have a trained model yet. "
+                    "Try: 'train on <yourfile.csv>' so I can learn from your data first."
                 )
             if numbers:
                 self._last_features = numbers  # for feedback loop
@@ -997,7 +995,7 @@ class MyceliumCompanion:
         summary = self.profile.summary()
         soul_s = self.soul.summary()
         lines = [
-            f"Here is what I know about you:",
+            "Here is what I know about you:",
             f"  You've had {summary['interaction_count']} interaction(s) with me.",
             f"  Your top topics: {', '.join(summary['top_topics']) or 'none yet'}.",
             f"  Your feedback score: {summary['feedback_score']:.0%}.",

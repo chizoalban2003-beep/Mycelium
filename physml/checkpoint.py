@@ -28,13 +28,11 @@ Usage
 from __future__ import annotations
 
 import io
-import os
 import time
 from pathlib import Path
 from typing import Any
 
 import joblib
-import numpy as np
 
 _CHECKPOINT_VERSION = "1.0"
 # All checkpoint format versions this release can read.  Add new entries here

@@ -30,7 +30,6 @@ Usage
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Set
 
@@ -40,7 +39,7 @@ _logger = get_logger(__name__)
 
 try:
     from watchdog.observers import Observer  # type: ignore
-    from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent  # type: ignore
+    from watchdog.events import FileSystemEventHandler  # type: ignore
     _WD_OK = True
 except Exception:
     _WD_OK = False

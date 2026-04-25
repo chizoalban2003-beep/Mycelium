@@ -14,8 +14,8 @@ CompetitiveArena
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score

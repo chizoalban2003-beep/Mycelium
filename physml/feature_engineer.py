@@ -22,7 +22,7 @@ FeatureEngineer
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -242,7 +242,6 @@ class FeatureEngineer:
         X = np.asarray(X, dtype=float)
         n_samples, n_features = X.shape
 
-        base_names_count = n_features
         cols: list[np.ndarray] = [X]
 
         if self.polynomial:

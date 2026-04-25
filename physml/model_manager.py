@@ -38,7 +38,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from physml._log import get_logger
 
@@ -243,7 +243,6 @@ class ModelManager:
         t0 = time.time()
         try:
             import pandas as pd
-            import numpy as np
 
             df = pd.read_csv(path)
             if df.empty:
@@ -326,7 +325,6 @@ class ModelManager:
         target_column: str,
         t0: float,
     ) -> TrainResult:
-        import numpy as np
 
         try:
             from physml.mycelium_agent import MyceliumAgent

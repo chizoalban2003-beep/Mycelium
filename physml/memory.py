@@ -11,7 +11,6 @@ pop is O(1) instead of O(n).
 from __future__ import annotations
 
 from collections import deque
-from typing import Any
 
 import numpy as np
 

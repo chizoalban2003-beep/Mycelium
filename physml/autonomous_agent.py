@@ -22,7 +22,7 @@ from physml.world_model import WorldModel
 from physml.intrinsic import IntrinsicMotivation
 from physml.arena import CompetitiveArena, ArenaResult
 from physml.goal_policy import GoalConditionedPolicy, GoalSpec
-from physml.safety import SafetyMonitor, SafetyConstraint
+from physml.safety import SafetyMonitor
 
 
 class AutonomousAgent:
