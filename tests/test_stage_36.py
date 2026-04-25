@@ -55,6 +55,7 @@ class TestCEPClassifier:
         score = clf.score(X_te, y_te)
         assert score >= 0.5, f"Expected score ≥ 0.5, got {score}"
 
+    @pytest.mark.slow
     def test_predict_proba_shape(self, clf_data):
         X_tr, y_tr, X_te, y_te = clf_data
         clf = CompetitiveEnsemblePredictor(random_seed=0)

@@ -308,6 +308,7 @@ class TestAnomalyGuard:
         with pytest.raises(RuntimeError):
             ag.predict(np.zeros((3, 4)))
 
+    @pytest.mark.slow
     def test_anomaly_rate_between_0_and_1(self):
         ag = AnomalyGuard(method="isolation_forest", contamination=0.05)
         X = _make_clean_data()

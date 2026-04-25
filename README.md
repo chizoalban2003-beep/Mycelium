@@ -12,9 +12,9 @@
 
 ## What is Mycelium?
 
-Mycelium is a **137-stage autonomous digital companion** built in Python. It combines a physics-inspired ML engine with a full agent stack: voice, memory, planning, tool use, browser control, screen automation, and an autonomous goal-execution loop — all running locally.
+Mycelium is a **145-stage autonomous digital companion** built in Python. It combines a physics-inspired ML engine with a full agent stack: voice interaction, semantic memory, goal planning, browser control, screen automation, desktop task execution, and multi-channel messaging — all running locally.
 
-Like the mycelium fungus that silently connects a forest, Myco works in the background — learning your patterns, watching for new data, executing multi-step goals, and notifying you when something needs attention.
+Like the mycelium fungus that silently connects a forest, Myco works in the background — learning your patterns, watching for new data, executing multi-step goals, sending messages on your behalf, and notifying you when something needs attention.
 
 ---
 
@@ -46,44 +46,123 @@ myco.chat("I love Python.")
 print(myco.knowledge_extractor.status())
 # {'facts_stored': 3, ...}
 
-# Manual personalisation
 myco.personalise("verbosity", "concise")
 myco.personalise("name", "Alex")
 ```
 
 ### Give it a goal — it works autonomously
 ```python
-# Queue a multi-step goal and let it run in the background
 goal_id = myco.goal_engine.add_goal(
     "Read quarterly_report.csv, train a model on it, then notify me of the results"
 )
 myco.goal_engine.start_loop()
 
-# Check progress any time
 print(myco.goals())
 # Goals (1):
 #   [completed] a1b2c3d4: Read quarterly_report.csv ... [3/3 steps] (12s)
+
+# Goals also learn from the past — similar goals reuse proven step sequences
+myco.goal_engine.add_goal("Analyse annual_report.csv and summarise it")
+# → automatically reuses the steps that worked for quarterly_report.csv
+```
+
+### Send messages and notifications
+```python
+# CommBridge — routes to the right channel automatically
+myco.chat("send email to alice@corp.com subject 'Q3 results' body 'Done, see attached'")
+myco.chat("text +15551234567 hey just finished the report")
+myco.chat("post to slack: analysis complete, check the dashboard")
+myco.chat("whatsapp Bob: can we reschedule to Thursday?")
+
+# Direct API
+myco.comm_bridge.send_email("alice@corp.com", "Q3 results", "Done!")
+myco.comm_bridge.send_sms("+15551234567", "Done!")
+myco.comm_bridge.send_slack("Analysis complete")
+```
+
+### Control your desktop
+```python
+# DesktopBridge — everyday computer tasks via natural language
+myco.chat("open file ~/Documents/report.pdf")
+myco.chat("list files in ~/Downloads")
+myco.chat("copy 'Meeting notes from today' to clipboard")
+myco.chat("take a screenshot")
+myco.chat("open app Chrome")
+
+# With MYCO_ALLOW_WRITES=1:
+myco.chat("write file ~/output.txt with content 'analysis complete'")
+myco.chat("delete file ~/tmp/old_report.csv")
+```
+
+### Talk to it — voice in, voice out
+```python
+# Activate the voice loop (requires faster-whisper + sounddevice + pyttsx3)
+myco.start_voice(wake_word="hey myco", speak_response=True)
+# → Myco listens, transcribes, responds, and speaks — all locally
+
+# Stop voice
+myco.stop_voice()
+```
+
+### Scheduled goals — recurring tasks
+```python
+# Run a goal every morning
+myco.schedule_goal("Check ~/Downloads for new CSV files and auto-train", schedule="daily")
+
+# Every 30 minutes
+myco.schedule_goal("Take a screenshot and save to ~/myco-snapshots", schedule="every 30 minutes")
+
+myco.scheduler.start()   # background thread picks up schedules automatically
 ```
 
 ### Watch directories for new data
 ```python
-# Auto-train whenever a new CSV appears in ~/Downloads
 myco.personalise("watch_dirs", ["~/Downloads"])
+# Auto-trains whenever a new CSV appears
 ```
 
-### Browse the web
+### Browse the web and process documents
 ```python
 text = myco.browse("https://example.com/report")
+myco.chat("read ~/docs/annual_report.pdf and summarise key points")
 ```
 
-### Plan complex tasks
+### REST API + streaming web UI
+```bash
+uvicorn physml.server:app
+# Open http://localhost:8000 → full web chat UI with goal panel + streaming
+```
+
+```
+GET  /goals               list all goals
+POST /goals               queue a new goal
+GET  /goals/{id}          get goal by ID
+DELETE /goals/{id}        cancel a goal
+GET  /schedules           list schedules
+POST /schedules           add a recurring schedule
+POST /chat                chat (JSON)
+POST /chat/stream         streaming SSE chat (tokens as they arrive)
+GET  /digest              24-hour activity digest
+GET  /voice/status        voice loop status
+POST /voice/start         start voice loop
+POST /voice/stop          stop voice loop
+GET  /comm/status         CommBridge channel config status
+GET  /desktop/status      DesktopBridge capability status
+GET  /metrics             Prometheus metrics
+```
+
+### Daily digest
 ```python
-print(myco.plan("Launch a new product in three markets"))
-# Plan for: Launch a new product...
-#   1. Research target markets and competitors
-#   2. Define pricing strategy for each market
-#   3. Prepare localised marketing materials
-#   ...
+print(myco.daily_digest())
+# === Myco Daily Digest ===
+# TL;DR: Productive day — 3 goals completed, model trained on 1,200 rows.
+#
+# Goals (last 24 h):
+#   Completed : 3
+#   Failed    : 0
+#   Pending   : 1
+# Schedules : 2 registered, 2 enabled
+# Model     : trained (1200 rows)
 ```
 
 ---
@@ -103,19 +182,51 @@ pip install "physml[full]"
 
 **Python 3.10+ required.** No internet connection required after install.
 
-Optional extras:
-
 | Extra | Unlocks |
 |---|---|
 | `llm` | Claude API (Anthropic) for intelligent chat and LLM-driven planning |
-| `voice` | Whisper speech-to-text + wake word |
+| `voice` | faster-whisper STT + pyttsx3 TTS + wake word |
 | `vector` | Semantic memory (sentence-transformers) |
-| `browser` | Playwright browser automation |
+| `browser` | Playwright browser + WhatsApp Web automation |
 | `screen` | pyautogui + mss screen control |
 | `notify` | plyer desktop notifications |
 | `ocr` | pytesseract image text extraction |
 | `watcher` | watchdog file system monitoring |
+| `sms` | twilio SDK for SMS sending |
 | `companion` | All of the above bundled |
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill in what you need:
+
+```bash
+cp .env.example .env
+```
+
+Key variables:
+
+```env
+# LLM (optional — unlocks intelligent chat + planning)
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Email sending
+MYCO_EMAIL_HOST=smtp.gmail.com
+MYCO_EMAIL_USER=you@gmail.com
+MYCO_EMAIL_PASS=your-app-password
+
+# SMS (requires pip install twilio)
+TWILIO_ACCOUNT_SID=ACxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxx
+TWILIO_FROM_NUMBER=+15551234567
+
+# Slack
+MYCO_SLACK_WEBHOOK=https://hooks.slack.com/services/...
+
+# Allow file write/delete operations
+MYCO_ALLOW_WRITES=0
+```
 
 ---
 
@@ -124,70 +235,18 @@ Optional extras:
 ```python
 from physml import PhysicsRegressor, PhysicsClassifier
 
-# Regression
 from sklearn.datasets import load_diabetes
 X, y = load_diabetes(return_X_y=True)
 reg = PhysicsRegressor()
 reg.fit(X, y)
 print(reg.score(X, y))   # R²
-
-# Classification
-from sklearn.datasets import load_wine
-X, y = load_wine(return_X_y=True)
-clf = PhysicsClassifier()
-clf.fit(X, y)
-print(clf.score(X, y))   # accuracy
 ```
 
 ---
 
-## The GoalEngine — autonomous task execution
+## Architecture — 145 stages
 
-`GoalEngine` (Stage 137) is the autonomous loop that turns Myco from a chatbot into an agent. Give it a natural-language goal; it decomposes it, dispatches each step to the right tool, retries failures, and notifies you on completion.
-
-```python
-from physml.goal_engine import GoalEngine
-from physml.task_decomposer import TaskDecomposer
-from physml.notifier import Notifier
-
-engine = GoalEngine(
-    task_decomposer=TaskDecomposer(),
-    notifier=Notifier(),
-    state_dir="~/.mycelium/goals",
-    max_retries=2,
-)
-
-# Add a goal — persisted to disk immediately
-gid = engine.add_goal("Read report.pdf and extract key financial figures")
-
-# Run now (synchronous)
-record = engine.run_now(gid)
-print(record.status)      # GoalStatus.COMPLETED
-print(record.steps)       # [{index, description, status, output, elapsed}, ...]
-
-# Or start the background loop — processes all pending goals automatically
-engine.start_loop(interval=30)   # checks every 30 seconds
-```
-
-**Step routing** — subtask descriptions are matched to real tools:
-
-| Keywords in step | Tool called |
-|---|---|
-| read / open / load / ingest | `DocumentProcessor` (CSV, PDF, JSON, Excel, URLs) |
-| train / fit / learn on | `ModelManager.train_from_csv()` |
-| predict / forecast / estimate | `ModelManager.predict()` |
-| browse / fetch / http / url | `BrowserAgent.fetch_text()` |
-| screenshot / capture screen | `ScreenAgent.screenshot()` |
-| notify / alert / remind | `Notifier.send()` |
-| save / persist | `companion._handle_save()` |
-| search / find / look up | `VectorMemory.search()` |
-| anything else | LLM reasoning (Claude) → logged |
-
----
-
-## Architecture — 137 stages
-
-Mycelium was built incrementally across 137 stages, each a standalone tested module:
+Built incrementally, every stage a standalone tested module:
 
 ```
 physml/
@@ -202,16 +261,24 @@ physml/
 │   mycelium_system.py, companion.py, llm_integration.py, model_manager.py,
 │   tool_bridge.py, vector_memory.py, voice_loop.py, server.py, ...
 │
-└── Autonomous action layer (stages 129–137)
-    screen_agent.py        screen capture, mouse/keyboard control
-    browser_agent.py       Playwright browser automation
-    permission_manager.py  OS action gating (allow/ask/deny)
-    file_watcher.py        auto-ingest new files from watched dirs
-    notifier.py            desktop push notifications
-    knowledge_extractor.py extract facts from conversation
-    feedback_loop.py       live model corrections via partial_fit
-    personalisation.py     manual config + auto-learned profile overlay
-    goal_engine.py         ← NEW: persistent goal queue + autonomous loop
+├── Autonomous action layer (stages 129–142)
+│   screen_agent.py        screen capture, mouse/keyboard control
+│   browser_agent.py       Playwright browser automation
+│   permission_manager.py  OS action gating (allow/ask/deny)
+│   file_watcher.py        auto-ingest new files from watched dirs
+│   notifier.py            desktop push notifications
+│   knowledge_extractor.py extract facts from conversation
+│   feedback_loop.py       live model corrections via partial_fit
+│   personalisation.py     manual config + auto-learned profile overlay
+│   goal_engine.py         persistent goal queue + autonomous loop
+│   scheduled_goals.py     cron-like recurring goals
+│   goal_feedback.py       learn from past goal outcomes (Stage 139)
+│   server.py              Goals/Schedules REST API + SSE streaming + digest
+│
+└── Digital action layer (stages 143–145)
+    comm_bridge.py          email, SMS, Slack, WhatsApp messaging
+    desktop_bridge.py       file I/O, clipboard, app launch, shell, screen
+    companion.py            start_voice() / stop_voice() + REST voice endpoints
 ```
 
 ### Subsystem map
@@ -221,41 +288,61 @@ physml/
 | **ML engine** | `PhysicsPredictor`, `PhysicsRegressor`, `PhysicsClassifier`, `myco` |
 | **Active learning** | `MyceliumAgent`, `ActiveLearner`, `BanditPolicy` |
 | **Memory** | `KnowledgeGraph`, `VectorMemory`, `AgentMemory`, `ReplayBuffer` |
-| **Planning** | `TaskDecomposer`, `PlanExecutor`, **`GoalEngine`** |
+| **Planning** | `TaskDecomposer`, `PlanExecutor`, `GoalEngine`, `GoalFeedbackStore` |
 | **Perception** | `DocumentProcessor`, `ScreenAgent`, `BrowserAgent` |
 | **Action** | `ToolBridge`, `LocalTaskExecutor`, `PermissionManager` |
+| **Communication** | `CommBridge` (email/SMS/Slack/WhatsApp), `Notifier` |
+| **Desktop control** | `DesktopBridge` (files, clipboard, apps, shell, screen) |
+| **Voice** | `VoiceLoop`, `VoiceInputAdapter`, `VoiceOutputAdapter` |
 | **Learning from you** | `KnowledgeExtractor`, `FeedbackLoop`, `UserProfileLearner` |
 | **Identity** | `DigitalSoul`, `PersonalisationManager` |
-| **Infrastructure** | `Notifier`, `FileWatcher`, `SecureVault`, `ModelManager` |
-| **API** | `MyceliumCompanion`, FastAPI server, CLI |
+| **Infrastructure** | `FileWatcher`, `SecureVault`, `ModelManager`, `ScheduledGoals` |
+| **API** | `MyceliumCompanion`, FastAPI server + SSE streaming, CLI |
+
+### GoalEngine step routing
+
+| Keywords in step | Tool called |
+|---|---|
+| read / open / load / ingest | `DocumentProcessor` (CSV, PDF, JSON, Excel, URLs) |
+| train / fit / learn on | `ModelManager.train_from_csv()` |
+| predict / forecast / estimate | `ModelManager.predict()` |
+| send email / email | `CommBridge.parse_and_send_email()` |
+| send sms / text message | `CommBridge.parse_and_send_sms()` |
+| whatsapp | `CommBridge.send_whatsapp()` |
+| slack | `CommBridge.send_slack()` |
+| open file / read file | `DesktopBridge.read_file()` |
+| write file / save file | `DesktopBridge.write_file()` |
+| open app | `DesktopBridge.open_app()` |
+| copy to clipboard | `DesktopBridge.copy_to_clipboard()` |
+| screenshot / capture screen | `DesktopBridge.screenshot()` |
+| run command / execute | `DesktopBridge.run_shell()` |
+| browse / fetch / http | `BrowserAgent.fetch_text()` |
+| notify / alert / remind | `Notifier.send()` |
+| digest / daily summary | `companion.daily_digest()` |
+| anything else | LLM reasoning (Claude) → logged |
+
+---
+
+## Docker / deployment
+
+```bash
+# Start the full stack (API + worker)
+docker compose up
+
+# Worker only (background goal processing, no HTTP server)
+python scripts/run_worker.py
+```
+
+Environment via `.env` file (see `.env.example`).
 
 ---
 
 ## Command line
 
 ```bash
-# Train and predict
 physml fit my_data.csv --target outcome_column --out agent.pkl
 physml predict agent.pkl 1.2 3.4 5.6
-
-# Start the REST API
 uvicorn physml.server:app --reload
-```
-
----
-
-## REST API
-
-```bash
-pip install "physml[server]"
-uvicorn physml.server:app
-```
-
-```
-POST /train           — train on a CSV file
-POST /predict         — predict from feature values
-GET  /status          — system health + model status
-POST /chat            — conversational interface
 ```
 
 ---
@@ -267,6 +354,7 @@ POST /chat            — conversational interface
 - Nothing uploaded anywhere
 - Every file writes to `~/.mycelium/` only
 - `PermissionManager` gates all OS actions — you control what Myco can touch
+- `MYCO_ALLOW_WRITES=0` by default — file writes require explicit opt-in
 
 ---
 
@@ -288,10 +376,15 @@ POST /chat            — conversational interface
 git clone https://github.com/chizoalban2003-beep/Mycelium.git
 cd Mycelium
 pip install -e ".[dev]"
-python3 -m pytest -q
+
+# Fast tests (CI default — excludes CPU-heavy slow tests)
+python3 -m pytest tests/ -q --timeout=90 -m "not slow"
+
+# All tests
+python3 -m pytest tests/ -q --timeout=120
 ```
 
-**Test coverage:** 19 test files, 500+ tests, all passing.
+**Test coverage:** 22 test files, 550+ tests, all passing.
 
 ---
 
@@ -300,10 +393,10 @@ python3 -m pytest -q
 | Next step | What it adds |
 |---|---|
 | Vision / VLM | Describe what's on screen; full computer-use agent |
-| Scheduled goals | Cron-like recurring goals ("check my inbox every morning") |
 | Multi-agent federation | Specialist agents (finance, health, code) sharing knowledge |
 | Mobile edge deployment | Raspberry Pi / Android with stripped-down core |
 | Goal marketplace | Community-shared goal templates |
+| WhatsApp/Telegram native API | Replace Playwright automation with official APIs |
 
 ---
 
@@ -343,8 +436,6 @@ Raw tabular data
 ```
 
 ### Benchmark Results
-
-Evaluated with `benchmark_agent` (seed=20, oracle_budget=60, `myco()` defaults).
 
 | Dataset | Samples | Features | Final Accuracy |
 |---|---|---|---|

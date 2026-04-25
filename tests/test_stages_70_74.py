@@ -536,6 +536,7 @@ class TestSelfPlay:
         federated_rounds = [r for r in history if r.federated]
         assert len(federated_rounds) >= 1
 
+    @pytest.mark.slow
     def test_leaderboard_structure(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay
@@ -559,6 +560,7 @@ class TestSelfPlay:
         best = sp.best_agent()
         assert best in (a, b)
 
+    @pytest.mark.slow
     def test_compete_single_round(self):
         from physml import MyceliumAgent
         from physml.self_play import PlayRound, SelfPlay
@@ -569,6 +571,7 @@ class TestSelfPlay:
         result = sp.compete(X_train, y_train, X_test, y_test)
         assert isinstance(result, PlayRound)
 
+    @pytest.mark.slow
     def test_wins_accumulate(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay
@@ -578,6 +581,7 @@ class TestSelfPlay:
         total_wins = sp._wins["agent_a"] + sp._wins["agent_b"]
         assert total_wins == 4
 
+    @pytest.mark.slow
     def test_history_matches_property(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay
@@ -586,6 +590,7 @@ class TestSelfPlay:
         returned = sp.run(self.X, self.y, n_rounds=3)
         assert returned == sp.history
 
+    @pytest.mark.slow
     def test_federate_method(self):
         from physml import MyceliumAgent
         from physml.self_play import SelfPlay

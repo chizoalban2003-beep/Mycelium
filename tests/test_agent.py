@@ -184,6 +184,7 @@ class TestNeuralEngineSaveLoad:
 # ============================================================================
 
 class TestNeuralEnginePretrain:
+    @pytest.mark.slow
     def test_pretrain_single_dataset_returns_engine(self):
         import pandas as pd
         X, y = _reg_data(n=60)
@@ -194,6 +195,7 @@ class TestNeuralEnginePretrain:
         )
         assert hasattr(eng, "mlp_")
 
+    @pytest.mark.slow
     def test_pretrain_two_datasets_no_crash(self):
         import pandas as pd
         rng = np.random.default_rng(0)
@@ -239,6 +241,7 @@ class TestPhysicsPredictorPartialFit:
         preds = clf.predict(X_te)
         assert preds.shape == (len(y_te),)
 
+    @pytest.mark.slow
     def test_partial_fit_replay_buffer_not_empty(self):
         clf, X_te, y_te = _fitted_neural_clf()
         clf.partial_fit(X_te[:10], y_te[:10])
@@ -273,6 +276,7 @@ class TestPhysicsPredictorSaveLoad:
         preds_after = loaded.predict(X_te)
         assert preds_after.shape == preds_before.shape
 
+    @pytest.mark.slow
     def test_save_load_roundtrip_reg(self):
         reg, X_te, y_te = _fitted_neural_reg()
         preds_before = reg.predict(X_te)
@@ -356,6 +360,7 @@ class TestPhysicsAgent:
         agent.reward(X_te[:1], y_te[:1])
         assert agent.n_rewards == 1
 
+    @pytest.mark.slow
     def test_reward_updates_model(self):
         clf, X_te, y_te = _fitted_neural_clf()
         agent = PhysicsAgent(clf)
@@ -371,6 +376,7 @@ class TestPhysicsAgent:
         agent.adapt()
         assert len(agent._pending_labels) == 0
 
+    @pytest.mark.slow
     def test_report_returns_dict(self):
         clf, X_te, y_te = _fitted_neural_clf()
         agent = PhysicsAgent(clf)
@@ -1041,6 +1047,7 @@ class TestMyceliumAgent:
         agent = MyceliumAgent()
         assert agent.policy == "adaptive"
 
+    @pytest.mark.slow
     def test_reward_updates_model(self):
         from physml import MyceliumAgent
         agent, X_te, y_te = self._make_agent()

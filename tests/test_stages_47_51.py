@@ -104,6 +104,7 @@ class TestAutoMLOptimizer:
         assert "nonexistent_param" not in filtered
         assert "C" in filtered
 
+    @pytest.mark.slow
     def test_self_improve_auto_tune(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -111,6 +112,7 @@ class TestAutoMLOptimizer:
         result = agent.self_improve(X_te, y_te, auto_tune=True)
         assert "best_automl_params" in result
 
+    @pytest.mark.slow
     def test_self_improve_without_auto_tune_no_key(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -331,6 +333,7 @@ class TestExplainer:
         with pytest.raises(RuntimeError, match="fit"):
             exp.top_features()
 
+    @pytest.mark.slow
     def test_explain_agent_convenience(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -353,6 +356,7 @@ class TestExplainer:
 
 class TestAgentCheckpoint:
 
+    @pytest.mark.slow
     def test_save_creates_file(self, iris_data, tmp_path):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -360,6 +364,7 @@ class TestAgentCheckpoint:
         ckpt_path = AgentCheckpoint.save(agent, tmp_path / "agent.ckpt")
         assert Path(ckpt_path).exists()
 
+    @pytest.mark.slow
     def test_load_returns_agent(self, iris_data, tmp_path):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -399,6 +404,7 @@ class TestAgentCheckpoint:
         agent2 = AgentCheckpoint.load_bytes(data)
         assert isinstance(agent2, MyceliumAgent)
 
+    @pytest.mark.slow
     def test_inspect_has_file_size(self, iris_data, tmp_path):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()

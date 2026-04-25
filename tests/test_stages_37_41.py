@@ -203,6 +203,7 @@ class TestStage39SelfEvaluate:
         metrics = agent.self_evaluate(X[40:], y[40:])
         assert isinstance(metrics, dict)
 
+    @pytest.mark.slow
     def test_self_evaluate_keys(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)

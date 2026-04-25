@@ -331,6 +331,7 @@ def test_neural_backend_score_finite_reg():
     assert math.isfinite(score)
 
 
+@pytest.mark.slow
 def test_neural_backend_cross_val_score_clf():
     from sklearn.model_selection import cross_val_score
     X, y = _clf_data()
@@ -340,6 +341,7 @@ def test_neural_backend_cross_val_score_clf():
     assert all(0.0 <= s <= 1.0 for s in scores)
 
 
+@pytest.mark.slow
 def test_neural_backend_cross_val_score_reg():
     from sklearn.model_selection import cross_val_score
     X, y = _reg_data()

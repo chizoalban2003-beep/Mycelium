@@ -149,6 +149,7 @@ def test_set_params_updates_attributes():
 
 # ── sklearn cross_val_score compatibility ─────────────────────────────────
 
+@pytest.mark.slow
 def test_sklearn_cross_val_score_classification():
     from sklearn.model_selection import cross_val_score
     X, y = _clf_data()
@@ -158,6 +159,7 @@ def test_sklearn_cross_val_score_classification():
     assert all(0.0 <= s <= 1.0 for s in scores)
 
 
+@pytest.mark.slow
 def test_sklearn_cross_val_score_regression():
     from sklearn.model_selection import cross_val_score
     X, y = _reg_data()
@@ -468,6 +470,7 @@ def test_set_params_new_keys():
     assert clf.residual_model == "ridge"
 
 
+@pytest.mark.slow
 def test_sklearn_cross_val_with_improvements():
     from sklearn.model_selection import cross_val_score
     X, y = _clf_data()
