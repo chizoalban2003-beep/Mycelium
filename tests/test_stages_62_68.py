@@ -121,6 +121,7 @@ class TestCompetitiveArena:
         X, y = make_classification(n_samples=200, n_features=8, random_state=0)
         return train_test_split(X, y, test_size=0.3, random_state=0)
 
+    @pytest.mark.slow
     def test_single_competitor(self):
         Xtr, Xte, ytr, yte = self._data()
         arena = CompetitiveArena()
@@ -130,6 +131,7 @@ class TestCompetitiveArena:
         assert isinstance(results[0], ArenaResult)
         assert results[0].rank == 1
 
+    @pytest.mark.slow
     def test_ranking(self):
         Xtr, Xte, ytr, yte = self._data()
         arena = CompetitiveArena(metric="accuracy")
@@ -140,6 +142,7 @@ class TestCompetitiveArena:
         assert results[1].rank == 2
         assert results[0].accuracy >= results[1].accuracy
 
+    @pytest.mark.slow
     def test_arena_result_has_all_fields(self):
         Xtr, Xte, ytr, yte = self._data()
         arena = CompetitiveArena()
@@ -149,6 +152,7 @@ class TestCompetitiveArena:
         assert r.predict_time_s >= 0
         assert 0.0 <= r.accuracy <= 1.0
 
+    @pytest.mark.slow
     def test_leaderboard_returns_dicts(self):
         Xtr, Xte, ytr, yte = self._data()
         arena = CompetitiveArena()
@@ -157,6 +161,7 @@ class TestCompetitiveArena:
         assert isinstance(lb, list)
         assert isinstance(lb[0], dict)
 
+    @pytest.mark.slow
     def test_multiple_competitors_ordering(self):
         Xtr, Xte, ytr, yte = self._data()
         arena = CompetitiveArena()
@@ -322,6 +327,7 @@ class TestAutonomousAgent:
         X, y = make_classification(n_samples=200, n_features=6, random_state=0)
         return train_test_split(X, y, test_size=0.3, random_state=0)
 
+    @pytest.mark.slow
     def test_fit_and_predict(self):
         Xtr, Xte, ytr, yte = self._data()
         agent = self._build_agent()
@@ -329,6 +335,7 @@ class TestAutonomousAgent:
         preds = agent.predict(Xte)
         assert len(preds) == len(yte)
 
+    @pytest.mark.slow
     def test_predict_proba(self):
         Xtr, Xte, ytr, yte = self._data()
         agent = self._build_agent()
@@ -373,6 +380,7 @@ class TestAutonomousAgent:
         action = agent.act(np.zeros(4))
         assert action == 0
 
+    @pytest.mark.slow
     def test_compete(self):
         Xtr, Xte, ytr, yte = self._data()
         agent = self._build_agent()
@@ -403,6 +411,7 @@ class TestCompetitiveReport:
     def _agent(self):
         return LogisticRegression(max_iter=200)
 
+    @pytest.mark.slow
     def test_run_returns_report(self):
         reporter = CompetitiveReport(n_samples=300, n_features=6)
         report = reporter.run(self._agent())
@@ -410,11 +419,13 @@ class TestCompetitiveReport:
         assert "summary" in report
         assert "verdict" in report
 
+    @pytest.mark.slow
     def test_mycelium_ranked(self):
         reporter = CompetitiveReport(n_samples=300, n_features=6)
         report = reporter.run(self._agent())
         assert report["summary"]["mycelium_rank"] >= 1
 
+    @pytest.mark.slow
     def test_competitive_flag(self):
         reporter = CompetitiveReport(n_samples=300, n_features=6)
         report = reporter.run(self._agent())
@@ -428,6 +439,7 @@ class TestCompetitiveReport:
         assert report["dataset"] == "custom"
         assert report["n_features"] == 5
 
+    @pytest.mark.slow
     def test_extra_baselines(self):
         from sklearn.ensemble import RandomForestClassifier
         reporter = CompetitiveReport(n_samples=300, n_features=6)
@@ -438,12 +450,14 @@ class TestCompetitiveReport:
         names = [r["name"] for r in report["leaderboard"]]
         assert "RF" in names
 
+    @pytest.mark.slow
     def test_leaderboard_sorted_by_accuracy(self):
         reporter = CompetitiveReport(n_samples=300, n_features=6)
         report = reporter.run(self._agent())
         accs = [r["accuracy"] for r in report["leaderboard"]]
         assert accs == sorted(accs, reverse=True)
 
+    @pytest.mark.slow
     def test_print_report_runs(self, capsys):
         reporter = CompetitiveReport(n_samples=200, n_features=5)
         report = reporter.run(self._agent())
@@ -451,6 +465,7 @@ class TestCompetitiveReport:
         captured = capsys.readouterr()
         assert "COMPETITIVE" in captured.out
 
+    @pytest.mark.slow
     def test_autonomous_agent_in_report(self):
         """AutonomousAgent (with LR core) should appear in the report."""
         Xtr, Xte, ytr, yte = train_test_split(

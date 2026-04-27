@@ -13,6 +13,7 @@ import time
 import unittest
 
 import numpy as np
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,7 @@ class TestRewardModel(unittest.TestCase):
 
         self.assertTrue(True)
 
+    @pytest.mark.slow
     def test_add_and_fit(self):
         from physml.reward_model import RewardModel, RewardSample
 
@@ -61,6 +63,7 @@ class TestRewardModel(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             m.predict([1.0, 2.0], 1.0)
 
+    @pytest.mark.slow
     def test_predict_returns_float(self):
         from physml.reward_model import RewardModel
 
@@ -70,6 +73,7 @@ class TestRewardModel(unittest.TestCase):
         result = model.predict([1.0, 2.0], 1.0)
         self.assertIsInstance(result, float)
 
+    @pytest.mark.slow
     def test_custom_model(self):
         from sklearn.linear_model import Lasso
 
@@ -80,6 +84,7 @@ class TestRewardModel(unittest.TestCase):
         m.fit()
         self.assertTrue(m.fitted_)
 
+    @pytest.mark.slow
     def test_chaining(self):
         from physml.reward_model import RewardModel
 

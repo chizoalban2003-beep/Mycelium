@@ -37,6 +37,7 @@ def _make_companion(tmp_path: Path) -> Any:
 
 
 class TestModelManager:
+    @pytest.mark.slow
     def test_train_from_csv_success(self, tmp_path):
         from physml.model_manager import ModelManager
 
@@ -47,6 +48,7 @@ class TestModelManager:
         assert result.n_features > 0
         assert result.target_column != ""
 
+    @pytest.mark.slow
     def test_train_and_predict(self, tmp_path):
         from physml.model_manager import ModelManager
 
@@ -67,6 +69,7 @@ class TestModelManager:
         assert not result.model_fitted
         assert result.error is not None
 
+    @pytest.mark.slow
     def test_save_and_load_roundtrip(self, tmp_path):
         from physml.model_manager import ModelManager
 
@@ -82,6 +85,7 @@ class TestModelManager:
         pred = mgr2.predict([1.0, 2.0])
         assert pred.model_fitted
 
+    @pytest.mark.slow
     def test_train_with_target_column(self, tmp_path):
         from physml.model_manager import ModelManager
 
@@ -109,6 +113,7 @@ class TestModelManager:
         result = mgr.train_from_csv(str(p))
         assert not result.success
 
+    @pytest.mark.slow
     def test_train_from_arrays(self, tmp_path):
         from physml.model_manager import ModelManager
 
@@ -119,6 +124,7 @@ class TestModelManager:
         assert result.success
         assert result.n_rows == 5
 
+    @pytest.mark.slow
     def test_partial_fit_without_prior_model(self, tmp_path):
         from physml.model_manager import ModelManager
 
@@ -216,6 +222,7 @@ class TestToolBridge:
         assert "tool_use_id" in results[0]
         assert "content" in results[0]
 
+    @pytest.mark.slow
     def test_execute_with_companion_predict(self, tmp_path):
         from physml.tool_bridge import ToolBridge
 
@@ -232,6 +239,7 @@ class TestToolBridge:
         finally:
             companion.stop()
 
+    @pytest.mark.slow
     def test_execute_with_companion_train_and_predict(self, tmp_path):
         from physml.tool_bridge import ToolBridge
 
@@ -516,6 +524,7 @@ class TestServerJWT:
 
 
 class TestCompanionIntegration:
+    @pytest.mark.slow
     def test_train_and_predict_flow(self, tmp_path):
         companion = _make_companion(tmp_path)
         try:
@@ -529,6 +538,7 @@ class TestCompanionIntegration:
         finally:
             companion.stop()
 
+    @pytest.mark.slow
     def test_model_persists_across_restart(self, tmp_path):
         from physml.companion import MyceliumCompanion
 
@@ -551,6 +561,7 @@ class TestCompanionIntegration:
         finally:
             companion.stop()
 
+    @pytest.mark.slow
     def test_vector_memory_grows_on_train(self, tmp_path):
         companion = _make_companion(tmp_path)
         try:

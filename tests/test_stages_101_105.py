@@ -14,6 +14,7 @@ import time
 import unittest
 
 import numpy as np
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
 
         self.assertTrue(True)
 
+    @pytest.mark.slow
     def test_search_returns_best_result(self):
         from physml.neural_search import NeuralSearchEngine, SearchResult
 
@@ -43,6 +45,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         self.assertGreaterEqual(best.score, 0.0)
         self.assertLessEqual(best.score, 1.0)
 
+    @pytest.mark.slow
     def test_all_results_populated(self):
         from physml.neural_search import NeuralSearchEngine
 
@@ -51,6 +54,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         eng.search(X, y)
         self.assertEqual(len(eng.all_results), 2)
 
+    @pytest.mark.slow
     def test_best_result_is_highest_score(self):
         from physml.neural_search import NeuralSearchEngine
 
@@ -60,6 +64,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         for r in eng.all_results:
             self.assertLessEqual(r.score, best.score + 1e-9)
 
+    @pytest.mark.slow
     def test_reset_clears_results(self):
         from physml.neural_search import NeuralSearchEngine
 
@@ -70,6 +75,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         self.assertEqual(len(eng.all_results), 0)
         self.assertIsNone(eng.best_result)
 
+    @pytest.mark.slow
     def test_regression_task(self):
         from physml.neural_search import NeuralSearchEngine
 
@@ -82,6 +88,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         best = eng.search(X, y)
         self.assertIsNotNone(best)
 
+    @pytest.mark.slow
     def test_search_result_hidden_layers(self):
         from physml.neural_search import NeuralSearchEngine
 
@@ -92,6 +99,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         returned_layers = {r.hidden_layers for r in eng.all_results}
         self.assertEqual(returned_layers, {(16, 8), (32,)})
 
+    @pytest.mark.slow
     def test_train_time_positive(self):
         from physml.neural_search import NeuralSearchEngine
 
@@ -114,6 +122,7 @@ class TestNeuralSearchEngine(unittest.TestCase):
         self.assertEqual(len(eng.all_results), 0)
         self.assertIsNone(eng.best_result)
 
+    @pytest.mark.slow
     def test_override_search_space_in_call(self):
         from physml.neural_search import NeuralSearchEngine
 

@@ -70,22 +70,26 @@ class TestActiveLearner:
         with pytest.raises(ValueError):
             ActiveLearner(LogisticRegression(), strategy="bogus")
 
+    @pytest.mark.slow
     def test_initialize(self):
         learner, X, y = self._setup()
         assert learner.n_labelled == 60
         assert learner.n_pool == 240
 
+    @pytest.mark.slow
     def test_query_returns_correct_type(self):
         from physml.active_learner import QueryResult
         learner, _, _ = self._setup()
         result = learner.query()
         assert isinstance(result, QueryResult)
 
+    @pytest.mark.slow
     def test_query_n_indices(self):
         learner, _, _ = self._setup(n_query=15)
         result = learner.query()
         assert len(result.query_indices) == 15
 
+    @pytest.mark.slow
     def test_query_indices_in_range(self):
         learner, _, _ = self._setup()
         result = learner.query()
@@ -93,6 +97,7 @@ class TestActiveLearner:
         # indices should be within the pool size at time of query (240)
         assert all(0 <= i < 240 for i in result.query_indices)
 
+    @pytest.mark.slow
     def test_query_result_fields(self):
         learner, _, _ = self._setup()
         result = learner.query()
@@ -100,6 +105,7 @@ class TestActiveLearner:
         assert len(result.scores) == len(result.query_indices)
         assert result.elapsed_s >= 0
 
+    @pytest.mark.slow
     def test_query_as_dict(self):
         learner, _, _ = self._setup()
         d = learner.query().as_dict()
@@ -108,6 +114,7 @@ class TestActiveLearner:
         assert "n_labelled" in d
         assert "n_unlabelled" in d
 
+    @pytest.mark.slow
     def test_update_grows_labelled(self):
         learner, X, y = self._setup(n_query=10)
         result = learner.query()
@@ -117,11 +124,13 @@ class TestActiveLearner:
         assert learner.n_labelled == labelled_before + 10
         assert learner.n_pool == pool_before - 10
 
+    @pytest.mark.slow
     def test_score_method(self):
         learner, X, y = self._setup()
         score = learner.score(X[:30], y[:30])
         assert 0.0 <= score <= 1.0
 
+    @pytest.mark.slow
     def test_history_accumulates(self):
         learner, X, y = self._setup()
         for _ in range(3):
@@ -129,18 +138,21 @@ class TestActiveLearner:
             learner.update(result.query_indices, y[60:][result.query_indices[:len(result.query_indices)]])
         assert len(learner.history) == 3
 
+    @pytest.mark.slow
     def test_strategy_least_confident(self):
         learner, _, _ = self._setup(strategy="least_confident")
         result = learner.query()
         assert result.strategy == "least_confident"
         assert len(result.query_indices) == 10
 
+    @pytest.mark.slow
     def test_strategy_margin(self):
         learner, _, _ = self._setup(strategy="margin")
         result = learner.query()
         assert result.strategy == "margin"
         assert len(result.query_indices) == 10
 
+    @pytest.mark.slow
     def test_strategy_qbc(self):
         from physml.active_learner import ActiveLearner
         X, y = _clf_data(n=200)
@@ -645,6 +657,7 @@ class TestModelZoo:
         assert "lr_fast" in zoo
         assert "nonexistent" not in zoo
 
+    @pytest.mark.slow
     def test_compare_method(self):
         from physml.model_zoo import ModelZoo
         X, y = _clf_data(n=200)

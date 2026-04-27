@@ -14,6 +14,7 @@ import time
 import unittest
 
 import numpy as np
+import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +155,7 @@ class TestEnvironmentModel(unittest.TestCase):
 
         self.assertTrue(True)
 
+    @pytest.mark.slow
     def test_record_and_fit(self):
         from physml.environment_model import EnvironmentModel
 
@@ -162,6 +164,7 @@ class TestEnvironmentModel(unittest.TestCase):
         m.fit()
         self.assertTrue(m.fitted_)
 
+    @pytest.mark.slow
     def test_predict_next_shape(self):
         from physml.environment_model import EnvironmentModel
 
@@ -209,6 +212,7 @@ class TestEnvironmentModel(unittest.TestCase):
             m.record_transition([0.0], action=0.0, reward=r)
         self.assertAlmostEqual(m.avg_reward(), 2.0)
 
+    @pytest.mark.slow
     def test_chaining(self):
         from physml.environment_model import EnvironmentModel
 
@@ -224,6 +228,7 @@ class TestEnvironmentModel(unittest.TestCase):
         after = time.time()
         self.assertTrue(before <= s.timestamp <= after)
 
+    @pytest.mark.slow
     def test_custom_model(self):
         from sklearn.linear_model import Lasso
 

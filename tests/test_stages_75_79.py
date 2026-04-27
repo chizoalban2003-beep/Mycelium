@@ -199,18 +199,21 @@ class TestPrivacyEngine:
         self.X, self.y = _data()
         self.lr = LogisticRegression(max_iter=200)
 
+    @pytest.mark.slow
     def test_fit_private_returns_self(self):
         from physml.privacy_engine import PrivacyEngine
         engine = PrivacyEngine(LogisticRegression(max_iter=200), epsilon=1.0)
         ret = engine.fit_private(self.X, self.y)
         assert ret is engine
 
+    @pytest.mark.slow
     def test_budget_consumed(self):
         from physml.privacy_engine import PrivacyEngine
         engine = PrivacyEngine(LogisticRegression(max_iter=200), epsilon=1.0)
         engine.fit_private(self.X, self.y)
         assert engine.budget.epsilon_spent == pytest.approx(1.0, abs=1e-9)
 
+    @pytest.mark.slow
     def test_predict_works_after_fit(self):
         from physml.privacy_engine import PrivacyEngine
         engine = PrivacyEngine(LogisticRegression(max_iter=200), epsilon=1.0)
@@ -218,6 +221,7 @@ class TestPrivacyEngine:
         preds = engine.predict(self.X)
         assert len(preds) == len(self.y)
 
+    @pytest.mark.slow
     def test_predict_proba_works(self):
         from physml.privacy_engine import PrivacyEngine
         engine = PrivacyEngine(LogisticRegression(max_iter=200), epsilon=1.0)
@@ -225,6 +229,7 @@ class TestPrivacyEngine:
         proba = engine.predict_proba(self.X)
         assert proba.shape == (len(self.y), 2)
 
+    @pytest.mark.slow
     def test_exhausted_raises(self):
         from physml.privacy_engine import PrivacyEngine
         engine = PrivacyEngine(
@@ -234,6 +239,7 @@ class TestPrivacyEngine:
         with pytest.raises(RuntimeError):
             engine.fit_private(self.X, self.y)
 
+    @pytest.mark.slow
     def test_privacy_report_structure(self):
         from physml.privacy_engine import PrivacyEngine
         engine = PrivacyEngine(LogisticRegression(max_iter=200), epsilon=2.0)
@@ -564,24 +570,28 @@ class TestModelDistillery:
         self.teacher.fit(self.X_train, self.y_train)
         self.student = LogisticRegression(max_iter=200)
 
+    @pytest.mark.slow
     def test_distil_returns_result(self):
         from physml.model_distillery import DistillationResult, ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)
         result = distillery.distil(self.X_train, self.y_train)
         assert isinstance(result, DistillationResult)
 
+    @pytest.mark.slow
     def test_student_accuracy_in_range(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)
         result = distillery.distil(self.X_train, self.y_train)
         assert 0.0 <= result.student_accuracy <= 1.0
 
+    @pytest.mark.slow
     def test_teacher_accuracy_in_range(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)
         result = distillery.distil(self.X_train, self.y_train)
         assert 0.0 <= result.teacher_accuracy <= 1.0
 
+    @pytest.mark.slow
     def test_history_grows(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(
@@ -591,6 +601,7 @@ class TestModelDistillery:
         distillery.distil(self.X_train, self.y_train)
         assert len(distillery.history) == 2
 
+    @pytest.mark.slow
     def test_evaluate_returns_dict(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)
@@ -598,6 +609,7 @@ class TestModelDistillery:
         ev = distillery.evaluate(self.X_test, self.y_test)
         assert "teacher_accuracy" in ev and "student_accuracy" in ev
 
+    @pytest.mark.slow
     def test_evaluate_accuracy_gap_correct(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)
@@ -606,6 +618,7 @@ class TestModelDistillery:
         expected_gap = ev["teacher_accuracy"] - ev["student_accuracy"]
         assert ev["accuracy_gap"] == pytest.approx(expected_gap, abs=1e-4)
 
+    @pytest.mark.slow
     def test_different_temperatures(self):
         """Higher temperature should yield different (softer) soft labels."""
         from physml.model_distillery import ModelDistillery
@@ -617,6 +630,7 @@ class TestModelDistillery:
         assert d1.history[0].elapsed_s >= 0
         assert d2.history[0].elapsed_s >= 0
 
+    @pytest.mark.slow
     def test_no_sample_weights_option(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(
@@ -628,6 +642,7 @@ class TestModelDistillery:
         result = distillery.distil(self.X_train, self.y_train)
         assert isinstance(result.student_accuracy, float)
 
+    @pytest.mark.slow
     def test_separate_eval_set(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)
@@ -640,6 +655,7 @@ class TestModelDistillery:
         # Evaluation on a separate set — just check no error and valid accuracy
         assert 0.0 <= result.student_accuracy <= 1.0
 
+    @pytest.mark.slow
     def test_n_samples_in_result(self):
         from physml.model_distillery import ModelDistillery
         distillery = ModelDistillery(self.teacher, self.student, temperature=2.0)

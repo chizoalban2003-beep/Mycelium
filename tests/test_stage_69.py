@@ -103,6 +103,7 @@ class TestLifelongLearnerRunSklearn:
     def setup_method(self):
         self.X, self.y = _make_data()
 
+    @pytest.mark.slow
     def test_run_returns_list_of_round_results(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=2)
@@ -110,6 +111,7 @@ class TestLifelongLearnerRunSklearn:
         assert isinstance(history, list)
         assert all(isinstance(r, RoundResult) for r in history)
 
+    @pytest.mark.slow
     def test_run_produces_evaluations(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=2)
@@ -117,18 +119,21 @@ class TestLifelongLearnerRunSklearn:
         # 300 samples / 50 per chunk = 6 chunks; eval every 2 → 3 rounds
         assert len(history) >= 1
 
+    @pytest.mark.slow
     def test_samples_seen_correct(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=1)
         ll.run(self.X, self.y, chunk_size=50)
         assert ll._n_samples_seen == len(self.X)
 
+    @pytest.mark.slow
     def test_fitted_after_run(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent)
         ll.run(self.X, self.y, chunk_size=50)
         assert ll._fitted is True
 
+    @pytest.mark.slow
     def test_final_accuracy_is_number(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent)
@@ -137,12 +142,14 @@ class TestLifelongLearnerRunSklearn:
         assert isinstance(fa, float)
         assert 0.0 <= fa <= 1.0
 
+    @pytest.mark.slow
     def test_history_matches_property(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=1)
         returned = ll.run(self.X, self.y, chunk_size=50)
         assert returned == ll.history
 
+    @pytest.mark.slow
     def test_round_idx_monotone(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=1)
@@ -150,6 +157,7 @@ class TestLifelongLearnerRunSklearn:
         for i, r in enumerate(ll.history):
             assert r.round_idx == i
 
+    @pytest.mark.slow
     def test_val_window_respected(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, val_window=30, eval_every=1)
@@ -166,6 +174,7 @@ class TestSelfImprovementTrigger:
     def setup_method(self):
         self.X, self.y = _make_data()
 
+    @pytest.mark.slow
     def test_improvement_fires_when_threshold_above_accuracy(self):
         """Set a very high threshold → improvement should be triggered often."""
         agent = LogisticRegression(max_iter=200)
@@ -174,12 +183,14 @@ class TestSelfImprovementTrigger:
         # At least one round should have triggered improvement (accuracy < 0.99)
         assert any(r.improved for r in ll.history)
 
+    @pytest.mark.slow
     def test_improvement_count_increments(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, improvement_threshold=0.99, eval_every=1)
         ll.run(self.X, self.y, chunk_size=50)
         assert ll._improvement_count > 0
 
+    @pytest.mark.slow
     def test_no_improvement_when_threshold_zero(self):
         """Setting threshold to 0.0 means improvement never fires."""
         agent = LogisticRegression(max_iter=200)
@@ -187,6 +198,7 @@ class TestSelfImprovementTrigger:
         ll.run(self.X, self.y, chunk_size=50)
         assert not any(r.improved for r in ll.history)
 
+    @pytest.mark.slow
     def test_improvement_delta_is_float(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, improvement_threshold=0.99, eval_every=1)
@@ -203,6 +215,7 @@ class TestStepAPI:
     def setup_method(self):
         self.X, self.y = _make_data()
 
+    @pytest.mark.slow
     def test_step_returns_none_when_no_eval(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=5)
@@ -211,6 +224,7 @@ class TestStepAPI:
         result = ll.step(self.X[30:60], self.y[30:60])  # chunk 2 (no eval)
         assert result is None
 
+    @pytest.mark.slow
     def test_step_returns_dict_on_eval(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=2)
@@ -219,6 +233,7 @@ class TestStepAPI:
         assert isinstance(result, dict)
         assert "accuracy" in result
 
+    @pytest.mark.slow
     def test_step_accumulates_history(self):
         agent = LogisticRegression(max_iter=200)
         ll = LifelongLearner(agent, eval_every=1)
@@ -233,6 +248,7 @@ class TestStepAPI:
 # ---------------------------------------------------------------------------
 
 class TestSummary:
+    @pytest.mark.slow
     def test_summary_keys(self):
         X, y = _make_data()
         agent = LogisticRegression(max_iter=200)
@@ -266,6 +282,7 @@ class TestFinalAccuracy:
         import math
         assert math.isnan(ll.final_accuracy())
 
+    @pytest.mark.slow
     def test_valid_after_run(self):
         X, y = _make_data()
         agent = LogisticRegression(max_iter=200)
@@ -280,6 +297,7 @@ class TestFinalAccuracy:
 # ---------------------------------------------------------------------------
 
 class TestMyceliumAgentCompat:
+    @pytest.mark.slow
     def test_runs_with_mycelium_agent(self):
         from physml import MyceliumAgent
         from physml.ensemble_predictor import CompetitiveEnsemblePredictor
@@ -299,6 +317,7 @@ class TestMyceliumAgentCompat:
 # ---------------------------------------------------------------------------
 
 class TestCompetitiveReport:
+    @pytest.mark.slow
     def test_returns_dict_with_expected_keys(self):
         X, y = _make_data(n=300)
         X_train, X_test = X[:200], X[200:]
@@ -313,6 +332,7 @@ class TestCompetitiveReport:
         assert "summary" in report
         assert "verdict" in report
 
+    @pytest.mark.slow
     def test_mycelium_in_leaderboard(self):
         X, y = _make_data(n=300)
         X_train, X_test = X[:200], X[200:]

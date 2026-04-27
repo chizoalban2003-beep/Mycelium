@@ -576,6 +576,7 @@ class TestPipelineBuilder:
         pipe = pb.build()
         assert isinstance(pipe, Pipeline)
 
+    @pytest.mark.slow
     def test_build_pipeline_can_fit_predict(self):
         from physml.pipeline_builder import PipelineBuilder
         X, y = _clf_data()
