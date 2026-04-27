@@ -14,6 +14,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+# Pre-warm the physml/scipy import chain at collection time (not inside tests)
+# so per-test timeouts don't fire on the first slow scipy load.
+import physml  # noqa: F401
+
 
 # ===========================================================================
 # TestActionDispatcher
@@ -97,6 +101,7 @@ class TestActionDispatcher:
         assert isinstance(reply, str)
         assert "not found" in reply.lower() or "error" in reply.lower()
 
+    @pytest.mark.slow
     def test_dispatch_train_and_predict(self, tmp_path):
         """Full train → predict cycle through the dispatcher."""
         import pandas as pd
@@ -134,6 +139,7 @@ class TestActionDispatcher:
         reply2 = d.dispatch(predict_action)
         assert "prediction" in reply2.lower() or "confidence" in reply2.lower()
 
+    @pytest.mark.slow
     def test_dispatch_report_with_agent(self, tmp_path):
         """Report dispatch with a fitted agent."""
         import pandas as pd
@@ -394,6 +400,7 @@ class TestCompanionLLM:
         from physml.companion import MyceliumCompanion
         assert hasattr(MyceliumCompanion, "start_voice_interface")
 
+    @pytest.mark.slow
     def test_companion_chat_returns_str(self, tmp_path):
         """companion.chat() route must return a string."""
         from physml.companion import MyceliumCompanion
@@ -405,6 +412,7 @@ class TestCompanionLLM:
         finally:
             c.stop()
 
+    @pytest.mark.slow
     def test_companion_chat_llm_returns_str(self, tmp_path):
         """companion.chat_llm() must return a string even without API key."""
         from physml.companion import MyceliumCompanion
@@ -417,6 +425,7 @@ class TestCompanionLLM:
         finally:
             c.stop()
 
+    @pytest.mark.slow
     def test_companion_chat_llm_train_intent(self, tmp_path):
         from physml.companion import MyceliumCompanion
         c = MyceliumCompanion(data_dir=str(tmp_path))
