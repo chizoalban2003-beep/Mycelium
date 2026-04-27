@@ -104,6 +104,7 @@ def small_clf_data():
 
 
 class TestStage24GP:
+    @pytest.mark.slow
     def test_gp_strategy_accepted(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -113,6 +114,7 @@ class TestStage24GP:
         idx = agent.select_informative(X[40:])
         assert 0 <= idx < 40
 
+    @pytest.mark.slow
     def test_gp_strategy_fallback_too_few_labels(self, small_clf_data):
         """With < 3 labels the GP falls back gracefully."""
         from physml.agent import PhysicsAgent
@@ -126,6 +128,7 @@ class TestStage24GP:
         result = agent._gp_select(X[40:60])
         assert result is None or isinstance(result, int)
 
+    @pytest.mark.slow
     def test_gp_select_after_rewards(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -143,6 +146,7 @@ class TestStage24GP:
 # ---------------------------------------------------------------------------
 
 class TestStage25Cost:
+    @pytest.mark.slow
     def test_cost_parameter_accepted(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -152,6 +156,7 @@ class TestStage25Cost:
         agent.reward(X[40], y[40], cost=0.5)
         agent.reward(X[41], y[41], cost=2.0)
 
+    @pytest.mark.slow
     def test_total_oracle_cost_tracked(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -162,6 +167,7 @@ class TestStage25Cost:
         r = agent.report()
         assert r["agent"]["total_oracle_cost"] == pytest.approx(4.5)
 
+    @pytest.mark.slow
     def test_default_cost_is_one(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -177,6 +183,7 @@ class TestStage25Cost:
 # ---------------------------------------------------------------------------
 
 class TestStage26Ensemble:
+    @pytest.mark.slow
     def test_ensemble_policy_accepted(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -185,6 +192,7 @@ class TestStage26Ensemble:
         action = agent.observe(X[40])
         assert action.action in ("predict", "ask", "abstain")
 
+    @pytest.mark.slow
     def test_ensemble_disagreement_range(self, small_clf_data):
         from physml.agent import PhysicsAgent
         from physml.estimator import PhysicsPredictor
@@ -199,6 +207,7 @@ class TestStage26Ensemble:
         d = agent._ensemble_disagreement(X[40:50])
         assert 0.0 <= d <= 1.0
 
+    @pytest.mark.slow
     def test_ensemble_policy_report_has_policy_key(self, small_clf_data):
         from physml import myco
         X, y = small_clf_data
@@ -271,6 +280,7 @@ class TestStage29Registry:
     def test_registry_exported_from_physml(self):
         from physml import ModelRegistry  # noqa: F401
 
+    @pytest.mark.slow
     def test_log_returns_run_id(self, tmp_path, small_clf_data):
         from physml import myco, ModelRegistry
         X, y = small_clf_data
@@ -280,6 +290,7 @@ class TestStage29Registry:
         run_id = reg.log(agent, X[:40], y[:40], tags={"test": True}, save_agent=True)
         assert isinstance(run_id, str) and len(run_id) == 32
 
+    @pytest.mark.slow
     def test_list_runs_returns_records(self, tmp_path, small_clf_data):
         from physml import myco, ModelRegistry
         X, y = small_clf_data
@@ -291,6 +302,7 @@ class TestStage29Registry:
         # Can be DataFrame or list
         assert len(runs) >= 1
 
+    @pytest.mark.slow
     def test_get_run_by_id(self, tmp_path, small_clf_data):
         from physml import myco, ModelRegistry
         X, y = small_clf_data
@@ -303,6 +315,7 @@ class TestStage29Registry:
         assert "dataset_hash" in record
         assert "n_samples" in record
 
+    @pytest.mark.slow
     def test_load_agent(self, tmp_path, small_clf_data):
         from physml import myco, ModelRegistry
         X, y = small_clf_data
@@ -313,6 +326,7 @@ class TestStage29Registry:
         loaded = reg.load_agent(run_id)
         assert loaded is not None
 
+    @pytest.mark.slow
     def test_delete_run(self, tmp_path, small_clf_data):
         from physml import myco, ModelRegistry
         X, y = small_clf_data

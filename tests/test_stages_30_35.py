@@ -148,6 +148,7 @@ class TestStage31ToolRegistry:
         with pytest.raises(KeyError):
             reg.call("nonexistent", "input")
 
+    @pytest.mark.slow
     def test_autonomous_loop_returns_dict(self):
         from physml.featurizer import Featurizer
         from physml.tools import AutonomousLoop, Tool, ToolRegistry
@@ -168,6 +169,7 @@ class TestStage31ToolRegistry:
         assert "result" in result
         assert "n_tool_calls" in result
 
+    @pytest.mark.slow
     def test_autonomous_loop_no_tools(self):
         from physml.featurizer import Featurizer
         from physml.tools import AutonomousLoop, ToolRegistry
@@ -200,11 +202,13 @@ class TestStage32GoalPlanner:
         f.fit(texts)
         return GoalPlanner(featurizer=f, agent=agent, n_subtasks=n_subtasks)
 
+    @pytest.mark.slow
     def test_plan_returns_n_subtasks(self):
         planner = self._make_planner(n_subtasks=3)
         subtasks = planner.plan("gather data and process results then summarise")
         assert len(subtasks) == 3
 
+    @pytest.mark.slow
     def test_plan_subtask_types(self):
         from physml.planner import SubTask
 
@@ -235,6 +239,7 @@ class TestStage32GoalPlanner:
         assert "results" in result
         assert "n_steps" in result
 
+    @pytest.mark.slow
     def test_execute_n_steps(self):
         planner = self._make_planner(n_subtasks=3)
         result = planner.execute("alpha and beta and gamma")
@@ -316,6 +321,7 @@ class TestStage33EpisodicMemory:
             mem.store(ctx, "act", float(i))
         assert len(mem) == 5
 
+    @pytest.mark.slow
     def test_mycelium_augment_with_memory(self):
         """Test MyceliumAgent.augment_with_memory integration."""
         from physml.memory import EpisodicMemory
@@ -338,6 +344,7 @@ class TestStage33EpisodicMemory:
 
 
 class TestStage34Pretrain:
+    @pytest.mark.slow
     def test_pretrain_neural_engine_sets_attribute(self):
         from physml.neural_engine import NeuralPhysicsEngine
         from physml.pretrain import pretrain_neural_engine
@@ -349,6 +356,7 @@ class TestStage34Pretrain:
         assert isinstance(engine.pretrained_coefs_, list)
         assert len(engine.pretrained_coefs_) > 0
 
+    @pytest.mark.slow
     def test_pretrain_neural_engine_no_error(self):
         from physml.neural_engine import NeuralPhysicsEngine
         from physml.pretrain import pretrain_neural_engine
@@ -358,6 +366,7 @@ class TestStage34Pretrain:
         result = pretrain_neural_engine(engine, X, mask_fraction=0.2, n_epochs=3, batch_size=16)
         assert result is engine
 
+    @pytest.mark.slow
     def test_pretrain_mycelium_sets_pretrained(self):
         from physml.pretrain import pretrain_mycelium
 
@@ -368,6 +377,7 @@ class TestStage34Pretrain:
         assert getattr(agent, "_pretrained", False) is True
         assert hasattr(agent, "_pretrain_coefs_")
 
+    @pytest.mark.slow
     def test_pretrain_mycelium_unfitted(self):
         """pretrain_mycelium should work even before agent.fit()."""
         from physml.mycelium_agent import MyceliumAgent
@@ -379,6 +389,7 @@ class TestStage34Pretrain:
         assert result is agent
         assert getattr(agent, "_pretrained", False) is True
 
+    @pytest.mark.slow
     def test_use_tool_integration(self):
         """MyceliumAgent.use_tool should call tool and return string."""
         from physml.tools import Tool, ToolRegistry

@@ -153,14 +153,19 @@ def _cmd_export(args: argparse.Namespace) -> None:
 def _cmd_chat(args: argparse.Namespace) -> None:
     """Run a natural-language REPL using the LLM layer (falls back to rule-based routing)."""
     from physml.llm import PromptSystem, ClaudeClient
+    from physml.conversation_store import ConversationStore
+
+    session_id = getattr(args, "session", "default")
+    store_path = f"~/.mycelium/conversations/{session_id}.json"
+    store = ConversationStore(path=store_path)
 
     print("Mycelium REPL — type your request in plain English (Ctrl-C or 'exit' to quit).")
+    print(f"Session: {session_id!r} | history: {len(store)} turns loaded")
     print("LLM backend: Claude claude-sonnet-4-6 (falls back to rule-based if no API key)\n")
 
     try:
         client = ClaudeClient()
         ps = PromptSystem(client=client)
-        history: list[dict] = []
 
         while True:
             try:
@@ -174,19 +179,34 @@ def _cmd_chat(args: argparse.Namespace) -> None:
             if user_input.lower() in ("exit", "quit", "bye"):
                 print("Bye!")
                 break
+            if user_input.lower() == "/history":
+                for turn in store:
+                    role = turn.get("role", "?")
+                    text = turn.get("content", "")[:120]
+                    print(f"  {role}: {text}")
+                print()
+                continue
+            if user_input.lower() == "/clear":
+                store.clear()
+                print("myco> History cleared.\n")
+                continue
 
             # Route the intent
             action = ps.route(user_input)
+            store.add(role="user", content=user_input, metadata={"intent": action.intent})
 
             # Try to get a conversational reply from Claude
             if client.available:
-                history.append({"role": "user", "content": user_input})
+                history = store.to_messages(max_turns=20)
                 result = client.chat(user_input, history=history[:-1])
                 reply = result.text or f"[intent: {action.intent}]"
-                history.append({"role": "assistant", "content": reply})
-                print(f"myco> {reply}")
+                store.add(role="assistant", content=reply)
+                tokens = f" [{result.input_tokens}in/{result.output_tokens}out"
+                if result.cache_hit:
+                    tokens += " cached"
+                tokens += "]"
+                print(f"myco> {reply}{tokens}")
             else:
-                # Fallback: describe the routed intent
                 desc = ps.describe_intent(action.intent)
                 payload_str = ""
                 if action.payload:
@@ -194,11 +214,48 @@ def _cmd_chat(args: argparse.Namespace) -> None:
                         f"{k}={v}" for k, v in action.payload.items()
                     )
                 confidence_str = f" (confidence={action.confidence:.2f})"
-                print(f"myco> [{desc}{confidence_str}]{payload_str}")
+                reply = f"[{desc}{confidence_str}]{payload_str}"
+                store.add(role="assistant", content=reply)
+                print(f"myco> {reply}")
             print()
 
     except Exception as exc:
         _die(f"REPL error: {exc}")
+
+
+def _cmd_explain(args: argparse.Namespace) -> None:
+    """Ask Claude to explain what a saved agent has learned."""
+    import pickle
+    from physml.llm import ClaudeClient
+
+    agent_path = args.agent
+    try:
+        with open(agent_path, "rb") as f:
+            agent = pickle.load(f)
+    except Exception as exc:
+        _die(f"Could not load agent from {agent_path!r}: {exc}")
+
+    # Gather stats from the agent
+    lines = [f"Agent loaded from: {agent_path}"]
+    for attr in ("n_samples_seen_", "classes_", "feature_importances_", "runtime_state_"):
+        val = getattr(agent, attr, None)
+        if val is not None:
+            lines.append(f"  {attr}: {val}")
+    summary = "\n".join(lines)
+
+    client = ClaudeClient()
+    if client.available:
+        prompt = (
+            f"The user has a trained Mycelium physics-ML agent. Here are its stats:\n\n"
+            f"{summary}\n\n"
+            "Explain in 3-5 plain English sentences what this model has learned, "
+            "how confident it is, and one practical suggestion for improving it."
+        )
+        result = client.chat(prompt)
+        print(result.text)
+    else:
+        print(summary)
+        print("\n(Set ANTHROPIC_API_KEY for a plain-English explanation.)")
 
 
 # ---------------------------------------------------------------------------
@@ -276,7 +333,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "chat",
         help="Start a natural-language REPL (uses Claude if ANTHROPIC_API_KEY is set).",
     )
+    p_chat.add_argument(
+        "--session", "-s", default="default",
+        help="Session name for persistent conversation history (default: 'default').",
+    )
     p_chat.set_defaults(func=_cmd_chat)
+
+    # ── explain ───────────────────────────────────────────────────────────
+    p_explain = sub.add_parser(
+        "explain",
+        help="Ask Claude to explain what a saved agent has learned (requires ANTHROPIC_API_KEY).",
+    )
+    p_explain.add_argument("agent", metavar="AGENT", help="Path to a saved agent (.pkl).")
+    p_explain.set_defaults(func=_cmd_explain)
 
     return parser
 

@@ -99,6 +99,8 @@ physml = ["py.typed"]
 testpaths = ["tests"]
 addopts   = "-q --tb=short --timeout=300 -m 'not slow'"
 timeout   = 300
+timeout_method = "thread"
+timeout_func_only = true
 
 [tool.ruff]
 line-length = 100

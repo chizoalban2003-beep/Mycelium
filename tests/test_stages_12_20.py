@@ -241,6 +241,7 @@ class TestContextualBandit:
             bandit.update(x, homeostasis=0.6, reward=0.3, asked=True)
         assert bandit._n_updates == 10
 
+    @pytest.mark.slow
     def test_agent_policy_bandit(self):
         X, y = _clf_data(n=80)
         agent = MyceliumAgent(policy="bandit", calibrate=False)
@@ -263,6 +264,7 @@ class TestContextualBandit:
 # ── Stage 16 — Coreset batch active learning ─────────────────────────────────
 
 class TestCoresetBatch:
+    @pytest.mark.slow
     def test_select_batch_returns_k_indices(self):
         X, y = _clf_data(n=80)
         agent = MyceliumAgent(calibrate=False)
@@ -280,6 +282,7 @@ class TestCoresetBatch:
         indices = agent.select_batch(X[50:], k=8)
         assert len(set(indices)) == len(indices)
 
+    @pytest.mark.slow
     def test_select_batch_k_larger_than_pool(self):
         X, y = _clf_data(n=80)
         agent = MyceliumAgent(calibrate=False)
@@ -287,6 +290,7 @@ class TestCoresetBatch:
         indices = agent.select_batch(X[:3], k=10)
         assert len(indices) <= 3
 
+    @pytest.mark.slow
     def test_select_batch_k_zero(self):
         X, y = _clf_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -344,6 +348,7 @@ class TestDriftDetection:
         assert detector.n_updates == 0
         assert detector._ph_sum == 0.0
 
+    @pytest.mark.slow
     def test_agent_with_drift_detection(self):
         X, y = _clf_data(n=80)
         agent = MyceliumAgent(drift_detection=True, calibrate=False)
@@ -374,6 +379,7 @@ class TestRESTAPI:
         import physml.server  # should not raise even if fastapi absent
         assert True
 
+    @pytest.mark.slow
     def test_create_app_requires_fastapi(self):
         try:
             import fastapi  # noqa: F401
@@ -416,6 +422,7 @@ class TestFederatedLearning:
         fed.add_node("B", X[40:], y[40:])
         fed.aggregate()  # should not raise
 
+    @pytest.mark.slow
     def test_global_agent_returns_agent(self):
         fed = FederatedMyceliumAgent()
         X, y = _clf_data(n=60)
@@ -428,6 +435,7 @@ class TestFederatedLearning:
         with pytest.raises(RuntimeError, match="No nodes"):
             fed.global_agent()
 
+    @pytest.mark.slow
     def test_node_agent(self):
         fed = FederatedMyceliumAgent()
         X, y = _clf_data(n=60)
@@ -447,6 +455,7 @@ class TestFederatedLearning:
         fed.remove_node("A")
         assert "A" not in fed.list_nodes()
 
+    @pytest.mark.slow
     def test_federated_aggregate_can_predict(self):
         fed = FederatedMyceliumAgent()
         rng = np.random.default_rng(0)
@@ -459,6 +468,7 @@ class TestFederatedLearning:
         action = global_agent.observe(X[0:1])
         assert action.action in ("predict", "ask", "abstain")
 
+    @pytest.mark.slow
     def test_multi_round_aggregation(self):
         fed = FederatedMyceliumAgent(n_rounds=2)
         X, y = _clf_data(n=80)

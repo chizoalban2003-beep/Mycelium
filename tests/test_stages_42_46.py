@@ -84,6 +84,7 @@ class TestStage42EpisodicMemoryDeque:
 class TestStage42RewardNoDoubleInference:
     """reward() must not call observe() internally."""
 
+    @pytest.mark.slow
     def test_reward_does_not_call_observe(self, monkeypatch):
         agent = _make_agent()
         calls = []
@@ -101,6 +102,7 @@ class TestStage42RewardNoDoubleInference:
 
         assert len(calls) == 0, "reward() must not call observe()"
 
+    @pytest.mark.slow
     def test_observe_caches_action(self):
         agent = _make_agent()
         X_single = RNG.standard_normal((1, 6)).astype(np.float32)
@@ -111,6 +113,7 @@ class TestStage42RewardNoDoubleInference:
 class TestStage42SelfImproveRetrains:
     """self_improve() must trigger partial_fit when memory is attached."""
 
+    @pytest.mark.slow
     def test_self_improve_with_memory_retrains(self):
         agent = _make_agent()
         mem = EpisodicMemory(capacity=100)
@@ -132,6 +135,7 @@ class TestStage42SelfImproveRetrains:
         assert isinstance(result["episodes_retrained"], int)
         assert result["episodes_retrained"] >= 0
 
+    @pytest.mark.slow
     def test_self_improve_returns_episodes_retrained_zero_without_memory(self):
         agent = _make_agent()
         X_test = RNG.standard_normal((30, 6)).astype(np.float32)
@@ -333,6 +337,7 @@ class TestStage45FeedbackBuffer:
 
 
 class TestStage45OnlineRLHF:
+    @pytest.mark.slow
     def test_step_no_update_below_min(self):
         agent = _make_agent()
         buf = FeedbackBuffer()
@@ -353,6 +358,7 @@ class TestStage45OnlineRLHF:
         assert result["updated"] is True
         assert result["n_samples"] >= 32
 
+    @pytest.mark.slow
     def test_n_updates_increments(self):
         agent = _make_agent()
         buf = FeedbackBuffer()
@@ -365,6 +371,7 @@ class TestStage45OnlineRLHF:
         rlhf.step()
         assert rlhf._n_updates == 1
 
+    @pytest.mark.slow
     def test_report_keys(self):
         agent = _make_agent()
         buf = FeedbackBuffer()

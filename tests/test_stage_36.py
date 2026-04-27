@@ -147,6 +147,7 @@ class TestMyceliumAgentStage36:
             # Must be scalar-convertible without error in NumPy 2.x
             _ = int(action.prediction)
 
+    @pytest.mark.slow
     def test_high_accuracy(self):
         """With CompetitiveEnsemblePredictor the agent should hit ≥80% on easy data."""
         from physml.mycelium_agent import MyceliumAgent

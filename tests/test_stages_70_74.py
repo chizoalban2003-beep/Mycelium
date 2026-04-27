@@ -71,6 +71,7 @@ class TestHyperTuner:
 
         assert HyperTuner is HT
 
+    @pytest.mark.slow
     def test_tune_returns_tune_result(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -81,6 +82,7 @@ class TestHyperTuner:
 
         assert isinstance(result, TuneResult)
 
+    @pytest.mark.slow
     def test_tune_result_has_params(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -89,6 +91,7 @@ class TestHyperTuner:
         result = tuner.tune(self.X, self.y)
         assert isinstance(result.best_params, dict)
 
+    @pytest.mark.slow
     def test_tune_result_score_is_float(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -97,6 +100,7 @@ class TestHyperTuner:
         result = tuner.tune(self.X, self.y)
         assert isinstance(result.best_score, float)
 
+    @pytest.mark.slow
     def test_history_grows(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -106,6 +110,7 @@ class TestHyperTuner:
         tuner.tune(self.X, self.y)
         assert len(tuner.history) == 2
 
+    @pytest.mark.slow
     def test_best_result_is_highest_score(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -124,6 +129,7 @@ class TestHyperTuner:
         tuner = HyperTuner(agent)
         assert tuner.best_result() is None
 
+    @pytest.mark.slow
     def test_maybe_tune_fires_every_n(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -142,6 +148,7 @@ class TestHyperTuner:
         result = tuner.maybe_tune(self.X, self.y)  # call 1 → no fire
         assert result is None
 
+    @pytest.mark.slow
     def test_summary_keys(self):
         from physml.hyper_tuner import HyperTuner
 
@@ -151,6 +158,7 @@ class TestHyperTuner:
         s = tuner.summary()
         assert {"n_rounds", "best_score_ever", "latest_best_params"}.issubset(s.keys())
 
+    @pytest.mark.slow
     def test_knowledge_graph_integration(self):
         from physml.hyper_tuner import HyperTuner
         from physml.knowledge_graph import KnowledgeGraph
@@ -163,6 +171,7 @@ class TestHyperTuner:
         nodes = kg.nodes_by_type("hyper_tune")
         assert len(nodes) >= 1
 
+    @pytest.mark.slow
     def test_mycelium_agent_compat(self):
         from physml import MyceliumAgent
         from physml.hyper_tuner import HyperTuner
@@ -221,18 +230,21 @@ class TestSelfHealer:
         agent.fit(self.X[:150], self.y[:150])
         return SelfHealer(agent, os.path.join(tmp_dir, "agent.ckpt"))
 
+    @pytest.mark.slow
     def test_checkpoint_creates_file(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
             path = healer.checkpoint()
             assert path.exists()
 
+    @pytest.mark.slow
     def test_fit_guard(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
             healer.fit_guard(self.X[:100])
             assert healer._guard_fitted is True
 
+    @pytest.mark.slow
     def test_protect_no_anomaly(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
@@ -242,6 +254,7 @@ class TestSelfHealer:
             assert "healed" in result
             assert "anomaly_rate" in result
 
+    @pytest.mark.slow
     def test_protect_triggers_heal_on_collapse(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
@@ -252,6 +265,7 @@ class TestSelfHealer:
             assert result["healed"] is True
             assert healer.n_heals == 1
 
+    @pytest.mark.slow
     def test_protect_triggers_heal_on_anomaly(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
@@ -262,6 +276,7 @@ class TestSelfHealer:
             result = healer.protect(self.X[150:])
             assert result["healed"] is True
 
+    @pytest.mark.slow
     def test_rollback_restores_agent(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
@@ -276,6 +291,7 @@ class TestSelfHealer:
             healer = SelfHealer(agent, os.path.join(d, "missing.ckpt"))
             assert healer.rollback() is False
 
+    @pytest.mark.slow
     def test_incidents_recorded(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
@@ -284,6 +300,7 @@ class TestSelfHealer:
             healer.protect(self.X[150:], self.y[150:])
             assert len(healer.incidents) == 1
 
+    @pytest.mark.slow
     def test_summary_keys(self):
         with tempfile.TemporaryDirectory() as d:
             healer = self._make_healer(d)
@@ -292,6 +309,7 @@ class TestSelfHealer:
                 s.keys()
             )
 
+    @pytest.mark.slow
     def test_curriculum_reset_on_heal(self):
         """If a CurriculumScheduler is attached, its difficulty is reset."""
         with tempfile.TemporaryDirectory() as d:
@@ -384,6 +402,7 @@ class TestEvalScheduler:
 
         assert EvalScheduler is ES
 
+    @pytest.mark.slow
     def test_run_returns_scheduled_report(self):
         from physml.eval_scheduler import EvalScheduler, ScheduledReport
 
@@ -391,6 +410,7 @@ class TestEvalScheduler:
         report = scheduler.run(self.X_test, self.y_test)
         assert isinstance(report, ScheduledReport)
 
+    @pytest.mark.slow
     def test_report_has_rank(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -399,6 +419,7 @@ class TestEvalScheduler:
         assert isinstance(report.mycelium_rank, int)
         assert report.mycelium_rank >= 1
 
+    @pytest.mark.slow
     def test_alert_flag_when_rank_high(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -407,6 +428,7 @@ class TestEvalScheduler:
         report = scheduler.run(self.X_test, self.y_test)
         assert report.alert is True
 
+    @pytest.mark.slow
     def test_no_alert_when_rank_within_threshold(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -415,6 +437,7 @@ class TestEvalScheduler:
         report = scheduler.run(self.X_test, self.y_test)
         assert report.alert is False
 
+    @pytest.mark.slow
     def test_history_grows(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -423,6 +446,7 @@ class TestEvalScheduler:
         scheduler.run(self.X_test, self.y_test)
         assert len(scheduler.history) == 2
 
+    @pytest.mark.slow
     def test_maybe_run_fires_every_n(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -431,6 +455,7 @@ class TestEvalScheduler:
         not_none = [r for r in results if r is not None]
         assert len(not_none) == 2
 
+    @pytest.mark.slow
     def test_maybe_run_returns_none_otherwise(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -438,6 +463,7 @@ class TestEvalScheduler:
         result = scheduler.maybe_run(self.X_test, self.y_test)
         assert result is None
 
+    @pytest.mark.slow
     def test_knowledge_graph_integration(self):
         from physml.eval_scheduler import EvalScheduler
         from physml.knowledge_graph import KnowledgeGraph
@@ -449,6 +475,7 @@ class TestEvalScheduler:
         nodes = kg.nodes_by_type("eval_report")
         assert len(nodes) >= 1
 
+    @pytest.mark.slow
     def test_alert_property(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -457,6 +484,7 @@ class TestEvalScheduler:
         scheduler.run(self.X_test, self.y_test)
         assert scheduler.alert is True
 
+    @pytest.mark.slow
     def test_summary_keys(self):
         from physml.eval_scheduler import EvalScheduler
 
@@ -467,6 +495,7 @@ class TestEvalScheduler:
             s.keys()
         )
 
+    @pytest.mark.slow
     def test_synthetic_data_fallback(self):
         """EvalScheduler runs even without providing test data."""
         from physml.eval_scheduler import EvalScheduler

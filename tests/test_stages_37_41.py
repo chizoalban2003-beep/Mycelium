@@ -63,6 +63,7 @@ def _make_featurizer(output_dim: int = 6) -> Featurizer:
 
 
 class TestStage37RunGoal:
+    @pytest.mark.slow
     def test_run_goal_returns_dict(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -70,6 +71,7 @@ class TestStage37RunGoal:
         result = agent.run_goal("Predict and analyse input data", registry, featurizer)
         assert isinstance(result, dict)
 
+    @pytest.mark.slow
     def test_run_goal_has_expected_keys(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -78,6 +80,7 @@ class TestStage37RunGoal:
         for key in ("goal", "subtasks", "n_tool_calls", "n_episodes_stored", "result"):
             assert key in result, f"Missing key: {key}"
 
+    @pytest.mark.slow
     def test_run_goal_goal_matches_input(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -86,6 +89,7 @@ class TestStage37RunGoal:
         result = agent.run_goal(goal, registry, featurizer)
         assert result["goal"] == goal
 
+    @pytest.mark.slow
     def test_run_goal_subtasks_list(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -94,6 +98,7 @@ class TestStage37RunGoal:
         assert isinstance(result["subtasks"], list)
         assert len(result["subtasks"]) == 3
 
+    @pytest.mark.slow
     def test_run_goal_n_tool_calls_non_negative(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -101,6 +106,7 @@ class TestStage37RunGoal:
         result = agent.run_goal("Predict and summarise", registry, featurizer)
         assert result["n_tool_calls"] >= 0
 
+    @pytest.mark.slow
     def test_run_goal_records_episodes_with_memory(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -110,6 +116,7 @@ class TestStage37RunGoal:
         assert result["n_episodes_stored"] == 2
         assert len(memory) == 2
 
+    @pytest.mark.slow
     def test_run_goal_uses_attached_memory(self):
         agent = _fitted_agent()
         memory = EpisodicMemory(capacity=100)
@@ -126,6 +133,7 @@ class TestStage37RunGoal:
         with pytest.raises(RuntimeError, match="not fitted"):
             agent.run_goal("goal", registry, featurizer)
 
+    @pytest.mark.slow
     def test_run_goal_result_is_string(self):
         agent = _fitted_agent()
         registry = _make_registry()
@@ -140,12 +148,14 @@ class TestStage37RunGoal:
 
 
 class TestStage38AttachMemory:
+    @pytest.mark.slow
     def test_attach_memory_returns_self(self):
         agent = _fitted_agent()
         memory = EpisodicMemory()
         returned = agent.attach_memory(memory)
         assert returned is agent
 
+    @pytest.mark.slow
     def test_memory_attribute_set(self):
         agent = _fitted_agent()
         memory = EpisodicMemory()
@@ -164,6 +174,7 @@ class TestStage38AttachMemory:
             agent.reward(X[i : i + 1], y[i : i + 1])
         assert len(memory) > 0
 
+    @pytest.mark.slow
     def test_reward_stores_up_to_capacity(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -174,6 +185,7 @@ class TestStage38AttachMemory:
             agent.reward(X[i % 60 : i % 60 + 1], y[i % 60 : i % 60 + 1])
         assert len(memory) == 3  # capacity is respected
 
+    @pytest.mark.slow
     def test_no_memory_reward_still_works(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -181,6 +193,7 @@ class TestStage38AttachMemory:
         # Without attaching memory — should not raise
         agent.reward(X[:1], y[:1])
 
+    @pytest.mark.slow
     def test_augment_with_memory_manual(self):
         agent = _fitted_agent()
         memory = EpisodicMemory(n_neighbors=2)
@@ -197,6 +210,7 @@ class TestStage38AttachMemory:
 
 
 class TestStage39SelfEvaluate:
+    @pytest.mark.slow
     def test_self_evaluate_returns_dict(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -213,6 +227,7 @@ class TestStage39SelfEvaluate:
         for key in ("accuracy", "mean_confidence", "ece", "n_samples", "oracle_cost", "threshold"):
             assert key in metrics, f"Missing key: {key}"
 
+    @pytest.mark.slow
     def test_self_evaluate_accuracy_in_range(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -220,6 +235,7 @@ class TestStage39SelfEvaluate:
         metrics = agent.self_evaluate(X[40:], y[40:])
         assert 0.0 <= metrics["accuracy"] <= 1.0
 
+    @pytest.mark.slow
     def test_self_evaluate_mean_confidence_in_range(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -227,6 +243,7 @@ class TestStage39SelfEvaluate:
         metrics = agent.self_evaluate(X[40:], y[40:])
         assert 0.0 <= metrics["mean_confidence"] <= 1.0
 
+    @pytest.mark.slow
     def test_self_evaluate_ece_in_range(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -234,6 +251,7 @@ class TestStage39SelfEvaluate:
         metrics = agent.self_evaluate(X[40:], y[40:])
         assert 0.0 <= metrics["ece"] <= 1.0
 
+    @pytest.mark.slow
     def test_self_evaluate_n_samples_correct(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -241,6 +259,7 @@ class TestStage39SelfEvaluate:
         metrics = agent.self_evaluate(X[40:], y[40:])
         assert metrics["n_samples"] == 20
 
+    @pytest.mark.slow
     def test_self_evaluate_threshold_matches_agent(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False, uncertainty_threshold=0.4)
@@ -269,6 +288,7 @@ class TestStage40SelfImprove:
         result = agent.self_improve(X[40:], y[40:])
         assert isinstance(result, dict)
 
+    @pytest.mark.slow
     def test_self_improve_has_threshold_keys(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -277,6 +297,7 @@ class TestStage40SelfImprove:
         assert "threshold_before" in result
         assert "threshold_after" in result
 
+    @pytest.mark.slow
     def test_self_improve_threshold_changes_on_low_accuracy(self):
         """Force low accuracy by giving wrong labels; threshold should decrease."""
         X, y = _make_data(n=60)
@@ -287,6 +308,7 @@ class TestStage40SelfImprove:
         # With inverted labels, accuracy should be low → threshold decreases
         assert result["threshold_after"] <= result["threshold_before"]
 
+    @pytest.mark.slow
     def test_self_improve_threshold_in_valid_range(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -294,6 +316,7 @@ class TestStage40SelfImprove:
         result = agent.self_improve(X[40:], y[40:])
         assert 0.0 < result["threshold_after"] < 1.0
 
+    @pytest.mark.slow
     def test_self_improve_aggressive_no_error(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -301,6 +324,7 @@ class TestStage40SelfImprove:
         result = agent.self_improve(X[40:], y[40:], aggressive=True)
         assert "threshold_after" in result
 
+    @pytest.mark.slow
     def test_self_improve_updates_agent_threshold(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False, uncertainty_threshold=0.35)
@@ -321,12 +345,14 @@ class TestStage41Introspect:
         assert isinstance(info, dict)
         assert info["fitted"] is False
 
+    @pytest.mark.slow
     def test_introspect_fitted_returns_dict(self):
         agent = _fitted_agent()
         info = agent.introspect()
         assert isinstance(info, dict)
         assert info["fitted"] is True
 
+    @pytest.mark.slow
     def test_introspect_keys(self):
         agent = _fitted_agent()
         info = agent.introspect()
@@ -346,17 +372,20 @@ class TestStage41Introspect:
         for key in expected:
             assert key in info, f"Missing key: {key}"
 
+    @pytest.mark.slow
     def test_introspect_predictor_type_is_string(self):
         agent = _fitted_agent()
         info = agent.introspect()
         assert isinstance(info["predictor_type"], str)
         assert len(info["predictor_type"]) > 0
 
+    @pytest.mark.slow
     def test_introspect_no_memory_zero_episodes(self):
         agent = _fitted_agent()
         info = agent.introspect()
         assert info["n_memory_episodes"] == 0
 
+    @pytest.mark.slow
     def test_introspect_with_memory_shows_episode_count(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False)
@@ -368,6 +397,7 @@ class TestStage41Introspect:
         info = agent.introspect()
         assert info["n_memory_episodes"] > 0
 
+    @pytest.mark.slow
     def test_introspect_threshold_matches_agent(self):
         agent = MyceliumAgent(calibrate=False, uncertainty_threshold=0.42)
         X, y = _make_data(n=60)
@@ -375,6 +405,7 @@ class TestStage41Introspect:
         info = agent.introspect()
         assert info["uncertainty_threshold"] == pytest.approx(0.42)
 
+    @pytest.mark.slow
     def test_introspect_drift_detection_flag(self):
         X, y = _make_data(n=60)
         agent = MyceliumAgent(calibrate=False, drift_detection=True)
@@ -382,6 +413,7 @@ class TestStage41Introspect:
         info = agent.introspect()
         assert info["drift_detection_enabled"] is True
 
+    @pytest.mark.slow
     def test_introspect_predictor_type_cep(self):
         agent = _fitted_agent()
         info = agent.introspect()

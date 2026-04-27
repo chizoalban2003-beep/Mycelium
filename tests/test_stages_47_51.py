@@ -56,24 +56,28 @@ def regression_data():
 
 class TestAutoMLOptimizer:
 
+    @pytest.mark.slow
     def test_fit_returns_dict(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         opt = AutoMLOptimizer(n_candidates=4, cv=2, random_state=0)
         result = opt.fit(X_tr, y_tr)
         assert isinstance(result, dict)
 
+    @pytest.mark.slow
     def test_best_score_in_range(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         opt = AutoMLOptimizer(n_candidates=4, cv=2, random_state=0)
         opt.fit(X_tr, y_tr)
         assert 0.0 <= opt.best_score_ <= 1.0
 
+    @pytest.mark.slow
     def test_cv_results_nonempty(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         opt = AutoMLOptimizer(n_candidates=4, cv=2, random_state=0)
         opt.fit(X_tr, y_tr)
         assert len(opt.cv_results_) > 0
 
+    @pytest.mark.slow
     def test_summary_sorted_descending(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         opt = AutoMLOptimizer(n_candidates=4, cv=2, random_state=0)
@@ -81,6 +85,7 @@ class TestAutoMLOptimizer:
         scores = [r["mean_test_score"] for r in opt.summary()]
         assert scores == sorted(scores, reverse=True)
 
+    @pytest.mark.slow
     def test_custom_param_grid(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         grid = {"n_estimators": [30, 60], "learning_rate": [0.1, 0.2]}
@@ -88,6 +93,7 @@ class TestAutoMLOptimizer:
         best = opt.fit(X_tr, y_tr)
         assert "n_estimators" in best or "learning_rate" in best or len(best) == 0
 
+    @pytest.mark.slow
     def test_get_best_estimator_predicts(self, binary_data):
         X_tr, X_te, y_tr, y_te = binary_data
         opt = AutoMLOptimizer(n_candidates=3, cv=2, random_state=1)
@@ -373,6 +379,7 @@ class TestAgentCheckpoint:
         agent2 = AgentCheckpoint.load(path)
         assert isinstance(agent2, MyceliumAgent)
 
+    @pytest.mark.slow
     def test_loaded_agent_predicts(self, iris_data, tmp_path):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -382,6 +389,7 @@ class TestAgentCheckpoint:
         action = agent2.observe(X_te[:1])
         assert hasattr(action, "prediction")
 
+    @pytest.mark.slow
     def test_inspect_no_agent_object(self, iris_data, tmp_path):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -396,6 +404,7 @@ class TestAgentCheckpoint:
         with pytest.raises(FileNotFoundError):
             AgentCheckpoint.load(tmp_path / "nonexistent.ckpt")
 
+    @pytest.mark.slow
     def test_bytes_roundtrip(self, iris_data):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
@@ -413,6 +422,7 @@ class TestAgentCheckpoint:
         meta = AgentCheckpoint.inspect(path)
         assert meta["file_size_bytes"] > 0
 
+    @pytest.mark.slow
     def test_compression_produces_smaller_file(self, iris_data, tmp_path):
         X_tr, X_te, y_tr, y_te = iris_data
         agent = MyceliumAgent()
