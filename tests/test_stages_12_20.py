@@ -45,6 +45,7 @@ def _fitted_agent(calibrate: bool = False, n: int = 80) -> MyceliumAgent:
 
 # ── Stage 12 — CLI ──────────────────────────────────────────────────────────
 
+@pytest.mark.slow
 class TestCLI:
     def test_fit_and_query(self, tmp_path):
         import pandas as pd
@@ -125,6 +126,7 @@ class TestCLI:
 
 # ── Stage 13 — Confidence calibration ───────────────────────────────────────
 
+@pytest.mark.slow
 class TestCalibration:
     def test_temperature_fitted(self):
         X, y = _clf_data(n=80)
@@ -176,6 +178,7 @@ class TestCalibration:
 
 # ── Stage 14 — Evaluation harness ───────────────────────────────────────────
 
+@pytest.mark.slow
 class TestEvaluationHarness:
     @pytest.mark.slow
     def test_benchmark_returns_result(self):

@@ -10,4 +10,4 @@ scikit-learn>=1.4,<2
 feature-engine>=1.7,<2
 
 # LLM backbone (optional — install with pip install 'physml[llm]')
-# anthropic>=0.40
+anthropic>=0.40

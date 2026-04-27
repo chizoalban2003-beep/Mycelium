@@ -37,7 +37,6 @@ Usage::
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -350,7 +349,7 @@ class _LLMIntegrationBridge:
         system: Optional[str] = None,
         history: Any = None,
     ) -> Any:
-        from dataclasses import dataclass, field as f
+        from dataclasses import dataclass, field
 
         @dataclass
         class _TC:

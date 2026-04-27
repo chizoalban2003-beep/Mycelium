@@ -342,6 +342,7 @@ def test_set_params_replay_size():
 # Stage 4 — PhysicsAgent
 # ============================================================================
 
+@pytest.mark.slow
 class TestPhysicsAgent:
     def test_observe_returns_agent_action(self):
         clf, X_te, y_te = _fitted_neural_clf()
@@ -427,6 +428,7 @@ class TestPhysicsAgent:
 # Stage 5 — DataStream
 # ============================================================================
 
+@pytest.mark.slow
 class TestDataStream:
     def test_fit_stream_without_seed(self):
         X, y = _reg_data(n=200)
@@ -479,6 +481,7 @@ class TestDataStream:
 # Stage 7 — PhysicsAgentSession
 # ============================================================================
 
+@pytest.mark.slow
 class TestPhysicsAgentSession:
     def _make_session(self, tmpdir: str) -> "PhysicsAgentSession":
         sess = PhysicsAgentSession(
@@ -575,6 +578,7 @@ class TestPhysicsAgentSession:
 
 # ── New tests for: multi-class fix, predict_proba, convenience classes ─────
 
+@pytest.mark.slow
 class TestMultiClassNeuralFix:
     """Neural backend multi-class label dtype must match original y dtype."""
 
@@ -608,6 +612,7 @@ class TestMultiClassNeuralFix:
         assert acc > 1.0 / n_classes, f"Accuracy {acc:.3f} is at or below random ({1/n_classes:.3f})"
 
 
+@pytest.mark.slow
 class TestPredictProba:
     """predict_proba on the neural backend."""
 
@@ -662,6 +667,7 @@ def _make_fitted_engine(is_clf: bool):
     return X, engine
 
 
+@pytest.mark.slow
 class TestConvenienceSubclasses:
     """PhysicsRegressor and PhysicsClassifier subclasses."""
 
@@ -720,6 +726,7 @@ class TestConvenienceSubclasses:
 # Stage 8 — Active learning (query_strategy + select_informative)
 # ============================================================================
 
+@pytest.mark.slow
 class TestActiveLearning:
     """Tests for PhysicsAgent.select_informative and query_strategy."""
 
@@ -787,6 +794,7 @@ class TestActiveLearning:
 # Stage 9 — Multi-task engine
 # ============================================================================
 
+@pytest.mark.slow
 class TestMultiTaskEngine:
     """Tests for MultiTaskPhysicsEngine."""
 
@@ -915,6 +923,7 @@ class TestMultiTaskEngine:
 # Stage 10 — Adaptive threshold (reward shaping)
 # ============================================================================
 
+@pytest.mark.slow
 class TestAdaptiveThreshold:
     """Tests for PhysicsAgent adaptive policy."""
 
@@ -1019,6 +1028,7 @@ class TestAdaptiveThreshold:
 # Stage 11 — MyceliumAgent
 # ============================================================================
 
+@pytest.mark.slow
 class TestMyceliumAgent:
     """Tests for the flagship MyceliumAgent class."""
 

@@ -150,6 +150,57 @@ def _cmd_export(args: argparse.Namespace) -> None:
     _cmd_query(args)
 
 
+def _cmd_chat(args: argparse.Namespace) -> None:
+    """Run a natural-language REPL using the LLM layer (falls back to rule-based routing)."""
+    from physml.llm import PromptSystem, ClaudeClient
+
+    print("Mycelium REPL — type your request in plain English (Ctrl-C or 'exit' to quit).")
+    print("LLM backend: Claude claude-sonnet-4-6 (falls back to rule-based if no API key)\n")
+
+    try:
+        client = ClaudeClient()
+        ps = PromptSystem(client=client)
+        history: list[dict] = []
+
+        while True:
+            try:
+                user_input = input("you> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\nBye!")
+                break
+
+            if not user_input:
+                continue
+            if user_input.lower() in ("exit", "quit", "bye"):
+                print("Bye!")
+                break
+
+            # Route the intent
+            action = ps.route(user_input)
+
+            # Try to get a conversational reply from Claude
+            if client.available:
+                history.append({"role": "user", "content": user_input})
+                result = client.chat(user_input, history=history[:-1])
+                reply = result.text or f"[intent: {action.intent}]"
+                history.append({"role": "assistant", "content": reply})
+                print(f"myco> {reply}")
+            else:
+                # Fallback: describe the routed intent
+                desc = ps.describe_intent(action.intent)
+                payload_str = ""
+                if action.payload:
+                    payload_str = "  " + ", ".join(
+                        f"{k}={v}" for k, v in action.payload.items()
+                    )
+                confidence_str = f" (confidence={action.confidence:.2f})"
+                print(f"myco> [{desc}{confidence_str}]{payload_str}")
+            print()
+
+    except Exception as exc:
+        _die(f"REPL error: {exc}")
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -219,6 +270,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output CSV path (default: predictions.csv).",
     )
     p_export.set_defaults(func=_cmd_export)
+
+    # ── chat (REPL) ───────────────────────────────────────────────────────
+    p_chat = sub.add_parser(
+        "chat",
+        help="Start a natural-language REPL (uses Claude if ANTHROPIC_API_KEY is set).",
+    )
+    p_chat.set_defaults(func=_cmd_chat)
 
     return parser
 
