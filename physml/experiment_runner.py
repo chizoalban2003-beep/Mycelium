@@ -252,6 +252,47 @@ class ExperimentRunner:
             results=results,
         )
 
+    def analyze_with_llm(self, summary: "BenchmarkSummary", client: Any) -> str:
+        """Generate a plain-English analysis of a benchmark summary via Claude.
+
+        Falls back gracefully when the client is not available.
+
+        Parameters
+        ----------
+        summary : BenchmarkSummary
+            Results from :meth:`run`.
+        client : ClaudeClient
+            An initialised Claude API client.
+
+        Returns
+        -------
+        str
+            3-5 sentence analysis, or an empty string when the LLM is not
+            available.
+        """
+        if not getattr(client, "available", False):
+            return ""
+
+        metric_name = "R²" if summary.task == "regression" else "accuracy"
+        prompt = (
+            f"You are a machine-learning expert. Analyse the following benchmark results "
+            f"for a physics-inspired tabular ML model and write 3-5 plain English sentences "
+            f"summarising what the numbers mean, which configuration performed best, and "
+            f"one practical recommendation.\n\n"
+            f"Task: {summary.task}\n"
+            f"Experiments: {summary.n_experiments}\n"
+            f"Best {metric_name}: {summary.best_score:.4f}\n"
+            f"Mean {metric_name}: {summary.mean_score:.4f} ± {summary.std_score:.4f}\n"
+            f"Best config: {summary.best_config}\n"
+            f"Total time: {summary.total_time_s:.1f}s\n"
+        )
+        try:
+            result = client.chat(prompt)
+            return result.text or ""
+        except Exception as exc:
+            _logger.debug("ExperimentRunner.analyze_with_llm error: %s", exc)
+            return ""
+
     def load_history(self) -> List[ExperimentResult]:
         """Load all past experiment results from the log file."""
         if not self._log_path.exists():

@@ -5,6 +5,65 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.32.1] — 2026-04-28
+
+### Added — Action Dispatch, Voice Interface, Experiment Analysis, Companion LLM wiring
+
+* **ActionDispatcher** (`physml/llm/action_dispatcher.py`):
+  - `ActionDispatcher`: wires `PromptSystem` intents to real physml operations.
+  - Supports intents: `train`, `predict`, `report`, `help`, `show_goals`,
+    `add_goal`, `memory`, `save`, `unknown`.
+  - `dispatch(action)` executes the action and returns a plain-text response.
+  - Graceful fallback to Claude for unknown intents when API key is set.
+  - Now exported from `physml.llm` and `physml` top-level packages.
+
+* **physml chat — action execution** (`physml/cli.py`):
+  - `physml chat` REPL now uses `ActionDispatcher` to actually execute
+    train/predict/report/save/help operations instead of only showing intents.
+  - Sessions persist across restarts via `ConversationStore`.
+
+* **VoiceInterface** (`physml/voice.py`):
+  - `VoiceInterface`: speech-to-text + TTS loop with graceful degradation.
+  - `listen()` — microphone input via `speech_recognition`; falls back to `input()`.
+  - `speak(text)` — TTS via `pyttsx3`; falls back to `print()`.
+  - `run_loop()` — continuous voice REPL; stops on "exit" / Ctrl-C.
+  - `run_once(text)` — single text-mode turn (useful for testing).
+  - `available` — `True` when `speech_recognition` is installed.
+  - Now exported from `physml` top-level package.
+
+* **physml voice** CLI command (`physml/cli.py`):
+  - `physml voice [--session NAME] [--no-tts] [--language LANG]` — starts
+    the `VoiceInterface` loop; gracefully falls back to text if no mic library.
+
+* **physml experiment** CLI command (`physml/cli.py`):
+  - `physml experiment [--quick] [--task regression|classification] [--no-llm]`
+    — runs `ExperimentRunner` on synthetic data and prints a formatted report.
+  - Calls `analyze_with_llm` for a Claude-powered plain-English analysis when
+    `ANTHROPIC_API_KEY` is set.
+
+* **ExperimentRunner.analyze_with_llm** (`physml/experiment_runner.py`):
+  - New method: takes a `BenchmarkSummary` and returns a 3-5 sentence
+    plain-English analysis via `ClaudeClient`.
+  - Returns `""` gracefully when the LLM is unavailable.
+
+* **MyceliumCompanion** (`physml/companion.py`):
+  - `claude_client` property — lazy `ClaudeClient` instance for direct API access.
+  - `chat_llm(text)` — routes through `PromptSystem` + `ActionDispatcher`
+    (complementing the existing `chat()` method that uses `LLMIntegration`).
+  - `start_voice_interface(tts, language)` — starts a `VoiceInterface` loop
+    wired to the companion's PromptSystem and ActionDispatcher.
+
+### Tests
+
+* `tests/test_product_completion.py` — 44 new tests covering all new components:
+  - `TestActionDispatcher` — 17 tests for all dispatch intents.
+  - `TestVoiceInterface` — 13 tests for instantiation, fallback, speak, run_once.
+  - `TestExperimentAnalysis` — 4 tests for `analyze_with_llm` fallback behaviour.
+  - `TestCompanionLLM` — 10 tests for `claude_client`, `chat_llm`, `chat`, and
+    `start_voice_interface`.
+
+---
+
 ## [0.21.0] — 2026-04-15
 
 ### Added — Stages 75–79: Causal AI, Privacy, Time-Series, Experiment Tracking & Distillation

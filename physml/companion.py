@@ -1182,6 +1182,91 @@ class MyceliumCompanion:
         except Exception as exc:
             return f"Error stopping voice loop: {exc}"
 
+    # ------------------------------------------------------------------
+    # LLM chat via PromptSystem + ActionDispatcher  (Phase 6 wiring)
+    # ------------------------------------------------------------------
+
+    @property
+    def claude_client(self) -> Any:
+        """Lazy ClaudeClient instance (physml.llm.ClaudeClient).
+
+        Returns the cached client or creates one on first access.
+        """
+        if not hasattr(self, "_claude_client"):
+            try:
+                from physml.llm import ClaudeClient
+                self._claude_client: Any = ClaudeClient(api_key=self._llm_api_key)
+            except Exception:
+                self._claude_client = None
+        return self._claude_client
+
+    def chat_llm(self, text: str) -> str:
+        """Route *text* through PromptSystem + ActionDispatcher.
+
+        Unlike :meth:`chat` (which uses the NL router + LLMIntegration), this
+        method uses the new :class:`~physml.llm.PromptSystem` routing and
+        :class:`~physml.llm.ActionDispatcher` execution layer.
+
+        Parameters
+        ----------
+        text : str
+            User input.
+
+        Returns
+        -------
+        str
+            Response text.
+        """
+        if not self._started:
+            self.start()
+
+        try:
+            from physml.llm import PromptSystem, ActionDispatcher
+            ps = PromptSystem(client=self.claude_client)
+            dispatcher = ActionDispatcher(
+                agent=None,
+                store=None,
+                client=self.claude_client,
+            )
+            action = ps.route(text)
+            return dispatcher.dispatch(action)
+        except Exception as exc:
+            _logger.warning("MyceliumCompanion.chat_llm error: %s", exc)
+            return self.chat(text)
+
+    def start_voice_interface(
+        self,
+        tts: bool = True,
+        language: str = "en-US",
+    ) -> None:
+        """Start an interactive voice loop using VoiceInterface.
+
+        Falls back to text input when ``speech_recognition`` is not installed.
+
+        Parameters
+        ----------
+        tts : bool
+            Enable text-to-speech output (requires pyttsx3).
+        language : str
+            BCP-47 language tag for speech recognition.
+        """
+        if not self._started:
+            self.start()
+
+        from physml.llm import PromptSystem, ActionDispatcher
+        from physml.voice import VoiceInterface
+
+        ps = PromptSystem(client=self.claude_client)
+        dispatcher = ActionDispatcher(client=self.claude_client)
+
+        vi = VoiceInterface(
+            prompt_system=ps,
+            dispatcher=dispatcher,
+            tts=tts,
+            language=language,
+        )
+        vi.run_loop()
+
     def status(self) -> Dict[str, Any]:
         """Return full system status.
 

@@ -152,20 +152,30 @@ def _cmd_export(args: argparse.Namespace) -> None:
 
 def _cmd_chat(args: argparse.Namespace) -> None:
     """Run a natural-language REPL using the LLM layer (falls back to rule-based routing)."""
-    from physml.llm import PromptSystem, ClaudeClient
+    from physml.llm import PromptSystem, ClaudeClient, ActionDispatcher
     from physml.conversation_store import ConversationStore
 
     session_id = getattr(args, "session", "default")
     store_path = f"~/.mycelium/conversations/{session_id}.json"
     store = ConversationStore(path=store_path)
 
+    # Try to load a previously saved agent
+    agent = None
+    agent_path = getattr(args, "agent", "agent.pkl")
+    try:
+        agent = _load_agent(agent_path)
+    except SystemExit:
+        pass  # no agent on disk yet — that's fine
+
     print("Mycelium REPL — type your request in plain English (Ctrl-C or 'exit' to quit).")
     print(f"Session: {session_id!r} | history: {len(store)} turns loaded")
-    print("LLM backend: Claude claude-sonnet-4-6 (falls back to rule-based if no API key)\n")
+    print("LLM backend: Claude claude-sonnet-4-6 (falls back to rule-based if no API key)")
+    print("Type 'help' to see available commands.\n")
 
     try:
         client = ClaudeClient()
         ps = PromptSystem(client=client)
+        dispatcher = ActionDispatcher(agent=agent, store=store, client=client)
 
         while True:
             try:
@@ -195,32 +205,80 @@ def _cmd_chat(args: argparse.Namespace) -> None:
             action = ps.route(user_input)
             store.add(role="user", content=user_input, metadata={"intent": action.intent})
 
-            # Try to get a conversational reply from Claude
+            # Dispatch to real action; keep agent in sync after train/save
+            reply = dispatcher.dispatch(action)
+
+            # Sync agent reference (dispatcher may have created one during train)
+            agent = dispatcher.agent
+
+            store.add(role="assistant", content=reply)
+            tokens_str = ""
             if client.available:
-                history = store.to_messages(max_turns=20)
-                result = client.chat(user_input, history=history[:-1])
-                reply = result.text or f"[intent: {action.intent}]"
-                store.add(role="assistant", content=reply)
-                tokens = f" [{result.input_tokens}in/{result.output_tokens}out"
-                if result.cache_hit:
-                    tokens += " cached"
-                tokens += "]"
-                print(f"myco> {reply}{tokens}")
-            else:
-                desc = ps.describe_intent(action.intent)
-                payload_str = ""
-                if action.payload:
-                    payload_str = "  " + ", ".join(
-                        f"{k}={v}" for k, v in action.payload.items()
-                    )
-                confidence_str = f" (confidence={action.confidence:.2f})"
-                reply = f"[{desc}{confidence_str}]{payload_str}"
-                store.add(role="assistant", content=reply)
-                print(f"myco> {reply}")
+                tokens_str = f" [intent={action.intent}]"
+            print(f"myco> {reply}{tokens_str}")
             print()
 
     except Exception as exc:
         _die(f"REPL error: {exc}")
+
+
+def _cmd_voice(args: argparse.Namespace) -> None:
+    """Start a voice interaction loop (falls back to text if no mic library)."""
+    from physml.llm import PromptSystem, ClaudeClient, ActionDispatcher
+    from physml.voice import VoiceInterface
+    from physml.conversation_store import ConversationStore
+
+    session_id = getattr(args, "session", "default")
+    store_path = f"~/.mycelium/conversations/{session_id}.json"
+    store = ConversationStore(path=store_path)
+
+    client = ClaudeClient()
+    ps = PromptSystem(client=client)
+    dispatcher = ActionDispatcher(store=store, client=client)
+
+    voice = VoiceInterface(
+        prompt_system=ps,
+        dispatcher=dispatcher,
+        tts=not getattr(args, "no_tts", False),
+        language=getattr(args, "language", "en-US"),
+    )
+
+    if not voice.available:
+        print(
+            "speech_recognition not installed — running in text mode.\n"
+            "Install it with: pip install SpeechRecognition pyaudio\n"
+        )
+
+    voice.run_loop()
+
+
+def _cmd_experiment(args: argparse.Namespace) -> None:
+    """Run benchmark experiments on synthetic data, optionally with Claude analysis."""
+    from physml.experiment_runner import ExperimentRunner
+
+    task = getattr(args, "task", "regression")
+    quick = getattr(args, "quick", False)
+
+    configs = [{"plane": "liquid", "n_cycles": 3}] if quick else None
+    n_samples = 100 if quick else 200
+
+    print(f"Running {task} benchmark ({'quick' if quick else 'full'} mode)…")
+    runner = ExperimentRunner(configs=configs)
+    summary = runner.run(task=task, n_samples=n_samples)
+
+    print(f"\n{summary}")
+    print(f"\nBest config: {summary.best_config}")
+    print(f"Scores: mean={summary.mean_score:.4f} ± {summary.std_score:.4f}")
+
+    # Optional Claude analysis
+    from physml.llm import ClaudeClient
+    client = ClaudeClient()
+    if client.available and not getattr(args, "no_llm", False):
+        analysis = runner.analyze_with_llm(summary, client)
+        if analysis:
+            print(f"\nClaude analysis:\n{analysis}")
+    else:
+        print("\n(Set ANTHROPIC_API_KEY for Claude-powered analysis.)")
 
 
 def _cmd_explain(args: argparse.Namespace) -> None:
@@ -346,6 +404,44 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_explain.add_argument("agent", metavar="AGENT", help="Path to a saved agent (.pkl).")
     p_explain.set_defaults(func=_cmd_explain)
+
+    # ── voice ─────────────────────────────────────────────────────────────
+    p_voice = sub.add_parser(
+        "voice",
+        help="Start a voice interaction loop (falls back to text if speech_recognition missing).",
+    )
+    p_voice.add_argument(
+        "--session", "-s", default="default",
+        help="Session name for persistent conversation history (default: 'default').",
+    )
+    p_voice.add_argument(
+        "--no-tts", dest="no_tts", action="store_true",
+        help="Disable text-to-speech output.",
+    )
+    p_voice.add_argument(
+        "--language", default="en-US",
+        help="BCP-47 language tag for speech recognition (default: en-US).",
+    )
+    p_voice.set_defaults(func=_cmd_voice)
+
+    # ── experiment ────────────────────────────────────────────────────────
+    p_exp = sub.add_parser(
+        "experiment",
+        help="Run benchmark experiments on synthetic data with optional Claude analysis.",
+    )
+    p_exp.add_argument(
+        "--quick", action="store_true",
+        help="Run a quick single-config benchmark (100 samples).",
+    )
+    p_exp.add_argument(
+        "--task", choices=["regression", "classification"], default="regression",
+        help="Prediction task type (default: regression).",
+    )
+    p_exp.add_argument(
+        "--no-llm", dest="no_llm", action="store_true",
+        help="Skip Claude analysis even if ANTHROPIC_API_KEY is set.",
+    )
+    p_exp.set_defaults(func=_cmd_experiment)
 
     return parser
 

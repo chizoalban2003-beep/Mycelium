@@ -415,7 +415,10 @@ from physml.desktop_bridge import DesktopBridge, DesktopResult
 myco = MyceliumAgent
 
 # Phase 4 — LLM integration package
-from physml.llm import ClaudeClient, ChatResult, ToolCallResult, PromptSystem, PromptAction
+from physml.llm import ClaudeClient, ChatResult, ToolCallResult, PromptSystem, PromptAction, ActionDispatcher
+
+# Phase 6 — Voice interface
+from physml.voice import VoiceInterface
 
 # Phase 5 — Quick wins: ExperimentRunner and ConversationStore
 from physml.experiment_runner import ExperimentRunner, BenchmarkSummary, ExperimentResult
@@ -760,9 +763,12 @@ __all__ = [
     "ToolCallResult",
     "PromptSystem",
     "PromptAction",
+    "ActionDispatcher",
     # Phase 5 — Quick wins
     "ExperimentRunner",
     "BenchmarkSummary",
     "ExperimentResult",
     "ConversationStore",
+    # Phase 6 — Voice interface
+    "VoiceInterface",
 ]

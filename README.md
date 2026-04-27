@@ -102,6 +102,49 @@ myco.start_voice(wake_word="hey myco", speak_response=True)
 
 # Stop voice
 myco.stop_voice()
+
+# Or use VoiceInterface (simpler, speech_recognition + pyttsx3)
+myco.start_voice_interface(tts=True, language="en-US")
+```
+
+### Use the LLM + action dispatch layer directly
+
+```python
+from physml.llm import ClaudeClient, PromptSystem, ActionDispatcher
+from physml.conversation_store import ConversationStore
+
+client = ClaudeClient()          # reads ANTHROPIC_API_KEY
+store = ConversationStore("~/.mycelium/conversations/demo.json")
+ps = PromptSystem(client=client)
+dispatcher = ActionDispatcher(store=store, client=client)
+
+# Route intent and execute action in one step
+action = ps.route("train on sales.csv")
+print(action.intent)             # "train"
+response = dispatcher.dispatch(action)
+print(response)                  # "Trained on 'sales.csv': 1200 samples ..."
+
+# Voice interface with graceful degradation
+from physml.voice import VoiceInterface
+vi = VoiceInterface(prompt_system=ps, dispatcher=dispatcher, tts=False)
+print(vi.available)              # True if speech_recognition installed
+vi.run_once("show me a report")  # single text turn (no mic needed)
+```
+
+### Run benchmark experiments with Claude analysis
+
+```python
+from physml.experiment_runner import ExperimentRunner
+from physml.llm import ClaudeClient
+
+runner = ExperimentRunner()
+summary = runner.run(task="regression", n_samples=200)
+print(summary)   # BenchmarkSummary(task=regression, best_R²=0.9412, ...)
+
+# Get a plain-English analysis from Claude
+client = ClaudeClient()
+analysis = runner.analyze_with_llm(summary, client)
+print(analysis)  # "The best configuration used a liquid-phase medium with 10 cycles..."
 ```
 
 ### Scheduled goals — recurring tasks
@@ -298,6 +341,7 @@ physml/
 | **Identity** | `DigitalSoul`, `PersonalisationManager` |
 | **Infrastructure** | `FileWatcher`, `SecureVault`, `ModelManager`, `ScheduledGoals` |
 | **API** | `MyceliumCompanion`, FastAPI server + SSE streaming, CLI |
+| **LLM layer** | `ClaudeClient`, `PromptSystem`, `ActionDispatcher`, `physml chat`, `physml voice` |
 
 ### GoalEngine step routing
 
@@ -340,8 +384,41 @@ Environment via `.env` file (see `.env.example`).
 ## Command line
 
 ```bash
+# Train a model on a CSV file
 physml fit my_data.csv --target outcome_column --out agent.pkl
-physml predict agent.pkl 1.2 3.4 5.6
+
+# Predict with a saved agent
+physml query agent.pkl test.csv --out predictions.csv
+
+# Print a report of a saved agent
+physml report agent.pkl
+
+# Export predictions to CSV
+physml export agent.pkl test.csv --out predictions.csv
+
+# Natural-language REPL (executes train/predict/report/save actions)
+physml chat --session myproject
+# you> train on sales.csv
+# myco> Trained on 'sales.csv': 1200 samples, 5 features, target='revenue'.
+# you> predict 1500 40 3.5
+# myco> Prediction: 1.0  confidence: 82%
+# you> report
+# myco> n_samples_seen_: 1200 ...
+# you> save
+# myco> Agent saved to 'agent.pkl'
+
+# Voice interaction loop (falls back to text if speech_recognition not installed)
+physml voice --session myproject --language en-US
+# → continuous mic listening → PromptSystem routing → speak response
+
+# Run benchmark experiments on synthetic data
+physml experiment --task classification --quick
+# → runs 1 config, prints BenchmarkSummary + Claude analysis (if API key set)
+
+# Ask Claude to explain a saved agent
+physml explain agent.pkl
+
+# Start the REST API + web UI
 uvicorn physml.server:app --reload
 ```
 

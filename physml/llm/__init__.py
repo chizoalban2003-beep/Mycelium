@@ -24,6 +24,7 @@ Quick start::
 
 from physml.llm.claude_client import ClaudeClient, ChatResult, ToolCallResult
 from physml.llm.prompt_system import PromptSystem, PromptAction
+from physml.llm.action_dispatcher import ActionDispatcher
 
 __all__ = [
     "ClaudeClient",
@@ -31,4 +32,5 @@ __all__ = [
     "ToolCallResult",
     "PromptSystem",
     "PromptAction",
+    "ActionDispatcher",
 ]
