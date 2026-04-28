@@ -126,6 +126,7 @@ class MyceliumCompanion:
         self.imitation_learner: Any = None     # ImitationLearner
         self.user_model: Any = None            # UserModel
         self.skill_library: Any = None         # SkillLibrary
+        self.federation: Any = None            # SpecialistFederation
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -454,8 +455,21 @@ class MyceliumCompanion:
             self.goal_engine._skill_library = self.skill_library
             self.goal_engine._user_model = self.user_model
 
+        # SpecialistFederation — multi-agent routing
+        try:
+            from physml.specialist_federation import SpecialistFederation as _SF
+            self.federation = _SF(
+                knowledge_graph=self.knowledge_graph,
+                vector_memory=self.vector_memory,
+                llm=self.llm,
+            )
+            self.federation.start()
+            _logger.debug("MyceliumCompanion: SpecialistFederation started")
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: SpecialistFederation unavailable: %s", _exc)
+
         self._started = True
-        _logger.info("MyceliumCompanion %r started (v1.1.0)", self.name)
+        _logger.info("MyceliumCompanion %r started (v1.2.0)", self.name)
 
     def personalise(self, key: str, value: Any) -> str:
         """Set a personalisation preference and return confirmation.

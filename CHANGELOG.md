@@ -5,6 +5,56 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.2.0] — 2026-04-28
+
+### Added — Specialist federation, mobile PWA, comprehensive docs, PyPI distribution
+
+#### Specialist Federation (`physml/specialist_federation.py`)
+- `SpecialistFederation`: multi-agent routing across 6 domain specialists
+- Built-in specialists: **Coder**, **Browser**, **Data**, **Scheduler**, **NLP**, **System**
+- Topic-keyword + context-app routing (40+ keyword mappings)
+- Shared `KnowledgeGraph` + `VectorMemory` — facts broadcast to all specialists
+- `broadcast_fact()` pushes facts to every specialist and both knowledge stores
+- `query()` auto-routes, stores response, returns specialist name + elapsed
+- `recent_log()`, `knowledge_snapshot()` for introspection
+- Wired into `MyceliumCompanion.start()` and `physml federation` CLI command
+- Custom specialist support via `Specialist` base class
+
+#### Mobile Progressive Web App (`physml/static/pwa/`)
+- Full PWA installable on iOS/Android as a home screen app (no app store)
+- Service worker for offline indication and static asset caching
+- Tabs: **Chat**, **Learn** (ingest), **Context**, **Patterns**
+- Real-time status dot + current intent bar
+- Connects to all `/mobile/*` REST endpoints
+- Mounted at `/pwa/` via `StaticFiles` — served by FastAPI server
+- `manifest.json` with shortcuts, theme color, icons
+
+#### Documentation (`docs/`)
+- Complete rewrite of `index.md` and `getting_started.md` for v1.2
+- New `docs/companion.md` — full Companion usage guide
+- New `docs/mobile.md` — PWA setup, browser extension, mobile API reference
+- New `docs/federation.md` — SpecialistFederation architecture, routing, custom specialists
+- Updated `api_reference.md` with all new classes + full method tables
+- Updated `mkdocs.yml` — 3 new nav pages + improved site description
+- Site builds cleanly: `mkdocs build` ✓
+
+#### PyPI & CI
+- Package builds cleanly: `python -m build` produces sdist + wheel
+- `pyproject.toml`: `package-data` includes `static/pwa/*` and `browser_ext/*`
+- Updated `.github/workflows/ci.yml` to run `test_product_completion.py` and `test_v2_systems.py` as separate fast-suite steps
+
+### Tests
+- `tests/test_v3_federation_pwa.py`: 47 new tests across 5 classes
+  - `TestSpecialistFederation` (25): routing, lifecycle, logging, knowledge
+  - `TestPWAFiles` (13): file existence, manifest validity, SW content
+  - `TestServerPWARoute` (2): route existence, status version field
+  - `TestCLIFederationCommand` (3): parser, list, query
+  - `TestVersionBump` (4): version 1.2.0, `__all__` exports
+
+### Total: **228 non-slow tests passing** (47 + 100 + 81)
+
+---
+
 ## [1.1.0] — 2026-04-28
 
 ### Added — Multi-modal learning, screen observation, macro recording, imitation learning, user model, browser extension, mobile API

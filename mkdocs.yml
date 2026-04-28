@@ -1,5 +1,5 @@
 site_name: PhysML / Mycelium
-site_description: Physics-inspired autonomous ML — the myco active-learning agent.
+site_description: Physics-inspired autonomous AI companion — local learning, screen observation, macro imitation, multi-agent federation.
 site_url: https://chizoalban2003-beep.github.io/Mycelium/
 repo_url: https://github.com/chizoalban2003-beep/Mycelium
 repo_name: chizoalban2003-beep/Mycelium
@@ -39,6 +39,9 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started: getting_started.md
+  - Companion Guide: companion.md
+  - Mobile & Browser Extension: mobile.md
+  - Specialist Federation: federation.md
   - How the Physics Works: physics.md
   - API Reference: api_reference.md
   - Changelog: changelog.md

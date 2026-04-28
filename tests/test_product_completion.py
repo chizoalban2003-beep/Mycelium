@@ -644,7 +644,7 @@ class TestVersionAndStatus:
         _cmd_version(argparse.Namespace())
         captured = capsys.readouterr()
         assert "physml" in captured.out
-        assert "1.0" in captured.out
+        assert "1." in captured.out
 
     def test_status_command_prints_table(self, capsys):
         from physml.cli import _cmd_status

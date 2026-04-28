@@ -60,6 +60,36 @@ for s in suggestions:
 # type_text     18%
 ```
 
+### Ask specialist agents for domain-specific help (v1.2)
+```python
+from physml import SpecialistFederation
+
+fed = SpecialistFederation()
+fed.start()
+
+# Routes automatically to the right specialist
+result = fed.query("How do I optimise this SQL join?")
+print(f"[{result['specialist']}] {result['response']}")
+# [Data] Use an index on the join column...
+
+result = fed.query("debug my Python exception", context={"app": "VS Code"})
+# [Coder] Check the traceback for...
+
+# Broadcast a fact — all specialists learn it
+fed.broadcast_fact("User works with PostgreSQL 16 and Python 3.12")
+```
+
+### Use it from your phone (v1.2 — Mobile PWA)
+```bash
+# Start server on your computer
+uvicorn physml.server:app --host 0.0.0.0 --port 8000
+
+# On your phone: open http://<your-ip>:8000/pwa/
+# Tap "Add to Home Screen" → installed as a native-feeling app
+```
+
+The mobile PWA includes: chat, knowledge ingestion, context view, behavioral patterns, and current task intent — all connecting to your local Myco server over Wi-Fi.
+
 ### Learn and predict from your data
 ```python
 from physml.companion import MyceliumCompanion
@@ -525,16 +555,26 @@ python3 -m pytest tests/ -q --timeout=120
 
 ---
 
-## Roadmap
+## What's shipped vs what's next
 
-| Next step | What it adds |
+### Shipped ✅
+
+| Version | Feature |
 |---|---|
-| Vision / VLM | Describe what's on screen; full computer-use agent |
-| Multi-agent federation | Specialist agents (finance, health, code) sharing knowledge |
+| v1.0 | Active learning core, GoalEngine, voice interface, REST API, CLI |
+| v1.1 | Multi-modal ingestion, screen observer, macro recorder, imitation learner, user model, browser extension, mobile API |
+| v1.2 | Specialist federation (6 domain agents), mobile PWA, comprehensive docs, PyPI distribution packages |
+
+### Next steps
+
+| Feature | What it adds |
+|---|---|
+| Vision / VLM | Full computer-use agent — describe and act on any screen |
 | Mobile edge deployment | Raspberry Pi / Android with stripped-down core |
-| Goal marketplace | Community-shared goal templates |
+| Goal marketplace | Community-shared goal templates and skill packs |
 | WhatsApp/Telegram native API | Replace Playwright automation with official APIs |
-| PyPI 1.0 publish | `pip install physml` from the public index |
+| PyPI publish | Push v1.2.0 tag → GitHub Actions auto-publishes to PyPI |
+| Fine-tuned local LLM | `llama.cpp` / `ollama` backend for fully-offline LLM |
 
 ---
 

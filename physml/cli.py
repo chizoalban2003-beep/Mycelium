@@ -540,6 +540,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_model.set_defaults(func=_cmd_model)
 
+    # ── federation ────────────────────────────────────────────────────────
+    p_fed = sub.add_parser(
+        "federation",
+        help="Query the multi-agent specialist federation.",
+    )
+    p_fed.add_argument("--query", "-q", required=True, help="Question or instruction.")
+    p_fed.add_argument(
+        "--context",
+        "-c",
+        default="",
+        help="Context hint (e.g. 'coder', 'data', or app name).",
+    )
+    p_fed.add_argument("--list", action="store_true", help="List available specialists.")
+    p_fed.set_defaults(func=_cmd_federation)
+
     return parser
 
 
@@ -636,6 +651,26 @@ def _cmd_model(args: argparse.Namespace) -> None:  # noqa: ARG001
             print(f"  • {p.get('description', '')}")
     else:
         print("\nNo patterns detected yet. Interact more with Myco to build your model.")
+
+
+def _cmd_federation(args: argparse.Namespace) -> None:
+    """Query the multi-agent specialist federation."""
+    from physml.specialist_federation import SpecialistFederation
+    fed = SpecialistFederation()
+    fed.start()
+
+    if getattr(args, "list", False):
+        print("Available specialists:", ", ".join(fed.list_specialists()))
+        return
+
+    ctx: dict = {}
+    if args.context:
+        ctx["topic"] = args.context
+
+    print(f"Routing query to federation... (context={args.context or 'auto'})")
+    result = fed.query(args.query, context=ctx)
+    print(f"\n[{result['specialist']}] ({result['elapsed']:.2f}s)")
+    print(result["response"])
 
 
 # ---------------------------------------------------------------------------

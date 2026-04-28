@@ -867,10 +867,31 @@ def create_app() -> Any:
         um = getattr(companion, "user_model", None)
         ing = getattr(companion, "ingester", None)
         return {
+            "version": "1.2.0",
             "companion": st,
             "user_model": um.status() if um else None,
             "ingester": ing.summary() if ing else None,
         }
+
+    # -----------------------------------------------------------------------
+    # Mobile PWA — serve the Progressive Web App
+    # -----------------------------------------------------------------------
+    try:
+        import pathlib as _pl
+        from fastapi.staticfiles import StaticFiles as _SF
+        from fastapi.responses import FileResponse as _FR
+
+        _pwa_dir = _pl.Path(__file__).parent / "static" / "pwa"
+        if _pwa_dir.exists():
+            app.mount("/pwa", _SF(directory=str(_pwa_dir), html=True), name="pwa")
+
+            @app.get("/pwa/", include_in_schema=False)
+            def serve_pwa() -> _FR:
+                return _FR(str(_pwa_dir / "index.html"))
+
+            _logger.debug("server: PWA mounted at /pwa/")
+    except Exception as _pwa_exc:
+        _logger.debug("server: PWA unavailable: %s", _pwa_exc)
 
     return app
 

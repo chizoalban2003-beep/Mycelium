@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 from physml.predictor import (
     PhysicsPlane,
@@ -433,6 +433,7 @@ from physml.screen_observer import ScreenObserver, ScreenSnapshot  # noqa: E402
 from physml.macro_recorder import MacroRecorder, MacroSequence, ActionStep, ActionType  # noqa: E402
 from physml.imitation_learner import ImitationLearner, ActionSuggestion  # noqa: E402
 from physml.user_model import UserModel  # noqa: E402
+from physml.specialist_federation import SpecialistFederation, Specialist as FederationSpecialist  # noqa: E402
 
 __all__ = [
     "PhysicsPlane",
@@ -796,4 +797,6 @@ __all__ = [
     "ImitationLearner",
     "ActionSuggestion",
     "UserModel",
+    "SpecialistFederation",
+    "FederationSpecialist",
 ]
