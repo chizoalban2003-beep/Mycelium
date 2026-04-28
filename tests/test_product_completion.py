@@ -8,8 +8,6 @@ Run with::
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -142,7 +140,6 @@ class TestActionDispatcher:
     @pytest.mark.slow
     def test_dispatch_report_with_agent(self, tmp_path):
         """Report dispatch with a fitted agent."""
-        import pandas as pd
         from physml.llm import ActionDispatcher, PromptAction
         from physml.mycelium_agent import MyceliumAgent
 
@@ -440,3 +437,244 @@ class TestCompanionLLM:
         """start_voice_interface() should exist as a callable method on the class."""
         from physml.companion import MyceliumCompanion
         assert callable(getattr(MyceliumCompanion, "start_voice_interface", None))
+
+
+# ===========================================================================
+# TestUserMemory
+# ===========================================================================
+
+
+class TestUserMemory:
+    def test_import(self):
+        from physml.llm.memory_store import UserMemory
+        assert UserMemory is not None
+
+    def test_import_from_llm_package(self):
+        from physml.llm import UserMemory
+        assert UserMemory is not None
+
+    def test_import_from_physml(self):
+        from physml import UserMemory
+        assert UserMemory is not None
+
+    def test_instantiate(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        assert mem is not None
+
+    def test_remember_and_recall(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        mem.remember("name", "Alex")
+        assert mem.recall("name") == "Alex"
+
+    def test_forget(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        mem.remember("name", "Alex")
+        mem.forget("name")
+        assert mem.recall("name") is None
+
+    def test_recall_missing_returns_none(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        assert mem.recall("nonexistent_key") is None
+
+    def test_inject_into_prompt_returns_str(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        mem.remember("name", "Bob")
+        result = mem.inject_into_prompt()
+        assert isinstance(result, str)
+        assert "Bob" in result
+
+    def test_inject_into_prompt_empty_when_no_facts(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        assert mem.inject_into_prompt() == ""
+
+    def test_summary_keys(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        mem.remember("name", "Alice")
+        mem.remember("lang", "Python")
+        s = mem.summary()
+        assert isinstance(s, dict)
+        assert "name" in s
+        assert "lang" in s
+
+    def test_persistence(self, tmp_path):
+        """Facts survive a reload from disk."""
+        from physml.llm.memory_store import UserMemory
+        p = str(tmp_path / "mem.json")
+        mem1 = UserMemory(path=p)
+        mem1.remember("city", "Lagos")
+        # Load fresh instance from same path
+        mem2 = UserMemory(path=p)
+        assert mem2.recall("city") == "Lagos"
+
+    def test_repr(self, tmp_path):
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        mem.remember("x", "1")
+        assert "UserMemory" in repr(mem)
+        assert "facts=1" in repr(mem)
+
+
+# ===========================================================================
+# TestHealthCheck
+# ===========================================================================
+
+
+class TestHealthCheck:
+    def test_import(self):
+        from physml.health import check
+        assert callable(check)
+
+    def test_import_from_physml(self):
+        from physml import health_check
+        assert callable(health_check)
+
+    def test_check_returns_dict(self):
+        from physml.health import check
+        result = check()
+        assert isinstance(result, dict)
+
+    def test_check_has_expected_keys(self):
+        from physml.health import check
+        result = check()
+        expected = {"anthropic", "scipy", "pandas", "speech_recognition", "pyttsx3", "version"}
+        assert expected.issubset(result.keys())
+
+    def test_version_present(self):
+        from physml.health import check
+        result = check()
+        assert isinstance(result["version"], str)
+        assert len(result["version"]) > 0
+
+    def test_scipy_key_is_bool(self):
+        from physml.health import check
+        result = check()
+        assert isinstance(result["scipy"], bool)
+
+    def test_all_dependency_values_are_bool(self):
+        from physml.health import check
+        result = check()
+        for key in ("anthropic", "scipy", "pandas", "speech_recognition", "pyttsx3"):
+            assert isinstance(result[key], bool), f"{key} should be bool"
+
+
+# ===========================================================================
+# TestDispatcherRemember
+# ===========================================================================
+
+
+class TestDispatcherRemember:
+    def test_dispatch_remember_stores_fact(self, tmp_path):
+        from physml.llm import ActionDispatcher, PromptAction
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        d = ActionDispatcher(user_memory=mem)
+        action = PromptAction(
+            intent="remember",
+            payload={"kv": {"name": "Alex"}},
+            confidence=0.95,
+            raw_text="remember that name=Alex",
+        )
+        reply = d.dispatch(action)
+        assert isinstance(reply, str)
+        assert mem.recall("name") == "Alex"
+
+    def test_dispatch_remember_reply_confirms(self, tmp_path):
+        from physml.llm import ActionDispatcher, PromptAction
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        d = ActionDispatcher(user_memory=mem)
+        action = PromptAction(
+            intent="remember",
+            payload={"kv": {"lang": "Python"}},
+            confidence=0.9,
+            raw_text="remember that lang=Python",
+        )
+        reply = d.dispatch(action)
+        # Reply should confirm storage
+        assert "lang" in reply.lower() or "remember" in reply.lower() or "noted" in reply.lower()
+
+    def test_dispatch_remember_raw_text_parsing(self, tmp_path):
+        from physml.llm import ActionDispatcher, PromptAction
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        d = ActionDispatcher(user_memory=mem)
+        action = PromptAction(
+            intent="remember",
+            payload={},
+            confidence=0.85,
+            raw_text="my name is Charlie",
+        )
+        reply = d.dispatch(action)
+        # Should have stored the name
+        assert isinstance(reply, str)
+        assert mem.recall("name") == "Charlie"
+
+    def test_dispatch_memory_shows_remembered_facts(self, tmp_path):
+        from physml.llm import ActionDispatcher, PromptAction
+        from physml.llm.memory_store import UserMemory
+        mem = UserMemory(path=str(tmp_path / "mem.json"))
+        mem.remember("name", "Dana")
+        d = ActionDispatcher(user_memory=mem)
+        action = PromptAction(
+            intent="memory",
+            payload={},
+            confidence=1.0,
+            raw_text="what do you remember about me",
+        )
+        reply = d.dispatch(action)
+        assert "Dana" in reply
+
+
+# ===========================================================================
+# TestVersionAndStatus — CLI commands
+# ===========================================================================
+
+
+class TestVersionAndStatus:
+    def test_version_command_prints_version(self, capsys):
+        from physml.cli import _cmd_version
+        import argparse
+        _cmd_version(argparse.Namespace())
+        captured = capsys.readouterr()
+        assert "physml" in captured.out
+        assert "0.32" in captured.out
+
+    def test_status_command_prints_table(self, capsys):
+        from physml.cli import _cmd_status
+        import argparse
+        _cmd_status(argparse.Namespace())
+        captured = capsys.readouterr()
+        assert "physml" in captured.out
+        assert "scipy" in captured.out.lower() or "pandas" in captured.out.lower()
+
+
+# ===========================================================================
+# TestTranscribeText — VoiceInterface.transcribe_text
+# ===========================================================================
+
+
+class TestTranscribeText:
+    def test_transcribe_text_exists(self):
+        from physml.voice import VoiceInterface
+        assert hasattr(VoiceInterface, "transcribe_text")
+
+    def test_transcribe_text_returns_str(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        result = v.transcribe_text("help")
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_transcribe_text_same_as_run_once(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        r1 = v.run_once("help")
+        r2 = v.transcribe_text("help")
+        assert r1 == r2

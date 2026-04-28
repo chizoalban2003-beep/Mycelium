@@ -234,7 +234,7 @@ class TestGoalConditionedPolicy:
 # ---------------------------------------------------------------------------
 # Stage 66 — SafetyMonitor
 # ---------------------------------------------------------------------------
-from physml.safety import SafetyConstraint, SafetyViolation, SafetyMonitor
+from physml.safety import SafetyConstraint, SafetyMonitor
 
 
 class TestSafetyMonitor:

@@ -8,7 +8,6 @@ Stage 56 — AgentProfiler
 """
 
 import time
-import math
 import pytest
 import numpy as np
 
@@ -292,7 +291,6 @@ class TestAnomalyGuard:
 
     def test_predict_guarded_shape(self):
         from sklearn.linear_model import LogisticRegression
-        from sklearn.preprocessing import LabelEncoder
         rng = np.random.default_rng(0)
         X = rng.standard_normal((100, 4))
         y = (X[:, 0] > 0).astype(int)

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -34,7 +33,7 @@ class TestGoalEngineImport:
         assert GoalStatus is not None
 
     def test_from_package(self):
-        from physml import GoalEngine, GoalRecord, GoalStatus
+        from physml import GoalEngine
 
         assert GoalEngine is not None
 
@@ -184,7 +183,7 @@ class TestGoalExecution:
 
 class TestGoalPersistence:
     def test_goals_survive_reload(self, tmp_path):
-        from physml.goal_engine import GoalEngine, GoalStatus
+        from physml.goal_engine import GoalEngine
 
         engine1 = GoalEngine(state_dir=str(tmp_path / "goals"))
         gid = engine1.add_goal("Persistent goal")

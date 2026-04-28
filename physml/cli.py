@@ -261,14 +261,29 @@ def _cmd_experiment(args: argparse.Namespace) -> None:
 
     configs = [{"plane": "liquid", "n_cycles": 3}] if quick else None
     n_samples = 100 if quick else 200
+    n_features = 5
 
-    print(f"Running {task} benchmark ({'quick' if quick else 'full'} mode)…")
+    print(f"Task: {task} | Samples: {n_samples} | Features: {n_features}")
+    print(f"Mode: {'quick' if quick else 'full'}\n")
     runner = ExperimentRunner(configs=configs)
-    summary = runner.run(task=task, n_samples=n_samples)
+    summary = runner.run(task=task, n_samples=n_samples, n_features=n_features)
 
-    print(f"\n{summary}")
-    print(f"\nBest config: {summary.best_config}")
-    print(f"Scores: mean={summary.mean_score:.4f} ± {summary.std_score:.4f}")
+    # Print formatted table
+    metric_label = "R²" if task == "regression" else "Accuracy"
+    col_w = max(30, max(len(str(r.config)) for r in summary.results) + 2)
+    header = f"{'Config':<{col_w}}  {metric_label:>8}  {'Time(s)':>8}"
+    sep = f"{'-' * col_w}  {'-' * 8}  {'-' * 8}"
+    print(header)
+    print(sep)
+    for r in summary.results:
+        cfg_str = str(r.config)
+        score_str = f"{r.score:.4f}" if r.error is None else "FAILED"
+        print(f"{cfg_str:<{col_w}}  {score_str:>8}  {r.fit_time_s:>8.3f}")
+    print(sep)
+    print(f"\nBest config : {summary.best_config}")
+    print(f"Best {metric_label:<9}: {summary.best_score:.4f}")
+    print(f"Mean ± std  : {summary.mean_score:.4f} ± {summary.std_score:.4f}")
+    print(f"Total time  : {summary.total_time_s:.1f}s")
 
     # Optional Claude analysis
     from physml.llm import ClaudeClient
@@ -279,6 +294,41 @@ def _cmd_experiment(args: argparse.Namespace) -> None:
             print(f"\nClaude analysis:\n{analysis}")
     else:
         print("\n(Set ANTHROPIC_API_KEY for Claude-powered analysis.)")
+
+
+def _cmd_version(_args: argparse.Namespace) -> None:
+    """Print the physml version string."""
+    from physml import __version__
+    print(f"physml {__version__}")
+
+
+def _cmd_status(_args: argparse.Namespace) -> None:
+    """Run a health-check and print dependency status table."""
+    from physml.health import check
+
+    status = check()
+    print(f"physml {status.pop('version')}\n")
+    print(f"{'Dependency':<25}  {'Status':<10}")
+    print(f"{'-' * 25}  {'-' * 10}")
+    for dep, ok in status.items():
+        mark = "OK" if ok else "missing"
+        print(f"{dep:<25}  {mark}")
+    print()
+    missing = [dep for dep, ok in status.items() if not ok]
+    if missing:
+        print("To install missing dependencies:")
+        install_hints = {
+            "anthropic": "pip install anthropic",
+            "scipy": "pip install scipy",
+            "pandas": "pip install pandas",
+            "speech_recognition": "pip install SpeechRecognition pyaudio",
+            "pyttsx3": "pip install pyttsx3",
+        }
+        for dep in missing:
+            hint = install_hints.get(dep, f"pip install {dep}")
+            print(f"  {hint}")
+    else:
+        print("All dependencies present.")
 
 
 def _cmd_explain(args: argparse.Namespace) -> None:
@@ -442,6 +492,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Skip Claude analysis even if ANTHROPIC_API_KEY is set.",
     )
     p_exp.set_defaults(func=_cmd_experiment)
+
+    # ── version ───────────────────────────────────────────────────────────
+    p_ver = sub.add_parser("version", help="Print the physml version and exit.")
+    p_ver.set_defaults(func=_cmd_version)
+
+    # ── status ────────────────────────────────────────────────────────────
+    p_status = sub.add_parser(
+        "status",
+        help="Run a dependency health-check and print results.",
+    )
+    p_status.set_defaults(func=_cmd_status)
 
     return parser
 

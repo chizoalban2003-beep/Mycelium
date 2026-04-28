@@ -53,6 +53,7 @@ _HELP_TEXT = """Available commands (plain English or shortcuts):
   show goals / list goals    — show goal engine state
   add goal <description>     — queue a new autonomous goal
   memory / history           — show conversation history summary
+  remember that <key>=<val>  — store a user fact (e.g. "remember that name=Alex")
   help                       — show this message
 
 Special REPL commands:
@@ -76,6 +77,8 @@ class ActionDispatcher:
         Optional LLM client for generating richer fallback responses.
     agent_path : str or None
         Path to save/load the agent (default: ``"agent.pkl"``).
+    user_memory : UserMemory or None
+        Persistent user facts store.  Created automatically when ``None``.
     """
 
     def __init__(
@@ -84,11 +87,17 @@ class ActionDispatcher:
         store: Any = None,
         client: Any = None,
         agent_path: str = "agent.pkl",
+        user_memory: Any = None,
     ) -> None:
         self.agent = agent
         self.store = store
         self.client = client
         self.agent_path = agent_path
+        if user_memory is not None:
+            self.user_memory = user_memory
+        else:
+            from physml.llm.memory_store import UserMemory
+            self.user_memory = UserMemory()
 
     # ------------------------------------------------------------------
     # Public dispatch
@@ -126,6 +135,8 @@ class ActionDispatcher:
                 return self._do_memory()
             elif intent == "save":
                 return self._do_save()
+            elif intent == "remember":
+                return self._handle_remember(payload, action.raw_text)
             else:
                 return self._do_unknown(action)
         except Exception as exc:
@@ -257,17 +268,27 @@ class ActionDispatcher:
         )
 
     def _do_memory(self) -> str:
+        lines = []
+
+        # Show user facts first
+        mem_text = self.user_memory.inject_into_prompt()
+        if mem_text:
+            lines.append(mem_text)
+        else:
+            lines.append("No user facts stored yet. Use 'remember that name=Alex' to store facts.")
+
         if self.store is None:
-            return "No conversation store attached to this session."
+            lines.append("\nNo conversation store attached to this session.")
+            return "\n".join(lines)
         try:
             s = self.store.summary()
             total = s.get("total_turns", 0)
             user_t = s.get("user_turns", 0)
             asst_t = s.get("assistant_turns", 0)
             intents = s.get("intents", {})
-            lines = [
-                f"Conversation history: {total} turns ({user_t} user, {asst_t} assistant)",
-            ]
+            lines.append(
+                f"\nConversation history: {total} turns ({user_t} user, {asst_t} assistant)"
+            )
             if intents:
                 top = sorted(intents.items(), key=lambda x: -x[1])[:5]
                 lines.append("Top intents: " + ", ".join(f"{k}({v})" for k, v in top))
@@ -281,6 +302,46 @@ class ActionDispatcher:
             return "\n".join(lines)
         except Exception as exc:
             return f"Memory summary error: {exc}"
+
+    def _handle_remember(self, payload: dict, raw_text: str) -> str:
+        """Store a user fact from a 'remember that' intent.
+
+        Parses key=value pairs from payload or raw_text.
+        Also handles natural phrasing like "my name is Alex" or "call me Bob".
+        """
+        import re
+
+        # Try payload kv first
+        kv = payload.get("kv") or {}
+        if isinstance(kv, dict) and kv:
+            for k, v in kv.items():
+                self.user_memory.remember(str(k), str(v))
+            stored = ", ".join(f"{k}={v}" for k, v in kv.items())
+            return f"Got it! I'll remember: {stored}"
+
+        # Try key=value pattern in raw text
+        m = re.search(r"(\w[\w\s]*)=([^,\n]+)", raw_text)
+        if m:
+            key = m.group(1).strip()
+            value = m.group(2).strip()
+            self.user_memory.remember(key, value)
+            return f"Got it! I'll remember that {key} = {value}"
+
+        # Try "my name is X" / "call me X"
+        name_m = re.search(
+            r"(?:my name is|call me|i am|i'm)\s+([A-Za-z][\w\s]*)", raw_text, re.IGNORECASE
+        )
+        if name_m:
+            name = name_m.group(1).strip()
+            self.user_memory.remember("name", name)
+            return f"Got it! I'll remember that your name is {name}."
+
+        # Generic: store the whole text under a "note" key with index
+        existing = self.user_memory.summary()
+        idx = sum(1 for k in existing if k.startswith("note"))
+        key = f"note{idx + 1}" if idx > 0 else "note"
+        self.user_memory.remember(key, raw_text)
+        return f"Noted and stored: {raw_text!r}"
 
     def _do_save(self) -> str:
         if self.agent is None:
@@ -315,4 +376,5 @@ class ActionDispatcher:
     def __repr__(self) -> str:
         has_agent = self.agent is not None
         has_store = self.store is not None
-        return f"ActionDispatcher(agent={has_agent}, store={has_store})"
+        n_facts = len(self.user_memory.summary())
+        return f"ActionDispatcher(agent={has_agent}, store={has_store}, user_facts={n_facts})"

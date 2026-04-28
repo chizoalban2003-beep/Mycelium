@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "0.32.0"
+__version__ = "0.32.2"
 
 from physml.predictor import (
     PhysicsPlane,
@@ -415,14 +415,17 @@ from physml.desktop_bridge import DesktopBridge, DesktopResult
 myco = MyceliumAgent
 
 # Phase 4 — LLM integration package
-from physml.llm import ClaudeClient, ChatResult, ToolCallResult, PromptSystem, PromptAction, ActionDispatcher
+from physml.llm import ClaudeClient, ChatResult, ToolCallResult, PromptSystem, PromptAction, ActionDispatcher, UserMemory  # noqa: E402
+
+# Health check
+from physml.health import check as health_check  # noqa: E402
 
 # Phase 6 — Voice interface
-from physml.voice import VoiceInterface
+from physml.voice import VoiceInterface  # noqa: E402
 
 # Phase 5 — Quick wins: ExperimentRunner and ConversationStore
-from physml.experiment_runner import ExperimentRunner, BenchmarkSummary, ExperimentResult
-from physml.conversation_store import ConversationStore
+from physml.experiment_runner import ExperimentRunner, BenchmarkSummary, ExperimentResult  # noqa: E402
+from physml.conversation_store import ConversationStore  # noqa: E402
 
 __all__ = [
     "PhysicsPlane",
@@ -764,6 +767,9 @@ __all__ = [
     "PromptSystem",
     "PromptAction",
     "ActionDispatcher",
+    "UserMemory",
+    # Health check
+    "health_check",
     # Phase 5 — Quick wins
     "ExperimentRunner",
     "BenchmarkSummary",

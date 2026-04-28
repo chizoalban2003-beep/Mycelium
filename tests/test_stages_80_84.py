@@ -4,14 +4,11 @@
 
 from __future__ import annotations
 
-import time
-from pathlib import Path
 
 import numpy as np
 import pytest
 from sklearn.datasets import make_classification, make_regression
-from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 
 
 # ---------------------------------------------------------------------------

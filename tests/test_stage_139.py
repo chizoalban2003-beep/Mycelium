@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List
-from unittest.mock import MagicMock
 
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +212,7 @@ class TestGoalEngineFeedbackIntegration:
         engine = GoalEngine(state_dir=str(tmp_path))
 
         # Pre-seed the feedback store with a known past outcome
-        from physml.goal_feedback import GoalFeedbackStore, GoalOutcome
+        from physml.goal_feedback import GoalFeedbackStore
         store = GoalFeedbackStore(state_dir=str(tmp_path))
         store.record(type("R", (), {
             "id": "prev01",

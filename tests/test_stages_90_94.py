@@ -12,7 +12,6 @@ from __future__ import annotations
 import time
 import unittest
 
-import numpy as np
 import pytest
 
 
@@ -29,13 +28,12 @@ class TestRewardModel(unittest.TestCase):
         ]
 
     def test_import(self):
-        from physml.reward_model import RewardModel, RewardSample
 
         self.assertTrue(True)
 
     @pytest.mark.slow
     def test_add_and_fit(self):
-        from physml.reward_model import RewardModel, RewardSample
+        from physml.reward_model import RewardModel
 
         model = RewardModel()
         for s in self._samples():
@@ -106,7 +104,6 @@ class TestRewardModel(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestAgentMemory(unittest.TestCase):
     def test_import(self):
-        from physml.agent_memory import AgentMemory, MemoryEntry
 
         self.assertTrue(True)
 
@@ -198,7 +195,6 @@ class TestAgentMemory(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestTaskDecomposer(unittest.TestCase):
     def test_import(self):
-        from physml.task_decomposer import SubTask, TaskDecomposer
 
         self.assertTrue(True)
 
@@ -273,7 +269,6 @@ class TestTaskDecomposer(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestAgentComms(unittest.TestCase):
     def test_import(self):
-        from physml.agent_comms import AgentComms, Message
 
         self.assertTrue(True)
 
@@ -368,7 +363,6 @@ class TestAgentComms(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestReflectionEngine(unittest.TestCase):
     def test_import(self):
-        from physml.reflection_engine import Reflection, ReflectionEngine
 
         self.assertTrue(True)
 

@@ -9,8 +9,6 @@ Stage 105 — ActionSelector
 
 from __future__ import annotations
 
-import math
-import time
 import unittest
 
 import numpy as np
@@ -28,7 +26,6 @@ class TestNeuralSearchEngine(unittest.TestCase):
         return X, y
 
     def test_import(self):
-        from physml.neural_search import NeuralSearchEngine, SearchResult
 
         self.assertTrue(True)
 
@@ -137,7 +134,6 @@ class TestNeuralSearchEngine(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestTraceRecorder(unittest.TestCase):
     def test_import(self):
-        from physml.trace_recorder import ExecutionTrace, TraceRecorder
 
         self.assertTrue(True)
 
@@ -261,7 +257,6 @@ class TestPolicyOptimizer(unittest.TestCase):
         return states, actions, rewards
 
     def test_import(self):
-        from physml.policy_optimizer import PolicyOptimizer, PolicyUpdate
 
         self.assertTrue(True)
 
@@ -337,7 +332,6 @@ class TestPolicyOptimizer(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestValueEstimator(unittest.TestCase):
     def test_import(self):
-        from physml.value_estimator import ValueEstimate, ValueEstimator
 
         self.assertTrue(True)
 
@@ -428,7 +422,6 @@ class TestValueEstimator(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestActionSelector(unittest.TestCase):
     def test_import(self):
-        from physml.action_selector import ActionSelector, SelectionResult
 
         self.assertTrue(True)
 

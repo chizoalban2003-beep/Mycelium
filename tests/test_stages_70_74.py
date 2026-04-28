@@ -7,11 +7,9 @@ require a running ASGI server.
 
 from __future__ import annotations
 
-import math
 import os
 import tempfile
 
-import numpy as np
 import pytest
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression

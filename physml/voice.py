@@ -198,6 +198,26 @@ class VoiceInterface:
         action = self._ps.route(text)
         return self._dispatcher.dispatch(action)
 
+    def transcribe_text(self, text: str) -> str:
+        """Process a text string as if it were spoken (for testing).
+
+        Equivalent to :meth:`run_once` — routes *text* through the
+        :class:`~physml.llm.prompt_system.PromptSystem` and
+        :class:`~physml.llm.action_dispatcher.ActionDispatcher` without
+        any audio I/O.
+
+        Parameters
+        ----------
+        text : str
+            The text to process.
+
+        Returns
+        -------
+        str
+            The dispatcher's plain-text response.
+        """
+        return self.run_once(text)
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------

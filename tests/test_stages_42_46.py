@@ -19,7 +19,6 @@ import pytest
 
 from physml.memory import EpisodicMemory
 from physml.featurizer import Featurizer
-from physml.tools import Tool, ToolRegistry, AutonomousLoop
 from physml.mycelium_agent import MyceliumAgent
 from physml.tool_planner import ToolSpec, ToolCall, ToolPlanner
 from physml.feedback import FeedbackBuffer, FeedbackItem, OnlineRLHF

@@ -8,10 +8,8 @@ AutonomousAgent, plus the competitive_report integration.
 from __future__ import annotations
 
 import pytest
-import numpy as np
 from sklearn.datasets import make_classification
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
 
 from physml.lifelong import LifelongLearner, RoundResult
 from physml import LifelongLearner as LifelongLearnerPublic, RoundResult as RoundResultPublic

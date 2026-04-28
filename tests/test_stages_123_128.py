@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -508,7 +506,7 @@ class TestServerJWT:
             _verify_token(".".join(parts))
 
     def test_token_contains_user_id(self):
-        import base64, json
+        import base64
         from physml.server import _create_token
 
         token = _create_token("bob")

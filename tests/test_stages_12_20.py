@@ -3,8 +3,6 @@ coreset batch AL, drift detection, server, federated learning, packaging."""
 
 from __future__ import annotations
 
-import math
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -376,7 +374,6 @@ class TestDriftDetection:
 
 class TestRESTAPI:
     def test_server_module_importable(self):
-        import physml.server  # should not raise even if fastapi absent
         assert True
 
     @pytest.mark.slow

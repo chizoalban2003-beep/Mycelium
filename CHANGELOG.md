@@ -5,6 +5,61 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.32.2] — 2026-04-25
+
+### Added — UserMemory, HealthCheck, remember intent, version/status commands, experiment formatter
+
+* **UserMemory** (`physml/llm/memory_store.py`):
+  - `UserMemory`: persistent key-value user facts store backed by
+    `~/.mycelium/user_memory.json`.
+  - `remember(key, value)` — store a named fact.
+  - `recall(key)` — retrieve a fact or `None`.
+  - `forget(key)` — remove a fact.
+  - `inject_into_prompt()` — returns formatted string for LLM system prompts.
+  - `summary()` — returns shallow copy of all stored facts.
+  - Exported from `physml.llm` and `physml` top-level packages.
+
+* **physml.health** (`physml/health.py`):
+  - `check()` — returns a health-check dict:
+    `{anthropic, scipy, pandas, speech_recognition, pyttsx3, version}`.
+  - Exported as `physml.health_check` from the top-level package.
+
+* **`physml status`** CLI command:
+  - Runs `health_check()` and prints a formatted dependency table.
+  - Lists `pip install` hints for each missing dependency.
+
+* **`physml version`** CLI command:
+  - Prints `physml <version>` and exits.
+
+* **ActionDispatcher — remember intent** (`physml/llm/action_dispatcher.py`):
+  - `_handle_remember()` — parses key=value pairs or natural phrasing
+    ("my name is Alex", "call me Bob") and stores facts in `UserMemory`.
+  - `_do_memory()` enhanced to show stored user facts alongside conversation
+    history.
+  - `user_memory` parameter added to `__init__` for dependency injection.
+
+* **PromptSystem — remember intent** (`physml/llm/prompt_system.py`):
+  - `"remember"` intent added with phrases: "remember that", "my name is",
+    "call me", "note that", "store this", etc.
+
+* **VoiceInterface.transcribe_text** (`physml/voice.py`):
+  - New alias method `transcribe_text(text)` for programmatic/test use.
+
+* **physml experiment — table output** (`physml/cli.py`):
+  - Formatted table output: task header, config/score/time columns, best
+    config summary block.
+
+### Tests
+
+* `tests/test_product_completion.py` — 23 new tests appended:
+  - `TestUserMemory` — 11 tests for import, CRUD, injection, persistence.
+  - `TestHealthCheck` — 7 tests for import, keys, types, version.
+  - `TestDispatcherRemember` — 4 tests for remember/recall intents.
+  - `TestVersionAndStatus` — 2 tests for CLI version/status commands.
+  - `TestTranscribeText` — 3 tests for VoiceInterface.transcribe_text.
+
+---
+
 ## [0.32.1] — 2026-04-28
 
 ### Added — Action Dispatch, Voice Interface, Experiment Analysis, Companion LLM wiring

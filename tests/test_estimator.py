@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pytest
 
-from physml import PhysicsPredictor, PhysicsPlane
+from physml import PhysicsPredictor
 from physml.estimator import _to_dataframe
 
 

@@ -17,8 +17,6 @@ from physml import (
     run_physics_prediction,
     serialize_predictor_state,
     deserialize_predictor_state,
-    prune_predictor_state,
-    update_predictor_state_from_result,
 )
 from physml.predictor import PredictorError
 

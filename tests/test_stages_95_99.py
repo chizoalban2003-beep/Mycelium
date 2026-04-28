@@ -27,7 +27,6 @@ class TestPlanExecutor(unittest.TestCase):
         return TaskDecomposer().decompose(", ".join(f"step{i}" for i in range(n)))
 
     def test_import(self):
-        from physml.plan_executor import ExecutionResult, PlanExecutor
 
         self.assertTrue(True)
 
@@ -151,7 +150,6 @@ class TestEnvironmentModel(unittest.TestCase):
             )
 
     def test_import(self):
-        from physml.environment_model import EnvState, EnvironmentModel
 
         self.assertTrue(True)
 
@@ -245,7 +243,6 @@ class TestEnvironmentModel(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestSkillLibrary(unittest.TestCase):
     def test_import(self):
-        from physml.skill_library import Skill, SkillLibrary
 
         self.assertTrue(True)
 
@@ -359,7 +356,6 @@ class TestSkillLibrary(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestBeliefUpdater(unittest.TestCase):
     def test_import(self):
-        from physml.belief_updater import Belief, BeliefUpdater
 
         self.assertTrue(True)
 
@@ -469,7 +465,6 @@ class TestBeliefUpdater(unittest.TestCase):
 # ---------------------------------------------------------------------------
 class TestAgentController(unittest.TestCase):
     def _make_controller(self):
-        from physml.agent_comms import AgentComms
         from physml.agent_controller import AgentController
         from physml.agent_memory import AgentMemory
         from physml.belief_updater import BeliefUpdater
@@ -493,7 +488,6 @@ class TestAgentController(unittest.TestCase):
         )
 
     def test_import(self):
-        from physml.agent_controller import AgentController, ControlStep
 
         self.assertTrue(True)
 

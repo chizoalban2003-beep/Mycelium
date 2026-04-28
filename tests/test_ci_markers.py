@@ -1,6 +1,5 @@
 """Verify that slow-marked tests exist and the marker is registered."""
 
-import pytest
 
 
 class TestSlowMarker:

@@ -4,14 +4,12 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
-from pathlib import Path
 
 import numpy as np
 import pytest
 from sklearn.datasets import make_classification
-from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
 

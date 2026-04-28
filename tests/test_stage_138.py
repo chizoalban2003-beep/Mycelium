@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 import pytest
 
@@ -157,7 +156,7 @@ class TestScheduledGoals:
         assert ScheduledGoals is not None
 
     def test_from_package(self):
-        from physml import ScheduledGoals, Schedule
+        from physml import ScheduledGoals
         assert ScheduledGoals is not None
 
     def test_instantiation(self, tmp_path):

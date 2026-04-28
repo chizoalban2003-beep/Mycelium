@@ -1054,13 +1054,12 @@ class TestMyceliumAgent:
             agent.observe(np.ones((1, 5)))
 
     def test_observe_returns_agent_action(self):
-        from physml import AgentAction, MyceliumAgent
+        from physml import AgentAction
         agent, X_te, y_te = self._make_agent()
         action = agent.observe(X_te[:1])
         assert isinstance(action, AgentAction)
 
     def test_observe_action_valid(self):
-        from physml import MyceliumAgent
         agent, X_te, y_te = self._make_agent()
         action = agent.observe(X_te[:1])
         assert action.action in ("predict", "abstain", "ask")
@@ -1077,19 +1076,16 @@ class TestMyceliumAgent:
 
     @pytest.mark.slow
     def test_reward_updates_model(self):
-        from physml import MyceliumAgent
         agent, X_te, y_te = self._make_agent()
         result = agent.reward(X_te[:3], y_te[:3])
         assert result is agent  # returns self
 
     def test_select_informative_valid_index(self):
-        from physml import MyceliumAgent
         agent, X_te, y_te = self._make_agent()
         idx = agent.select_informative(X_te[:10])
         assert 0 <= idx < 10
 
     def test_report_contains_expected_keys(self):
-        from physml import MyceliumAgent
         agent, X_te, y_te = self._make_agent()
         r = agent.report()
         assert "agent" in r

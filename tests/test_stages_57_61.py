@@ -9,12 +9,10 @@ Stage 61 — UncertaintyEstimator
 
 from __future__ import annotations
 
-import math
 
 import numpy as np
 import pytest
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LogisticRegression
 
 from physml.knowledge_graph import KnowledgeGraph, KnowledgeNode
 from physml.reward_shaper import RewardShaper

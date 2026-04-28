@@ -89,6 +89,10 @@ _INTENTS: Dict[str, List[str]] = {
     "save": [
         "save the model", "save session", "persist", "write to disk", "backup",
     ],
+    "remember": [
+        "remember that", "my name is", "call me", "note that", "store this",
+        "keep in mind", "don't forget", "please remember",
+    ],
 }
 
 # ---------------------------------------------------------------------------

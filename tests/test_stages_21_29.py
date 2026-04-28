@@ -13,7 +13,6 @@ Stage 29 — ModelRegistry
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import numpy as np

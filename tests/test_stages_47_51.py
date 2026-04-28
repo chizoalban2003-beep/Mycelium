@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +23,6 @@ from physml.explainability import Explainer, explain_agent
 from physml.checkpoint import AgentCheckpoint
 from physml.meta_learner import MetaLearner
 from physml.mycelium_agent import MyceliumAgent
-from physml.ensemble_predictor import CompetitiveEnsemblePredictor
 
 
 # ---------------------------------------------------------------------------

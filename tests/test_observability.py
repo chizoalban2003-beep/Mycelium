@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 
 class TestStructuredLogging:
@@ -108,7 +107,7 @@ class TestLLMCallCount:
         assert llm._call_count == 0
 
     def test_call_count_increments_on_api_call(self, monkeypatch):
-        from physml.llm_integration import LLMIntegration, LLMResult
+        from physml.llm_integration import LLMIntegration
         llm = LLMIntegration(api_key="")
         # Without real SDK, available=False and complete() returns fallback
         # Just verify attribute exists and is incrementable
