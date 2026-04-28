@@ -323,6 +323,8 @@ def _cmd_status(_args: argparse.Namespace) -> None:
             "pandas": "pip install pandas",
             "speech_recognition": "pip install SpeechRecognition pyaudio",
             "pyttsx3": "pip install pyttsx3",
+            "whisper": "pip install openai-whisper",
+            "sounddevice": "pip install sounddevice",
         }
         for dep in missing:
             hint = install_hints.get(dep, f"pip install {dep}")

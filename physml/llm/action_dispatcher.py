@@ -88,11 +88,13 @@ class ActionDispatcher:
         client: Any = None,
         agent_path: str = "agent.pkl",
         user_memory: Any = None,
+        goal_engine: Any = None,
     ) -> None:
         self.agent = agent
         self.store = store
         self.client = client
         self.agent_path = agent_path
+        self.goal_engine = goal_engine
         if user_memory is not None:
             self.user_memory = user_memory
         else:
@@ -253,14 +255,27 @@ class ActionDispatcher:
             return f"Report error: {exc}"
 
     def _do_show_goals(self) -> str:
-        try:
-            from physml.goal_engine import GoalEngine  # noqa: F401
-            return "Goal engine not attached to this session. Use MyceliumCompanion.goals() for full goal tracking."
-        except Exception:
-            return "Goal engine not available in this session."
+        if self.goal_engine is not None:
+            try:
+                records = self.goal_engine.goals()
+                if not records:
+                    return "No goals queued."
+                lines = ["Goals:"]
+                for r in records:
+                    lines.append(f"  [{r.status}] {r.description} (id={r.id[:8]})")
+                return "\n".join(lines)
+            except Exception as exc:
+                return f"Goal engine error: {exc}"
+        return "Goal engine not attached to this session. Use MyceliumCompanion.goals() for full goal tracking."
 
     def _do_add_goal(self, payload: dict, raw_text: str) -> str:
         desc = payload.get("goal_description") or raw_text
+        if self.goal_engine is not None:
+            try:
+                goal_id = self.goal_engine.add_goal(desc)
+                return f"Goal queued: {desc!r} (id={goal_id[:8]})"
+            except Exception as exc:
+                return f"Goal engine error: {exc}"
         return (
             f"Goal noted: {desc!r}\n"
             f"(Full goal execution requires MyceliumCompanion. "

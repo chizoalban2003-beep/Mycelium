@@ -87,6 +87,7 @@ class VoiceInterface:
 
         # Check for optional deps
         self._sr_available = self._check_sr()
+        self._whisper_available = self._check_whisper()
         self._tts_engine = self._init_tts() if tts else None
 
     # ------------------------------------------------------------------
@@ -95,8 +96,13 @@ class VoiceInterface:
 
     @property
     def available(self) -> bool:
-        """``True`` when ``speech_recognition`` is installed."""
-        return self._sr_available
+        """``True`` when ``speech_recognition`` or ``whisper`` is installed."""
+        return self._sr_available or self._whisper_available
+
+    @property
+    def whisper_available(self) -> bool:
+        """``True`` when the ``whisper`` package (OpenAI Whisper) is installed."""
+        return self._whisper_available
 
     def listen(self) -> str:
         """Listen from the microphone and return transcribed text.
@@ -108,12 +114,23 @@ class VoiceInterface:
         str
             Transcribed text, or empty string on failure.
         """
-        if not self._sr_available:
-            try:
-                return input("you (text)> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                return ""
+        if self._sr_available:
+            text = self._listen_sr()
+            if text:
+                return text
 
+        if self._whisper_available:
+            text = self._listen_whisper()
+            if text:
+                return text
+
+        try:
+            return input("you (text)> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return ""
+
+    def _listen_sr(self) -> str:
+        """Attempt to capture audio via speech_recognition (Google STT)."""
         try:
             import speech_recognition as sr  # type: ignore
             recogniser = sr.Recognizer()
@@ -132,12 +149,34 @@ class VoiceInterface:
             print(f"you> {text}", flush=True)
             return str(text)
         except Exception as exc:
-            _logger.debug("VoiceInterface.listen error: %s", exc)
-            # Graceful fallback to text input on recognition error
-            try:
-                return input("you (text)> ").strip()
-            except (EOFError, KeyboardInterrupt):
-                return ""
+            _logger.debug("VoiceInterface._listen_sr error: %s", exc)
+            return ""
+
+    def _listen_whisper(self) -> str:
+        """Attempt to capture audio via Whisper offline STT."""
+        try:
+            import whisper  # type: ignore
+            import sounddevice as sd  # type: ignore
+
+            samplerate = 16_000
+            print("Listening (Whisper)…", flush=True)
+            audio = sd.rec(
+                int(self.phrase_limit * samplerate),
+                samplerate=samplerate,
+                channels=1,
+                dtype="float32",
+            )
+            sd.wait()
+            audio_np = audio.flatten()
+            model = whisper.load_model("base")
+            result = model.transcribe(audio_np, language=self.language[:2])
+            text = result.get("text", "").strip()
+            if text:
+                print(f"you> {text}", flush=True)
+            return text
+        except Exception as exc:
+            _logger.debug("VoiceInterface._listen_whisper error: %s", exc)
+            return ""
 
     def speak(self, text: str) -> None:
         """Speak *text* aloud (or print it when TTS is unavailable).
@@ -225,6 +264,14 @@ class VoiceInterface:
     def _check_sr(self) -> bool:
         try:
             import speech_recognition  # noqa: F401  # type: ignore
+            return True
+        except ImportError:
+            return False
+
+    def _check_whisper(self) -> bool:
+        try:
+            import whisper  # noqa: F401  # type: ignore
+            import sounddevice  # noqa: F401  # type: ignore
             return True
         except ImportError:
             return False

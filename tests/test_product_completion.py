@@ -644,7 +644,7 @@ class TestVersionAndStatus:
         _cmd_version(argparse.Namespace())
         captured = capsys.readouterr()
         assert "physml" in captured.out
-        assert "0.32" in captured.out
+        assert "1.0" in captured.out
 
     def test_status_command_prints_table(self, capsys):
         from physml.cli import _cmd_status
@@ -678,3 +678,172 @@ class TestTranscribeText:
         r1 = v.run_once("help")
         r2 = v.transcribe_text("help")
         assert r1 == r2
+
+
+# ===========================================================================
+# TestGoalEngineWiring — ActionDispatcher goal_engine parameter
+# ===========================================================================
+
+
+class TestGoalEngineWiring:
+    def test_dispatcher_accepts_goal_engine_param(self):
+        from physml.llm import ActionDispatcher
+        d = ActionDispatcher(goal_engine=None)
+        assert d.goal_engine is None
+
+    def test_dispatcher_show_goals_no_engine(self):
+        from physml.llm import ActionDispatcher, PromptAction
+        d = ActionDispatcher(goal_engine=None)
+        action = PromptAction(intent="show_goals", payload={}, confidence=1.0, raw_text="show goals")
+        reply = d.dispatch(action)
+        assert isinstance(reply, str)
+
+    def test_dispatcher_add_goal_no_engine(self):
+        from physml.llm import ActionDispatcher, PromptAction
+        d = ActionDispatcher(goal_engine=None)
+        action = PromptAction(
+            intent="add_goal",
+            payload={"goal_description": "Summarise sales.csv"},
+            confidence=1.0,
+            raw_text="add goal: summarise sales.csv",
+        )
+        reply = d.dispatch(action)
+        assert "Summarise sales.csv" in reply or "summarise" in reply.lower() or "noted" in reply.lower()
+
+    def test_dispatcher_add_goal_with_mock_engine(self):
+        from physml.llm import ActionDispatcher, PromptAction
+
+        class _FakeGoalEngine:
+            def add_goal(self, desc, **kwargs):
+                return "abcd1234-fake-id"
+
+        d = ActionDispatcher(goal_engine=_FakeGoalEngine())
+        action = PromptAction(
+            intent="add_goal",
+            payload={"goal_description": "Run nightly report"},
+            confidence=1.0,
+            raw_text="add goal: run nightly report",
+        )
+        reply = d.dispatch(action)
+        assert "abcd1234" in reply
+
+    def test_dispatcher_show_goals_with_mock_engine(self):
+        from physml.llm import ActionDispatcher, PromptAction
+        from dataclasses import dataclass
+
+        @dataclass
+        class _FakeGoalRecord:
+            id: str
+            description: str
+            status: str
+
+        class _FakeGoalEngine:
+            def goals(self, status=None):
+                return [_FakeGoalRecord(id="aaa-bbb-ccc", description="Do X", status="pending")]
+
+        d = ActionDispatcher(goal_engine=_FakeGoalEngine())
+        action = PromptAction(intent="show_goals", payload={}, confidence=1.0, raw_text="show goals")
+        reply = d.dispatch(action)
+        assert "Do X" in reply
+        assert "pending" in reply
+
+
+# ===========================================================================
+# TestWhisperFlag — VoiceInterface whisper_available property
+# ===========================================================================
+
+
+class TestWhisperFlag:
+    def test_whisper_available_is_bool(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        assert isinstance(v.whisper_available, bool)
+
+    def test_available_true_when_sr_or_whisper(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        # available == sr_available OR whisper_available
+        assert v.available == (v._sr_available or v._whisper_available)
+
+    def test_check_whisper_method_exists(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        assert hasattr(v, "_check_whisper")
+
+    def test_listen_sr_method_exists(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        assert hasattr(v, "_listen_sr")
+
+    def test_listen_whisper_method_exists(self):
+        from physml.voice import VoiceInterface
+        v = VoiceInterface(tts=False)
+        assert hasattr(v, "_listen_whisper")
+
+
+# ===========================================================================
+# TestHealthCheckExtended — whisper + sounddevice keys
+# ===========================================================================
+
+
+class TestHealthCheckExtended:
+    def test_health_has_whisper_key(self):
+        from physml.health import check
+        result = check()
+        assert "whisper" in result
+
+    def test_health_has_sounddevice_key(self):
+        from physml.health import check
+        result = check()
+        assert "sounddevice" in result
+
+    def test_whisper_value_is_bool(self):
+        from physml.health import check
+        result = check()
+        assert isinstance(result["whisper"], bool)
+
+    def test_sounddevice_value_is_bool(self):
+        from physml.health import check
+        result = check()
+        assert isinstance(result["sounddevice"], bool)
+
+
+# ===========================================================================
+# TestCLIIntegration — end-to-end subprocess CLI tests
+# ===========================================================================
+
+
+class TestCLIIntegration:
+    @pytest.mark.slow
+    def test_help_flag(self):
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, "-m", "physml", "--help"],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0
+        assert "physml" in result.stdout.lower() or "usage" in result.stdout.lower()
+
+    @pytest.mark.slow
+    def test_version_subcommand(self):
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, "-m", "physml", "version"],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0
+        assert "physml" in result.stdout.lower()
+
+    @pytest.mark.slow
+    def test_status_subcommand(self):
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, "-m", "physml", "status"],
+            capture_output=True, text=True, timeout=120,
+        )
+        assert result.returncode == 0
+        output = result.stdout.lower()
+        assert "scipy" in output or "pandas" in output or "physml" in output

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "physml"
-version = "0.32.0"
+version = "1.0.0"
 description = "Physics-inspired autonomous ML — the Mycelium digital companion for local AI."
 readme = "README.md"
 license = { text = "MIT" }

@@ -396,6 +396,9 @@ physml report agent.pkl
 # Export predictions to CSV
 physml export agent.pkl test.csv --out predictions.csv
 
+# Also invokable as a Python module (no PATH setup required)
+python3 -m physml --help
+
 # Natural-language REPL (executes train/predict/report/save actions)
 physml chat --session myproject
 # you> train on sales.csv
@@ -407,9 +410,10 @@ physml chat --session myproject
 # you> save
 # myco> Agent saved to 'agent.pkl'
 
-# Voice interaction loop (falls back to text if speech_recognition not installed)
+# Voice interaction loop (SR → Whisper offline → text fallback)
+# Install offline STT: pip install openai-whisper sounddevice
 physml voice --session myproject --language en-US
-# → continuous mic listening → PromptSystem routing → speak response
+# → SR first, falls back to Whisper (offline), then to text input
 
 # Run benchmark experiments on synthetic data
 physml experiment --task classification --quick
@@ -474,6 +478,7 @@ python3 -m pytest tests/ -q --timeout=120
 | Mobile edge deployment | Raspberry Pi / Android with stripped-down core |
 | Goal marketplace | Community-shared goal templates |
 | WhatsApp/Telegram native API | Replace Playwright automation with official APIs |
+| PyPI 1.0 publish | `pip install physml` from the public index |
 
 ---
 

@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "0.32.2"
+__version__ = "1.0.0"
 
 from physml.predictor import (
     PhysicsPlane,

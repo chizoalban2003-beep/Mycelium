@@ -35,6 +35,8 @@ def check() -> dict:
         * ``pandas`` (bool) — pandas importable.
         * ``speech_recognition`` (bool) — SpeechRecognition importable.
         * ``pyttsx3`` (bool) — pyttsx3 importable.
+        * ``whisper`` (bool) — OpenAI Whisper importable (offline STT).
+        * ``sounddevice`` (bool) — sounddevice importable (required by Whisper STT).
         * ``version`` (str) — current physml version string.
     """
     def _importable(name: str) -> bool:
@@ -52,5 +54,7 @@ def check() -> dict:
         "pandas": _importable("pandas"),
         "speech_recognition": _importable("speech_recognition"),
         "pyttsx3": _importable("pyttsx3"),
+        "whisper": _importable("whisper"),
+        "sounddevice": _importable("sounddevice"),
         "version": __version__,
     }

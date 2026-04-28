@@ -1227,6 +1227,7 @@ class MyceliumCompanion:
                 agent=None,
                 store=None,
                 client=self.claude_client,
+                goal_engine=self.goal_engine,
             )
             action = ps.route(text)
             return dispatcher.dispatch(action)

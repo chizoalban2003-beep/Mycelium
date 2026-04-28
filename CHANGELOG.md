@@ -5,6 +5,46 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.0.0] — 2026-04-28
+
+### Added — GoalEngine wiring, Whisper offline STT, CLI integration tests, __main__, version 1.0
+
+* **GoalEngine wiring** (`physml/llm/action_dispatcher.py`):
+  - `ActionDispatcher.__init__` now accepts `goal_engine` parameter.
+  - `_do_add_goal()` calls `goal_engine.add_goal()` when engine is attached,
+    returning the real goal id instead of a stub message.
+  - `_do_show_goals()` lists live goals with status from the engine.
+  - `MyceliumCompanion.chat_llm()` passes `self.goal_engine` to the dispatcher
+    so voice/chat commands trigger the real autonomous goal queue.
+
+* **Whisper offline STT** (`physml/voice.py`):
+  - `VoiceInterface` now checks for `whisper` + `sounddevice` at init.
+  - `whisper_available` property exposed.
+  - `available` now returns `True` when either `speech_recognition` or Whisper is installed.
+  - `_listen_sr()` / `_listen_whisper()` private methods; `listen()` tries SR
+    first, falls back to Whisper, then to `input()`.
+  - Install: `pip install openai-whisper sounddevice`.
+
+* **Health check extended** (`physml/health.py`):
+  - `check()` now includes `whisper` and `sounddevice` keys.
+
+* **`physml status`** updated to show whisper/sounddevice and correct pip hints.
+
+* **`physml/__main__.py`**:
+  - Enables `python3 -m physml` invocation for all CLI subcommands.
+
+* **Version bumped to 1.0.0** — first stable release.
+
+### Tests
+
+* `tests/test_product_completion.py` — 27 new tests appended:
+  - `TestGoalEngineWiring` — 5 tests for goal_engine parameter, mock engine dispatch.
+  - `TestWhisperFlag` — 5 tests for whisper_available, _listen_sr/whisper methods.
+  - `TestHealthCheckExtended` — 4 tests for whisper/sounddevice keys.
+  - `TestCLIIntegration` — 3 subprocess tests: `--help`, `version`, `status`.
+
+---
+
 ## [0.32.2] — 2026-04-25
 
 ### Added — UserMemory, HealthCheck, remember intent, version/status commands, experiment formatter
