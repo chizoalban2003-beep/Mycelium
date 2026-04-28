@@ -73,7 +73,7 @@ AgentCheckpoint          Stage 50 — joblib-based full-agent save/load.
 MetaLearner              Stage 51 — strategy selector via cross-task performance history.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 from physml.predictor import (
     PhysicsPlane,
@@ -427,6 +427,13 @@ from physml.voice import VoiceInterface  # noqa: E402
 from physml.experiment_runner import ExperimentRunner, BenchmarkSummary, ExperimentResult  # noqa: E402
 from physml.conversation_store import ConversationStore  # noqa: E402
 
+# v1.1 — Multi-modal learning + behavioral systems
+from physml.multimodal_ingester import MultiModalIngester, IngestResult  # noqa: E402
+from physml.screen_observer import ScreenObserver, ScreenSnapshot  # noqa: E402
+from physml.macro_recorder import MacroRecorder, MacroSequence, ActionStep, ActionType  # noqa: E402
+from physml.imitation_learner import ImitationLearner, ActionSuggestion  # noqa: E402
+from physml.user_model import UserModel  # noqa: E402
+
 __all__ = [
     "PhysicsPlane",
     "PredictionMetrics",
@@ -777,4 +784,16 @@ __all__ = [
     "ConversationStore",
     # Phase 6 — Voice interface
     "VoiceInterface",
+    # v1.1 — Multi-modal + behavioral systems
+    "MultiModalIngester",
+    "IngestResult",
+    "ScreenObserver",
+    "ScreenSnapshot",
+    "MacroRecorder",
+    "MacroSequence",
+    "ActionStep",
+    "ActionType",
+    "ImitationLearner",
+    "ActionSuggestion",
+    "UserModel",
 ]

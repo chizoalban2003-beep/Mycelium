@@ -5,6 +5,82 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.0] — 2026-04-28
+
+### Added — Multi-modal learning, screen observation, macro recording, imitation learning, user model, browser extension, mobile API
+
+#### Multi-Modal Learning Engine (`physml/multimodal_ingester.py`)
+- `MultiModalIngester`: unified ingestion pipeline for text, docs, code, PDFs, images, audio, URLs
+- Routes any source → `DocumentProcessor` → `KnowledgeExtractor` → `VectorMemory` + `KnowledgeGraph` → `UserProfileLearner`
+- Content deduplication via MD5 hash; `ingest_directory()` for bulk ingestion
+- Audio transcription via Whisper (offline) when installed
+- Wired into `FileWatcher` callback in `MyceliumCompanion.start()`
+- `physml ingest <source>` CLI command
+
+#### Screen Observer (`physml/screen_observer.py`)
+- `ScreenObserver`: background thread taking periodic screenshots
+- Active window / app tracking per platform (Linux xdotool, macOS osascript, Windows ctypes)
+- Focus-time-per-app log; `top_apps()`, `recent_context()`, `focus_summary()`
+- Claude Vision description (when API key set) with OCR (pytesseract) fallback
+- `physml observe --interval N` CLI command
+
+#### Macro Recorder + Imitation Learner
+- `MacroRecorder` (`physml/macro_recorder.py`): record mouse/keyboard/window sequences via pynput; graceful text-only fallback
+- `MacroSequence` dataclass: name, steps, duration, apps_used, to/from dict, JSON persistence
+- `ActionStep` + `ActionType` constants for typed action representation
+- `MacroRecorder.save_to_skill_library()`: auto-register recorded sequences as reusable `Skill` entries
+- `ImitationLearner` (`physml/imitation_learner.py`): HistGradientBoosting policy model trained on sequences
+- `predict_next(context_steps, context_app, top_k)` → list[ActionSuggestion]
+- Heuristic fallback when model not yet fitted
+- `physml record <name>` CLI command
+
+#### Unified User Model (`physml/user_model.py`)
+- `UserModel`: aggregates `UserProfileLearner`, `DigitalSoul`, `PersonalisationManager`, `VectorMemory`, `KnowledgeGraph`, `ScreenObserver`, `MacroRecorder`
+- `update(event)`: unified event dispatcher (interaction, screen, fact, preference, goal_completed, text)
+- `current_context()`: live snapshot of app, mood, topics, verbosity, focus
+- `behavioral_patterns()`: merged patterns from profile, screen, macros
+- `inject_into_prompt()`: rich user context for LLM system prompts
+- `recall(query)`: semantic search over all user memory
+- `physml model` CLI command
+
+#### GoalEngine → SkillLibrary Auto-Save
+- `GoalEngine.__init__` accepts `skill_library` and `user_model` parameters
+- `_auto_save_skill(goal)`: on completion, registers goal steps as a named Skill
+- `_notify_user_model(goal)`: fires `UserModel.update(goal_completed)` on completion
+
+#### Browser Extension (`physml/browser_ext/`)
+- Chrome/Firefox Manifest V3 extension
+- `background.js`: page-visit tracking via `webNavigation`, context menus (Send to Myco / Bookmark)
+- `content.js`: text selection capture, Ctrl+Shift+M keyboard shortcut, visual feedback indicator
+- `popup.html` + `popup.js`: full popup UI with chat input, learn-page, learn-selection, bookmark buttons
+- FastAPI router (`physml/browser_extension_api.py`): `/ext/page-visit`, `/ext/selection`, `/ext/bookmark`, `/ext/command`, `/ext/status`
+- Auto-mounted in `server.py` when FastAPI is available
+
+#### Mobile API (`physml/server.py`)
+- `POST /mobile/chat`: optimised short response for mobile clients
+- `POST /mobile/ingest`: ingest text/URL from mobile app
+- `GET /mobile/context`: current user context for sync
+- `GET /mobile/patterns`: behavioral patterns for mobile dashboard
+- `POST /mobile/push-intent`: push goal or intent from mobile to desktop
+- `GET /mobile/status`: full system status for mobile
+
+#### MyceliumCompanion Additions
+- New attributes: `ingester`, `screen_observer`, `macro_recorder`, `imitation_learner`, `user_model`, `skill_library`
+- `companion.ingest(source, topic)` — one-line multi-modal ingestion
+- `companion.start_screen_observer(interval, save_screenshots, llm_describe)` — start background observation
+- `companion.start_macro_recording(name)` / `stop_macro_recording()` — record → auto-save as Skill + retrain ImitationLearner
+- `companion.suggest_next_action(context_app)` — proactive action suggestions
+- FileWatcher → MultiModalIngester callback wired at startup
+- SkillLibrary + UserModel wired into GoalEngine at startup
+
+#### Tests
+- `tests/test_v2_systems.py` — 100 new non-slow tests:
+  - `TestMultiModalIngester` (17), `TestScreenObserver` (12), `TestMacroRecorder` (16)
+  - `TestImitationLearner` (7), `TestUserModel` (18), `TestGoalEngineSkillAutoSave` (6)
+  - `TestBrowserExtensionAPI` (6), `TestCompanionV2Integration` (13), `TestCLIV2Commands` (6)
+
+---
+
 ## [1.0.0] — 2026-04-28
 
 ### Added — GoalEngine wiring, Whisper offline STT, CLI integration tests, __main__, version 1.0

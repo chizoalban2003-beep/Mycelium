@@ -772,6 +772,106 @@ def create_app() -> Any:
             return {"error": "DesktopBridge not initialised"}
         return db.status()
 
+    # -----------------------------------------------------------------------
+    # Browser extension endpoints — Stage 145+
+    # -----------------------------------------------------------------------
+
+    try:
+        from physml.browser_extension_api import router as _ext_router
+        if _ext_router is not None:
+            app.include_router(_ext_router, prefix="/ext")
+    except Exception as _exc:
+        _logger.debug("server: browser_extension_api router unavailable: %s", _exc)
+
+    # -----------------------------------------------------------------------
+    # Mobile API endpoints
+    # -----------------------------------------------------------------------
+
+    from fastapi import Body as _Body
+
+    @app.post("/mobile/chat")
+    def mobile_chat(payload: dict = _Body(...)) -> dict:
+        """Optimised chat for mobile — returns short response."""
+        companion = _get_companion()
+        msg = payload.get("message", "").strip()
+        if not msg:
+            raise HTTPException(status_code=400, detail="message required")
+        try:
+            response = companion.chat(msg)
+            # Trim to ~160 chars for mobile
+            short = response[:300] + ("…" if len(response) > 300 else "")
+            return {"response": short, "full_length": len(response)}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.post("/mobile/ingest")
+    def mobile_ingest(payload: dict = _Body(...)) -> dict:
+        """Ingest text/URL from mobile app."""
+        companion = _get_companion()
+        source = payload.get("source", "").strip()
+        topic = payload.get("topic", "mobile")
+        if not source:
+            raise HTTPException(status_code=400, detail="source required")
+        ingester = getattr(companion, "ingester", None)
+        if ingester is None:
+            return {"ingested": False, "error": "ingester not initialised"}
+        try:
+            result = ingester.ingest(source, topic=topic)
+            return {"ingested": result.success, "facts": len(result.facts), "elapsed": result.elapsed}
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/mobile/context")
+    def mobile_context() -> dict:
+        """Return current user context for mobile sync."""
+        companion = _get_companion()
+        um = getattr(companion, "user_model", None)
+        if um is None:
+            return {"context": {}}
+        return {"context": um.current_context()}
+
+    @app.get("/mobile/patterns")
+    def mobile_patterns() -> dict:
+        """Return detected behavioral patterns."""
+        companion = _get_companion()
+        um = getattr(companion, "user_model", None)
+        if um is None:
+            return {"patterns": []}
+        return {"patterns": um.behavioral_patterns()}
+
+    @app.post("/mobile/push-intent")
+    def mobile_push_intent(payload: dict = _Body(...)) -> dict:
+        """Push a goal or intent from mobile to desktop."""
+        companion = _get_companion()
+        intent = payload.get("intent", "").strip()
+        goal = payload.get("goal", "").strip()
+        if goal:
+            try:
+                goal_id = companion.add_goal(goal)
+                return {"goal_id": goal_id, "status": "queued"}
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=str(exc))
+        elif intent:
+            try:
+                response = companion.chat(intent)
+                return {"response": response}
+            except Exception as exc:
+                raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=400, detail="Provide 'goal' or 'intent'")
+
+    @app.get("/mobile/status")
+    def mobile_status() -> dict:
+        """Full system status for mobile dashboard."""
+        companion = _get_companion()
+        st = companion.status() if hasattr(companion, "status") else {}
+        um = getattr(companion, "user_model", None)
+        ing = getattr(companion, "ingester", None)
+        return {
+            "companion": st,
+            "user_model": um.status() if um else None,
+            "ingester": ing.summary() if ing else None,
+        }
+
     return app
 
 

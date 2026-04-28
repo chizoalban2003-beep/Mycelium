@@ -119,6 +119,13 @@ class MyceliumCompanion:
         self.desktop_bridge: Any = None        # Stage 144 — desktop automation
         self.voice_loop: Any = None            # Stage 145 — voice interaction loop
         self._last_features: Optional[List[float]] = None  # for feedback loop
+        # v1.1 — multi-modal learning + behavioral systems
+        self.ingester: Any = None              # MultiModalIngester
+        self.screen_observer: Any = None       # ScreenObserver
+        self.macro_recorder: Any = None        # MacroRecorder
+        self.imitation_learner: Any = None     # ImitationLearner
+        self.user_model: Any = None            # UserModel
+        self.skill_library: Any = None         # SkillLibrary
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -378,8 +385,77 @@ class MyceliumCompanion:
                 "MyceliumCompanion: daily digest scheduled at %02d:00", _digest_hour
             )
 
+        # -----------------------------------------------------------------------
+        # v1.1 — Multi-modal learning + behavioral systems
+        # -----------------------------------------------------------------------
+
+        try:
+            from physml.skill_library import SkillLibrary
+            self.skill_library = SkillLibrary()
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: SkillLibrary unavailable: %s", _exc)
+
+        try:
+            from physml.multimodal_ingester import MultiModalIngester
+            self.ingester = MultiModalIngester(
+                vector_memory=self.vector_memory,
+                knowledge_graph=getattr(self, "knowledge_graph", None),
+                knowledge_extractor=self.knowledge_extractor,
+                user_profile=self.profile,
+            )
+            # Wire file watcher to ingester
+            if self.file_watcher is not None:
+                _orig_callback = self.file_watcher._callback
+
+                def _fw_callback(path: str) -> None:
+                    if _orig_callback:
+                        try:
+                            _orig_callback(path)
+                        except Exception:
+                            pass
+                    try:
+                        self.ingester.ingest(path, topic="file_watch")
+                    except Exception as exc:
+                        _logger.debug("file_watcher→ingester error: %s", exc)
+
+                self.file_watcher._callback = _fw_callback
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: MultiModalIngester unavailable: %s", _exc)
+
+        try:
+            from physml.user_model import UserModel
+            self.user_model = UserModel(
+                user_profile=self.profile,
+                digital_soul=self.soul,
+                personalisation=self.personalisation,
+                vector_memory=self.vector_memory,
+                screen_observer=None,   # set when screen_observer starts
+                macro_recorder=None,
+            )
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: UserModel unavailable: %s", _exc)
+
+        try:
+            from physml.macro_recorder import MacroRecorder
+            self.macro_recorder = MacroRecorder(skill_library=self.skill_library)
+            if self.user_model is not None:
+                self.user_model._macro = self.macro_recorder
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: MacroRecorder unavailable: %s", _exc)
+
+        try:
+            from physml.imitation_learner import ImitationLearner
+            self.imitation_learner = ImitationLearner()
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: ImitationLearner unavailable: %s", _exc)
+
+        # Wire skill_library and user_model into GoalEngine
+        if self.goal_engine is not None:
+            self.goal_engine._skill_library = self.skill_library
+            self.goal_engine._user_model = self.user_model
+
         self._started = True
-        _logger.info("MyceliumCompanion %r started (v0.31.0)", self.name)
+        _logger.info("MyceliumCompanion %r started (v1.1.0)", self.name)
 
     def personalise(self, key: str, value: Any) -> str:
         """Set a personalisation preference and return confirmation.
@@ -1235,6 +1311,132 @@ class MyceliumCompanion:
             _logger.warning("MyceliumCompanion.chat_llm error: %s", exc)
             return self.chat(text)
 
+    def ingest(self, source: str, topic: str = "document") -> Any:
+        """Ingest any content (file path, URL, or text) into Mycelium's learning stack.
+
+        Parameters
+        ----------
+        source : str
+            File path, HTTP/HTTPS URL, or raw text string.
+        topic : str
+            Topic tag for user-profile tracking.
+
+        Returns
+        -------
+        IngestResult
+        """
+        if not self._started:
+            self.start()
+        if self.ingester is None:
+            _logger.warning("MyceliumCompanion.ingest: ingester not initialised")
+            return None
+        result = self.ingester.ingest(source, topic=topic)
+        if self.user_model is not None:
+            self.user_model.update({"type": "text", "text": result.text[:500], "source": source})
+        return result
+
+    def start_screen_observer(
+        self,
+        interval: float = 60.0,
+        save_screenshots: bool = False,
+        llm_describe: bool = True,
+    ) -> Any:
+        """Start the background screen observer.
+
+        Parameters
+        ----------
+        interval : float
+            Seconds between observations.
+        save_screenshots : bool
+            Persist PNG files to disk.
+        llm_describe : bool
+            Use Claude vision to describe screen content.
+
+        Returns
+        -------
+        ScreenObserver
+        """
+        if not self._started:
+            self.start()
+        try:
+            from physml.screen_observer import ScreenObserver
+            self.screen_observer = ScreenObserver(
+                interval=interval,
+                save_screenshots=save_screenshots,
+                llm_describe=llm_describe,
+                ingester=self.ingester,
+                vector_memory=self.vector_memory,
+            )
+            if self.user_model is not None:
+                self.user_model._screen = self.screen_observer
+
+            def _on_snap(snap: Any) -> None:
+                if self.user_model is not None:
+                    self.user_model.update({
+                        "type": "screen",
+                        "app": snap.app_name,
+                        "window": snap.window_title,
+                        "description": snap.description,
+                    })
+
+            self.screen_observer._on_snapshot = _on_snap
+            self.screen_observer.start()
+            _logger.info("MyceliumCompanion: ScreenObserver started (interval=%.0fs)", interval)
+            return self.screen_observer
+        except Exception as exc:
+            _logger.warning("MyceliumCompanion.start_screen_observer error: %s", exc)
+            return None
+
+    def start_macro_recording(self, name: str = "macro") -> None:
+        """Begin recording a macro (user action sequence).
+
+        Parameters
+        ----------
+        name : str
+            Name for the recorded macro.
+        """
+        if not self._started:
+            self.start()
+        if self.macro_recorder is None:
+            _logger.warning("MyceliumCompanion: MacroRecorder not initialised")
+            return
+        self.macro_recorder.start_recording(name)
+
+    def stop_macro_recording(self) -> Any:
+        """Stop recording and save the macro as a Skill.
+
+        Returns
+        -------
+        MacroSequence or None
+        """
+        if self.macro_recorder is None:
+            return None
+        seq = self.macro_recorder.stop_recording()
+        if seq is not None:
+            self.macro_recorder.save_sequence(seq)
+            self.macro_recorder.save_to_skill_library(seq)
+            if self.imitation_learner is not None:
+                self.imitation_learner.add_sequence(seq)
+                self.imitation_learner.fit()
+            _logger.info("MyceliumCompanion: macro %r saved as skill", seq.name)
+        return seq
+
+    def suggest_next_action(self, context_app: str = "unknown") -> List[Any]:
+        """Suggest the most likely next action based on learned patterns.
+
+        Parameters
+        ----------
+        context_app : str
+            Current active application.
+
+        Returns
+        -------
+        list[ActionSuggestion]
+        """
+        if self.imitation_learner is None:
+            return []
+        return self.imitation_learner.predict_next(context_app=context_app)
+
     def start_voice_interface(
         self,
         tts: bool = True,
@@ -1258,7 +1460,7 @@ class MyceliumCompanion:
         from physml.voice import VoiceInterface
 
         ps = PromptSystem(client=self.claude_client)
-        dispatcher = ActionDispatcher(client=self.claude_client)
+        dispatcher = ActionDispatcher(client=self.claude_client, goal_engine=self.goal_engine)
 
         vi = VoiceInterface(
             prompt_system=ps,

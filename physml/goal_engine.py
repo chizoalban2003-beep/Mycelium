@@ -177,6 +177,8 @@ class GoalEngine:
         max_retries: int = 2,
         loop_interval: float = 30.0,
         escalation_callback: Optional[Callable] = None,
+        skill_library: Any = None,
+        user_model: Any = None,
     ) -> None:
         self._td = task_decomposer
         self._companion = companion
@@ -187,6 +189,8 @@ class GoalEngine:
         self.max_retries = max_retries
         self.loop_interval = loop_interval
         self._escalation = escalation_callback
+        self._skill_library = skill_library
+        self._user_model = user_model
 
         self._goals: Dict[str, GoalRecord] = {}
         self._lock = threading.Lock()
@@ -375,6 +379,8 @@ class GoalEngine:
                     f"Goal complete: {goal.description[:60]}",
                     title="✓ Myco",
                 )
+                self._auto_save_skill(goal)
+                self._notify_user_model(goal)
 
         except Exception as exc:
             goal.status = GoalStatus.FAILED
@@ -386,6 +392,52 @@ class GoalEngine:
         self._save_state()
         self._feedback.record(goal)
         return goal
+
+    def _auto_save_skill(self, goal: "GoalRecord") -> None:
+        """Save a completed goal as a reusable Skill in SkillLibrary."""
+        lib = self._skill_library
+        if lib is None:
+            # Try to find one via companion
+            if self._companion is not None:
+                lib = getattr(self._companion, "skill_library", None)
+        if lib is None:
+            return
+        try:
+            # Build a skill name from the description (slug-form)
+            name = "goal_" + "".join(
+                c if c.isalnum() else "_"
+                for c in goal.description[:40].lower()
+            ).strip("_")
+            desc = goal.description
+
+            def _replay(**kwargs: Any) -> str:
+                return f"Replayed goal: {desc}"
+
+            lib.register(
+                name=name,
+                fn=_replay,
+                tags=["auto_saved", "goal"],
+                description=f"Auto-saved from completed goal: {desc}",
+            )
+            _logger.info("GoalEngine: auto-saved skill %r from goal %s", name, goal.id[:8])
+        except Exception as exc:
+            _logger.debug("GoalEngine._auto_save_skill error: %s", exc)
+
+    def _notify_user_model(self, goal: "GoalRecord") -> None:
+        """Notify UserModel that a goal was completed."""
+        um = self._user_model
+        if um is None and self._companion is not None:
+            um = getattr(self._companion, "user_model", None)
+        if um is None:
+            return
+        try:
+            um.update({
+                "type": "goal_completed",
+                "goal_description": goal.description,
+                "steps": getattr(goal, "steps", []),
+            })
+        except Exception as exc:
+            _logger.debug("GoalEngine._notify_user_model error: %s", exc)
 
     # ------------------------------------------------------------------
     # Step dispatch — keyword-based tool routing

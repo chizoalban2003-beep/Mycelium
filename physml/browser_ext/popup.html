@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mycelium</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0d0d1a;
+      color: #e0e0ff;
+      width: 320px;
+      padding: 16px;
+    }
+    h1 { font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+    .status { font-size: 12px; color: #888; margin-bottom: 14px; }
+    .status.ok { color: #6ee7b7; }
+    .status.err { color: #f87171; }
+    .btn {
+      width: 100%;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      background: #1e1e3a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e0e0ff;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .btn:hover { background: #2a2a4a; }
+    #chat-input {
+      width: 100%;
+      padding: 8px;
+      background: #1e1e3a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e0e0ff;
+      font-size: 13px;
+      margin-bottom: 8px;
+      outline: none;
+    }
+    #response {
+      font-size: 12px;
+      color: #a0a0cc;
+      min-height: 40px;
+      word-wrap: break-word;
+      padding: 6px;
+      background: #111128;
+      border-radius: 4px;
+      display: none;
+    }
+    .divider { border-top: 1px solid #222; margin: 12px 0; }
+    .counter { font-size: 11px; color: #555; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>🍄 Mycelium</h1>
+  <div id="status" class="status">Checking connection…</div>
+
+  <input id="chat-input" type="text" placeholder="Ask Myco anything…" />
+  <button class="btn" id="btn-send">Send to Myco</button>
+
+  <div class="divider"></div>
+
+  <button class="btn" id="btn-page">📄 Learn this page</button>
+  <button class="btn" id="btn-selection">✂️ Learn selected text</button>
+  <button class="btn" id="btn-bookmark">🔖 Bookmark this page</button>
+
+  <div id="response"></div>
+  <div class="counter" id="counter"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

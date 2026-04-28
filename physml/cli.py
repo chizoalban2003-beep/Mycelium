@@ -506,7 +506,136 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p_status.set_defaults(func=_cmd_status)
 
+    # ── ingest ────────────────────────────────────────────────────────────
+    p_ingest = sub.add_parser(
+        "ingest",
+        help="Ingest a file, URL, or text into Mycelium's learning stack.",
+    )
+    p_ingest.add_argument("source", help="File path, URL, or quoted text string.")
+    p_ingest.add_argument("--topic", default="document", help="Topic tag (default: document).")
+    p_ingest.set_defaults(func=_cmd_ingest)
+
+    # ── observe ───────────────────────────────────────────────────────────
+    p_obs = sub.add_parser(
+        "observe",
+        help="Start the background screen observer.",
+    )
+    p_obs.add_argument("--interval", type=float, default=60.0, help="Seconds between snapshots.")
+    p_obs.add_argument("--save-screenshots", action="store_true", help="Save PNG screenshots to disk.")
+    p_obs.add_argument("--no-llm", action="store_true", help="Disable Claude vision descriptions.")
+    p_obs.set_defaults(func=_cmd_observe)
+
+    # ── record ────────────────────────────────────────────────────────────
+    p_rec = sub.add_parser(
+        "record",
+        help="Record a macro (user action sequence) and save as a Skill.",
+    )
+    p_rec.add_argument("name", help="Name for the recorded macro.")
+    p_rec.set_defaults(func=_cmd_record)
+
+    # ── model ─────────────────────────────────────────────────────────────
+    p_model = sub.add_parser(
+        "model",
+        help="Show the current user model (context, preferences, patterns).",
+    )
+    p_model.set_defaults(func=_cmd_model)
+
     return parser
+
+
+# ---------------------------------------------------------------------------
+# v1.1 commands
+# ---------------------------------------------------------------------------
+
+def _cmd_ingest(args: argparse.Namespace) -> None:
+    """Ingest a file, URL, or raw text into the learning stack."""
+    from physml.multimodal_ingester import MultiModalIngester
+    ing = MultiModalIngester()
+    print(f"Ingesting: {args.source!r} (topic={args.topic!r})")
+    result = ing.ingest(args.source, topic=args.topic)
+    if result.success:
+        print(f"  text chars : {len(result.text)}")
+        print(f"  facts found: {len(result.facts)}")
+        print(f"  elapsed    : {result.elapsed:.2f}s")
+        if result.facts:
+            print("  top facts  :")
+            for f in result.facts[:5]:
+                print(f"    {f.get('subject')} → {f.get('predicate')} → {f.get('object')}")
+    else:
+        print(f"  error: {result.error}")
+
+
+def _cmd_observe(args: argparse.Namespace) -> None:
+    """Start background screen observer (runs until Ctrl-C)."""
+    from physml.screen_observer import ScreenObserver
+    obs = ScreenObserver(
+        interval=args.interval,
+        save_screenshots=args.save_screenshots,
+        llm_describe=not args.no_llm,
+    )
+    print(f"Screen observer started (interval={args.interval:.0f}s). Press Ctrl-C to stop.")
+    obs.start()
+    try:
+        import time
+        while True:
+            time.sleep(5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        obs.stop()
+        print("\nFocus summary:")
+        for app, secs in obs.top_apps(10):
+            print(f"  {app:<30} {secs:.0f}s")
+
+
+def _cmd_record(args: argparse.Namespace) -> None:
+    """Record a macro and save as a Skill."""
+    from physml.macro_recorder import MacroRecorder
+    recorder = MacroRecorder()
+    if not recorder.available:
+        print("pynput not installed — manual recording only. Install: pip install pynput")
+        print("Recording text-only demo sequence...")
+        seq = recorder.record_text_sequence(args.name, [
+            {"action_type": "click", "x": 100, "y": 100, "app_name": "demo"},
+        ])
+        saved = recorder.save_to_skill_library(seq)
+        print(f"Demo sequence saved to skill library: {saved}")
+        return
+
+    print(f"Recording macro {args.name!r} — perform your actions. Press Ctrl-C when done.")
+    recorder.start_recording(args.name)
+    try:
+        import time
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
+    seq = recorder.stop_recording()
+    if seq is None:
+        print("Too few steps recorded.")
+        return
+    path = recorder.save_sequence(seq)
+    saved = recorder.save_to_skill_library(seq)
+    print(f"Macro {seq.name!r}: {len(seq.steps)} steps, {seq.duration:.1f}s")
+    print(f"Saved to: {path}")
+    print(f"Registered as Skill: {saved}")
+
+
+def _cmd_model(args: argparse.Namespace) -> None:  # noqa: ARG001
+    """Show the current user model."""
+    from physml.user_model import UserModel
+    model = UserModel()
+    ctx = model.current_context()
+    print("User Model — current context:")
+    for k, v in ctx.items():
+        print(f"  {k:<20} {v}")
+    patterns = model.behavioral_patterns()
+    if patterns:
+        print("\nBehavioral patterns:")
+        for p in patterns[:5]:
+            print(f"  • {p.get('description', '')}")
+    else:
+        print("\nNo patterns detected yet. Interact more with Myco to build your model.")
 
 
 # ---------------------------------------------------------------------------

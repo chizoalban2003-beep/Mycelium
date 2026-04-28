@@ -20,6 +20,46 @@ Like the mycelium fungus that silently connects a forest, Myco works in the back
 
 ## What it can do right now
 
+### Learn from any kind of content (v1.1)
+```python
+myco = MyceliumCompanion()
+myco.start()
+
+# Ingest a document, code file, URL, or raw text — all stored in semantic memory
+myco.ingest("research_notes.pdf")
+myco.ingest("https://arxiv.org/abs/2305.12345")
+myco.ingest("My name is Alex and I specialise in distributed systems.")
+myco.ingest("src/main.py")   # learns your code patterns
+
+# Or from the CLI
+# physml ingest research_notes.pdf --topic research
+```
+
+### Watch and learn what you do on-screen (v1.1)
+```python
+# Background screen observer — quietly tracks what you're working on
+observer = myco.start_screen_observer(interval=60.0)
+# ...
+print(observer.top_apps(5))
+# [("VSCode", 3620.0), ("Chrome", 1200.0), ("Terminal", 800.0)]
+```
+
+### Record actions and replay them (v1.1)
+```python
+# Record a task you perform manually
+myco.start_macro_recording("rename_reports")
+# ... user renames files, types text, clicks around ...
+seq = myco.stop_macro_recording()
+# Macro is auto-saved as a reusable Skill
+
+# Myco learns from your recordings and proactively suggests actions
+suggestions = myco.suggest_next_action(context_app="Finder")
+for s in suggestions:
+    print(s.action_type, f"{s.confidence:.0%}")
+# double_click  72%
+# type_text     18%
+```
+
 ### Learn and predict from your data
 ```python
 from physml.companion import MyceliumCompanion
@@ -422,8 +462,24 @@ physml experiment --task classification --quick
 # Ask Claude to explain a saved agent
 physml explain agent.pkl
 
-# Start the REST API + web UI
+# Ingest any file, URL, or text
+physml ingest notes.pdf --topic research
+physml ingest "My name is Alex and I work as a data scientist."
+
+# Start background screen observer (tracks what you work on)
+physml observe --interval 30
+
+# Record a macro (requires: pip install pynput)
+physml record open_browser
+
+# Show the current user model (context + patterns)
+physml model
+
+# Start the REST API + web UI (includes mobile API + browser extension endpoints)
 uvicorn physml.server:app --reload
+
+# Browser extension: load physml/browser_ext/ as unpacked Chrome/Firefox extension
+# Then the extension posts to http://localhost:8000/ext/* automatically
 ```
 
 ---
