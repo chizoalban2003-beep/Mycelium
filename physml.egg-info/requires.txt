@@ -51,6 +51,9 @@ python-dotenv>=1.0
 [llm]
 anthropic>=0.40
 
+[local]
+llama-cpp-python>=0.2
+
 [notify]
 plyer>=2.1
 

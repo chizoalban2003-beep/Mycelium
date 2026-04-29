@@ -1,2 +1,3 @@
 [console_scripts]
+mycelium = physml.cli:main
 physml = physml.cli:main
