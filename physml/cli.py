@@ -926,8 +926,27 @@ def _cmd_train(args: argparse.Namespace) -> None:
 # Entry-point
 # ---------------------------------------------------------------------------
 
+def _load_env_early() -> None:
+    """Load ~/.mycelium/.env before any physml module reads os.environ."""
+    env_path = Path("~/.mycelium/.env").expanduser()
+    if not env_path.exists():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path, override=False)
+    except ImportError:
+        import os as _os
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                if k.strip() not in _os.environ:
+                    _os.environ[k.strip()] = v.strip()
+
+
 def main(argv: list[str] | None = None) -> None:
-    """Main entry-point for the ``physml`` CLI."""
+    """Main entry-point for the ``physml`` / ``mycelium`` CLI."""
+    _load_env_early()
     parser = _build_parser()
     args = parser.parse_args(argv)
     args.func(args)
