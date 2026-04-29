@@ -23,7 +23,10 @@ pytestmark = pytest.mark.skipif(not _FASTAPI_OK, reason="fastapi/httpx not insta
 @pytest.fixture(scope="module")
 def client():
     app = create_app()
-    return TestClient(app)
+    client = TestClient(app)
+    token = client.post("/auth/token", json={"user_id": "test", "password": ""}).json()["access_token"]
+    client.headers.update({"Authorization": f"Bearer {token}"})
+    return client
 
 
 # ---------------------------------------------------------------------------

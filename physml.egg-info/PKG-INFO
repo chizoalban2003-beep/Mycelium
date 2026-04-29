@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: physml
-Version: 1.4.0
+Version: 0.31.0
 Summary: Physics-inspired autonomous ML — the Mycelium digital companion for local AI.
 Author: Mycelium Contributors
 License: MIT
@@ -38,8 +38,6 @@ Requires-Dist: ruff; extra == "dev"
 Requires-Dist: httpx; extra == "dev"
 Provides-Extra: llm
 Requires-Dist: anthropic>=0.40; extra == "llm"
-Provides-Extra: local
-Requires-Dist: llama-cpp-python>=0.2; extra == "local"
 Provides-Extra: voice
 Requires-Dist: faster-whisper>=1.0; extra == "voice"
 Requires-Dist: sounddevice>=0.4; extra == "voice"
@@ -106,122 +104,6 @@ Like the mycelium fungus that silently connects a forest, Myco works in the back
 ---
 
 ## What it can do right now
-
-### Learn from any kind of content (v1.1)
-```python
-myco = MyceliumCompanion()
-myco.start()
-
-# Ingest a document, code file, URL, or raw text — all stored in semantic memory
-myco.ingest("research_notes.pdf")
-myco.ingest("https://arxiv.org/abs/2305.12345")
-myco.ingest("My name is Alex and I specialise in distributed systems.")
-myco.ingest("src/main.py")   # learns your code patterns
-
-# Or from the CLI
-# physml ingest research_notes.pdf --topic research
-```
-
-### Watch and learn what you do on-screen (v1.1)
-```python
-# Background screen observer — quietly tracks what you're working on
-observer = myco.start_screen_observer(interval=60.0)
-# ...
-print(observer.top_apps(5))
-# [("VSCode", 3620.0), ("Chrome", 1200.0), ("Terminal", 800.0)]
-```
-
-### Record actions and replay them (v1.1)
-```python
-# Record a task you perform manually
-myco.start_macro_recording("rename_reports")
-# ... user renames files, types text, clicks around ...
-seq = myco.stop_macro_recording()
-# Macro is auto-saved as a reusable Skill
-
-# Myco learns from your recordings and proactively suggests actions
-suggestions = myco.suggest_next_action(context_app="Finder")
-for s in suggestions:
-    print(s.action_type, f"{s.confidence:.0%}")
-# double_click  72%
-# type_text     18%
-```
-
-### Run fully offline — no API key needed (v1.3)
-```bash
-# Install and start ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama pull llama3.2        # ~2GB text model
-ollama pull llava           # ~4GB vision model (optional)
-ollama serve                # start the local server
-```
-
-```python
-from physml.llm import LocalLLM
-
-llm = LocalLLM()            # auto-detects ollama
-print(llm.available)        # True when ollama is running
-result = llm.complete("Explain Python decorators")
-print(result.text)
-
-# Vision analysis (requires llava)
-result = llm.vision_chat(image_b64, "What UI elements do you see?")
-```
-
-Myco automatically uses your local ollama when `ANTHROPIC_API_KEY` is not set — no code changes needed.
-
-### Automate any UI task with vision (v1.3)
-```python
-from physml import VisionAgent
-
-va = VisionAgent()          # auto-detects Claude Vision or ollama/llava
-
-# Analyse what's on screen
-result = va.analyse_current_screen()
-print(result.description)
-print(result.elements)      # detected buttons, inputs, menus with coordinates
-
-# Find and click any element by description
-va.find_and_click("Save button")
-va.find_and_click("search box")
-
-# Wait until something appears
-va.watch_for("confirmation dialog", timeout=10.0)
-
-# Ask vision model how to perform a goal step
-step = va.describe_goal_step("send email", "compose message")
-print(step["action"], step["target_description"])
-```
-
-### Ask specialist agents for domain-specific help (v1.2)
-```python
-from physml import SpecialistFederation
-
-fed = SpecialistFederation()
-fed.start()
-
-# Routes automatically to the right specialist
-result = fed.query("How do I optimise this SQL join?")
-print(f"[{result['specialist']}] {result['response']}")
-# [Data] Use an index on the join column...
-
-result = fed.query("debug my Python exception", context={"app": "VS Code"})
-# [Coder] Check the traceback for...
-
-# Broadcast a fact — all specialists learn it
-fed.broadcast_fact("User works with PostgreSQL 16 and Python 3.12")
-```
-
-### Use it from your phone (v1.2 — Mobile PWA)
-```bash
-# Start server on your computer
-uvicorn physml.server:app --host 0.0.0.0 --port 8000
-
-# On your phone: open http://<your-ip>:8000/pwa/
-# Tap "Add to Home Screen" → installed as a native-feeling app
-```
-
-The mobile PWA includes: chat, knowledge ingestion, context view, behavioral patterns, and current task intent — all connecting to your local Myco server over Wi-Fi.
 
 ### Learn and predict from your data
 ```python
@@ -305,49 +187,6 @@ myco.start_voice(wake_word="hey myco", speak_response=True)
 
 # Stop voice
 myco.stop_voice()
-
-# Or use VoiceInterface (simpler, speech_recognition + pyttsx3)
-myco.start_voice_interface(tts=True, language="en-US")
-```
-
-### Use the LLM + action dispatch layer directly
-
-```python
-from physml.llm import ClaudeClient, PromptSystem, ActionDispatcher
-from physml.conversation_store import ConversationStore
-
-client = ClaudeClient()          # reads ANTHROPIC_API_KEY
-store = ConversationStore("~/.mycelium/conversations/demo.json")
-ps = PromptSystem(client=client)
-dispatcher = ActionDispatcher(store=store, client=client)
-
-# Route intent and execute action in one step
-action = ps.route("train on sales.csv")
-print(action.intent)             # "train"
-response = dispatcher.dispatch(action)
-print(response)                  # "Trained on 'sales.csv': 1200 samples ..."
-
-# Voice interface with graceful degradation
-from physml.voice import VoiceInterface
-vi = VoiceInterface(prompt_system=ps, dispatcher=dispatcher, tts=False)
-print(vi.available)              # True if speech_recognition installed
-vi.run_once("show me a report")  # single text turn (no mic needed)
-```
-
-### Run benchmark experiments with Claude analysis
-
-```python
-from physml.experiment_runner import ExperimentRunner
-from physml.llm import ClaudeClient
-
-runner = ExperimentRunner()
-summary = runner.run(task="regression", n_samples=200)
-print(summary)   # BenchmarkSummary(task=regression, best_R²=0.9412, ...)
-
-# Get a plain-English analysis from Claude
-client = ClaudeClient()
-analysis = runner.analyze_with_llm(summary, client)
-print(analysis)  # "The best configuration used a liquid-phase medium with 10 cycles..."
 ```
 
 ### Scheduled goals — recurring tasks
@@ -544,7 +383,6 @@ physml/
 | **Identity** | `DigitalSoul`, `PersonalisationManager` |
 | **Infrastructure** | `FileWatcher`, `SecureVault`, `ModelManager`, `ScheduledGoals` |
 | **API** | `MyceliumCompanion`, FastAPI server + SSE streaming, CLI |
-| **LLM layer** | `ClaudeClient`, `PromptSystem`, `ActionDispatcher`, `physml chat`, `physml voice` |
 
 ### GoalEngine step routing
 
@@ -587,62 +425,9 @@ Environment via `.env` file (see `.env.example`).
 ## Command line
 
 ```bash
-# Train a model on a CSV file
 physml fit my_data.csv --target outcome_column --out agent.pkl
-
-# Predict with a saved agent
-physml query agent.pkl test.csv --out predictions.csv
-
-# Print a report of a saved agent
-physml report agent.pkl
-
-# Export predictions to CSV
-physml export agent.pkl test.csv --out predictions.csv
-
-# Also invokable as a Python module (no PATH setup required)
-python3 -m physml --help
-
-# Natural-language REPL (executes train/predict/report/save actions)
-physml chat --session myproject
-# you> train on sales.csv
-# myco> Trained on 'sales.csv': 1200 samples, 5 features, target='revenue'.
-# you> predict 1500 40 3.5
-# myco> Prediction: 1.0  confidence: 82%
-# you> report
-# myco> n_samples_seen_: 1200 ...
-# you> save
-# myco> Agent saved to 'agent.pkl'
-
-# Voice interaction loop (SR → Whisper offline → text fallback)
-# Install offline STT: pip install openai-whisper sounddevice
-physml voice --session myproject --language en-US
-# → SR first, falls back to Whisper (offline), then to text input
-
-# Run benchmark experiments on synthetic data
-physml experiment --task classification --quick
-# → runs 1 config, prints BenchmarkSummary + Claude analysis (if API key set)
-
-# Ask Claude to explain a saved agent
-physml explain agent.pkl
-
-# Ingest any file, URL, or text
-physml ingest notes.pdf --topic research
-physml ingest "My name is Alex and I work as a data scientist."
-
-# Start background screen observer (tracks what you work on)
-physml observe --interval 30
-
-# Record a macro (requires: pip install pynput)
-physml record open_browser
-
-# Show the current user model (context + patterns)
-physml model
-
-# Start the REST API + web UI (includes mobile API + browser extension endpoints)
+physml predict agent.pkl 1.2 3.4 5.6
 uvicorn physml.server:app --reload
-
-# Browser extension: load physml/browser_ext/ as unpacked Chrome/Firefox extension
-# Then the extension posts to http://localhost:8000/ext/* automatically
 ```
 
 ---
@@ -688,27 +473,15 @@ python3 -m pytest tests/ -q --timeout=120
 
 ---
 
-## What's shipped vs what's next
+## Roadmap
 
-### Shipped ✅
-
-| Version | Feature |
+| Next step | What it adds |
 |---|---|
-| v1.0 | Active learning core, GoalEngine, voice interface, REST API, CLI |
-| v1.1 | Multi-modal ingestion, screen observer, macro recorder, imitation learner, user model, browser extension, mobile API |
-| v1.2 | Specialist federation (6 domain agents), mobile PWA, comprehensive docs, PyPI distribution packages |
-| v1.3 | Local LLM (ollama + llama.cpp), VisionAgent (computer-use), server auth hardening + rate limiting |
-
-### Next steps
-
-| Feature | What it adds |
-|---|---|
-| Vision / VLM | Full computer-use agent — describe and act on any screen |
+| Vision / VLM | Describe what's on screen; full computer-use agent |
+| Multi-agent federation | Specialist agents (finance, health, code) sharing knowledge |
 | Mobile edge deployment | Raspberry Pi / Android with stripped-down core |
-| Goal marketplace | Community-shared goal templates and skill packs |
+| Goal marketplace | Community-shared goal templates |
 | WhatsApp/Telegram native API | Replace Playwright automation with official APIs |
-| PyPI publish | Push v1.2.0 tag → GitHub Actions auto-publishes to PyPI |
-| Fine-tuned local LLM | `llama.cpp` / `ollama` backend for fully-offline LLM |
 
 ---
 
