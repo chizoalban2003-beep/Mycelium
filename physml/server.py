@@ -68,12 +68,22 @@ _SESSION_TTL = 3600  # seconds before an idle session is evicted
 # JWT auth helpers (stdlib-only, no PyJWT dependency)
 # ---------------------------------------------------------------------------
 
-_JWT_SECRET = os.environ.get("MYCELIUM_SECRET", "mycelium-dev-secret-change-me")
+_JWT_SECRET = os.environ.get("MYCELIUM_SECRET", "")
 _JWT_EXPIRY = 86400  # 24 hours
 
-# Auth gate: set MYCO_REQUIRE_AUTH=1 to require bearer token on mobile/ext endpoints
-_REQUIRE_AUTH = os.environ.get("MYCO_REQUIRE_AUTH", "0").strip() in ("1", "true", "yes")
-# Password for /auth/token: set MYCO_PASSWORD or leave empty (open by default)
+# Warn loudly when no secret is configured — generate one with `mycelium setup`
+if not _JWT_SECRET:
+    import secrets as _secrets
+    _JWT_SECRET = _secrets.token_hex(32)
+    _logger.warning(
+        "MYCELIUM_SECRET not set — using a random ephemeral secret. "
+        "Tokens will be invalidated on restart. Run `mycelium setup` to persist a secret."
+    )
+
+# Auth gate: defaults ON for production safety.
+# Set MYCO_REQUIRE_AUTH=0 to disable (e.g. pure local single-user).
+_REQUIRE_AUTH = os.environ.get("MYCO_REQUIRE_AUTH", "1").strip() not in ("0", "false", "no")
+# Password for /auth/token: set MYCO_PASSWORD or leave empty (no password gate)
 _MYCO_PASSWORD = os.environ.get("MYCO_PASSWORD", "")
 
 # ---------------------------------------------------------------------------
@@ -334,38 +344,50 @@ def create_app() -> Any:
         return {"valid": True, "user_id": user_id}
 
     # -----------------------------------------------------------------------
-    # Companion chat endpoint
+    # Per-user companion registry — each authenticated user gets their own
+    # companion instance with isolated data_dir under ~/.mycelium/users/<uid>
     # -----------------------------------------------------------------------
 
-    _companion: Any = None  # module-level singleton
+    _companions: dict[str, Any] = {}  # user_id → MyceliumCompanion
+    _companions_lock = __import__("threading").Lock()
 
-    def _get_companion() -> Any:
-        nonlocal _companion
-        if _companion is None:
-            try:
-                from physml.companion import MyceliumCompanion
-                _companion = MyceliumCompanion()
-                _companion.start()
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=503, detail=f"Companion unavailable: {exc}"
-                )
-        return _companion
+    def _get_companion(user_id: str = "default") -> Any:
+        with _companions_lock:
+            if user_id not in _companions:
+                try:
+                    from physml.companion import MyceliumCompanion
+                    import pathlib as _pl
+                    base = _pl.Path("~/.mycelium").expanduser()
+                    if user_id in ("default", "anonymous"):
+                        data_dir = str(base)
+                    else:
+                        data_dir = str(base / "users" / user_id)
+                    companion = MyceliumCompanion(data_dir=data_dir)
+                    companion.start()
+                    _companions[user_id] = companion
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=503, detail=f"Companion unavailable: {exc}"
+                    )
+            return _companions[user_id]
 
     @app.post("/chat")
-    def chat(req: ChatRequest) -> dict:
+    def chat(
+        req: ChatRequest,
+        user_id: str = Depends(get_current_user),
+    ) -> dict:
         """Send a message to the Mycelium companion and get a response."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         try:
             response = companion.chat(req.message)
-            return {"response": response, "user_id": req.user_id}
+            return {"response": response, "user_id": user_id}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.get("/companion/status")
-    def companion_status() -> dict:
+    def companion_status(user_id: str = Depends(get_current_user)) -> dict:
         """Return companion system status."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         return companion.status()
 
     @app.get("/", response_class=HTMLResponse)
@@ -877,24 +899,29 @@ def create_app() -> Any:
     from fastapi import Body as _Body
 
     @app.post("/mobile/chat")
-    def mobile_chat(payload: dict = _Body(...)) -> dict:
+    def mobile_chat(
+        payload: dict = _Body(...),
+        user_id: str = Depends(get_current_user),
+    ) -> dict:
         """Optimised chat for mobile — returns short response."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         msg = payload.get("message", "").strip()
         if not msg:
             raise HTTPException(status_code=400, detail="message required")
         try:
             response = companion.chat(msg)
-            # Trim to ~160 chars for mobile
             short = response[:300] + ("…" if len(response) > 300 else "")
             return {"response": short, "full_length": len(response)}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.post("/mobile/ingest")
-    def mobile_ingest(payload: dict = _Body(...)) -> dict:
+    def mobile_ingest(
+        payload: dict = _Body(...),
+        user_id: str = Depends(get_current_user),
+    ) -> dict:
         """Ingest text/URL from mobile app."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         source = payload.get("source", "").strip()
         topic = payload.get("topic", "mobile")
         if not source:
@@ -909,27 +936,30 @@ def create_app() -> Any:
             raise HTTPException(status_code=500, detail=str(exc))
 
     @app.get("/mobile/context")
-    def mobile_context() -> dict:
+    def mobile_context(user_id: str = Depends(get_current_user)) -> dict:
         """Return current user context for mobile sync."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         um = getattr(companion, "user_model", None)
         if um is None:
             return {"context": {}}
         return {"context": um.current_context()}
 
     @app.get("/mobile/patterns")
-    def mobile_patterns() -> dict:
+    def mobile_patterns(user_id: str = Depends(get_current_user)) -> dict:
         """Return detected behavioral patterns."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         um = getattr(companion, "user_model", None)
         if um is None:
             return {"patterns": []}
         return {"patterns": um.behavioral_patterns()}
 
     @app.post("/mobile/push-intent")
-    def mobile_push_intent(payload: dict = _Body(...)) -> dict:
+    def mobile_push_intent(
+        payload: dict = _Body(...),
+        user_id: str = Depends(get_current_user),
+    ) -> dict:
         """Push a goal or intent from mobile to desktop."""
-        companion = _get_companion()
+        companion = _get_companion(user_id)
         intent = payload.get("intent", "").strip()
         goal = payload.get("goal", "").strip()
         if goal:
@@ -949,7 +979,7 @@ def create_app() -> Any:
     @app.get("/mobile/status")
     def mobile_status() -> dict:
         """Full system status for mobile dashboard."""
-        companion = _get_companion()
+        companion = _get_companion("default")
         st = companion.status() if hasattr(companion, "status") else {}
         um = getattr(companion, "user_model", None)
         ing = getattr(companion, "ingester", None)
@@ -962,7 +992,7 @@ def create_app() -> Any:
         except Exception:
             pass
         return {
-            "version": "1.3.0",
+            "version": "1.4.0",
             "companion": st,
             "user_model": um.status() if um else None,
             "ingester": ing.summary() if ing else None,

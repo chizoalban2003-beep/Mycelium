@@ -555,6 +555,63 @@ def _build_parser() -> argparse.ArgumentParser:
     p_fed.add_argument("--list", action="store_true", help="List available specialists.")
     p_fed.set_defaults(func=_cmd_federation)
 
+    # ── setup ─────────────────────────────────────────────────────────────
+    p_setup = sub.add_parser(
+        "setup",
+        help="Interactive first-run wizard: generate .env, TLS cert, and data dir.",
+    )
+    p_setup.add_argument(
+        "--data-dir", default="~/.mycelium",
+        help="Where to store Mycelium data (default: ~/.mycelium).",
+    )
+    p_setup.add_argument(
+        "--host", default="127.0.0.1",
+        help="Host to bind the server to (default: 127.0.0.1).",
+    )
+    p_setup.add_argument(
+        "--port", type=int, default=8000,
+        help="Port to listen on (default: 8000).",
+    )
+    p_setup.add_argument(
+        "--password", default="",
+        help="Set a login password (leave blank for no password gate).",
+    )
+    p_setup.add_argument(
+        "--no-tls", action="store_true",
+        help="Skip TLS cert generation (HTTP only — local use).",
+    )
+    p_setup.set_defaults(func=_cmd_setup)
+
+    # ── serve ─────────────────────────────────────────────────────────────
+    p_serve = sub.add_parser(
+        "serve",
+        help="Start the Mycelium REST + WebSocket server.",
+    )
+    p_serve.add_argument("--host", default="", help="Override bind host from .env.")
+    p_serve.add_argument("--port", type=int, default=0, help="Override port from .env.")
+    p_serve.add_argument("--reload", action="store_true", help="Enable hot-reload (dev mode).")
+    p_serve.add_argument("--no-tls", action="store_true", help="Force HTTP even if certs exist.")
+    p_serve.set_defaults(func=_cmd_serve)
+
+    # ── train ─────────────────────────────────────────────────────────────
+    p_train = sub.add_parser(
+        "train",
+        help="Bootstrap training from interaction history and any available CSV data.",
+    )
+    p_train.add_argument(
+        "--csv", default="",
+        help="Optional path to a labelled CSV file to additionally train on.",
+    )
+    p_train.add_argument(
+        "--target", default="",
+        help="Target column name when --csv is provided.",
+    )
+    p_train.add_argument(
+        "--epochs", type=int, default=1,
+        help="Training epochs (default: 1).",
+    )
+    p_train.set_defaults(func=_cmd_train)
+
     return parser
 
 
@@ -671,6 +728,198 @@ def _cmd_federation(args: argparse.Namespace) -> None:
     result = fed.query(args.query, context=ctx)
     print(f"\n[{result['specialist']}] ({result['elapsed']:.2f}s)")
     print(result["response"])
+
+
+# ---------------------------------------------------------------------------
+# v1.4 commands
+# ---------------------------------------------------------------------------
+
+def _generate_tls_cert(cert_path: Path, key_path: Path, host: str) -> bool:
+    """Generate a self-signed TLS certificate. Returns True on success."""
+    try:
+        import subprocess
+        cert_path.parent.mkdir(parents=True, exist_ok=True)
+        cn = host if host not in ("0.0.0.0", "") else "localhost"
+        result = subprocess.run(
+            [
+                "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                "-keyout", str(key_path), "-out", str(cert_path),
+                "-days", "3650", "-nodes",
+                "-subj", f"/CN={cn}/O=Mycelium/OU=LocalAI",
+                "-addext", f"subjectAltName=DNS:localhost,DNS:{cn},IP:127.0.0.1",
+            ],
+            capture_output=True, text=True, timeout=30,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def _cmd_setup(args: argparse.Namespace) -> None:
+    """Interactive setup wizard: .env, TLS cert, data directory."""
+    import secrets
+    data_dir = Path(args.data_dir).expanduser()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    env_path = data_dir / ".env"
+    cert_path = data_dir / "tls" / "cert.pem"
+    key_path = data_dir / "tls" / "key.pem"
+
+    secret = secrets.token_hex(32)
+    host = args.host or "127.0.0.1"
+    port = args.port or 8000
+    password = args.password or ""
+
+    tls_ok = False
+    if not args.no_tls:
+        print("Generating TLS certificate...")
+        tls_ok = _generate_tls_cert(cert_path, key_path, host)
+        if tls_ok:
+            print(f"  cert → {cert_path}")
+            print(f"  key  → {key_path}")
+        else:
+            print("  openssl not found — skipping TLS (HTTP only). Install openssl for HTTPS.")
+
+    env_lines = [
+        f"MYCELIUM_SECRET={secret}",
+        f"MYCO_HOST={host}",
+        f"MYCO_PORT={port}",
+        "MYCO_REQUIRE_AUTH=1",
+    ]
+    if password:
+        env_lines.append(f"MYCO_PASSWORD={password}")
+    if tls_ok:
+        env_lines += [
+            f"MYCO_TLS_CERT={cert_path}",
+            f"MYCO_TLS_KEY={key_path}",
+        ]
+    env_path.write_text("\n".join(env_lines) + "\n")
+    print("\nMycelium setup complete.")
+    print(f"  data dir : {data_dir}")
+    print(f"  .env     : {env_path}")
+    print("  auth     : required (MYCO_REQUIRE_AUTH=1)")
+    print(f"  password : {'set' if password else 'none (open token endpoint)'}")
+    proto = "https" if tls_ok else "http"
+    print("\nStart with:  mycelium serve")
+    print(f"Then open:   {proto}://{host}:{port}/docs")
+
+
+def _cmd_serve(args: argparse.Namespace) -> None:
+    """Start the Mycelium REST server with config from .env."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("uvicorn is required: pip install uvicorn")
+        sys.exit(1)
+
+    # Load .env if available
+    _env_path = Path("~/.mycelium/.env").expanduser()
+    if _env_path.exists():
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(_env_path, override=False)
+        except ImportError:
+            for line in _env_path.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, _, v = line.partition("=")
+                    if k.strip() not in __import__("os").environ:
+                        __import__("os").environ[k.strip()] = v.strip()
+
+    import os as _os
+    host = args.host or _os.environ.get("MYCO_HOST", "127.0.0.1")
+    port = args.port or int(_os.environ.get("MYCO_PORT", "8000"))
+    cert = None if args.no_tls else _os.environ.get("MYCO_TLS_CERT", "")
+    key = None if args.no_tls else _os.environ.get("MYCO_TLS_KEY", "")
+
+    from physml.server import create_app
+    application = create_app()
+
+    proto = "https" if (cert and key and Path(cert).exists() and Path(key).exists()) else "http"
+    print(f"Mycelium server starting on {proto}://{host}:{port}")
+    if proto == "https":
+        print(f"  TLS cert : {cert}")
+    print(f"  Auth     : {'required' if _os.environ.get('MYCO_REQUIRE_AUTH','1') not in ('0','false','no') else 'open'}")
+    print(f"  Docs     : {proto}://{host}:{port}/docs")
+
+    uvicorn_kwargs: dict = dict(host=host, port=port, reload=args.reload)
+    if proto == "https":
+        uvicorn_kwargs["ssl_certfile"] = cert
+        uvicorn_kwargs["ssl_keyfile"] = key
+    uvicorn.run(application, **uvicorn_kwargs)
+
+
+def _cmd_train(args: argparse.Namespace) -> None:
+    """Bootstrap training from interaction history and optional CSV data."""
+    from physml.companion import MyceliumCompanion
+    print("Initialising Mycelium companion for training...")
+    companion = MyceliumCompanion()
+    companion.start()
+
+    trained_anything = False
+
+    # 1. FeedbackLoop — apply any buffered corrections
+    fl = getattr(companion, "feedback_loop", None)
+    if fl is not None:
+        st = fl.status()
+        pending = st.get("pending_corrections", 0)
+        if pending:
+            print(f"Applying {pending} buffered user corrections via FeedbackLoop...")
+            fl._apply_corrections([c for c in fl._corrections if not c.applied])
+            trained_anything = True
+        else:
+            print("FeedbackLoop: no pending corrections.")
+    else:
+        print("FeedbackLoop not initialised — skipping.")
+
+    # 2. PersonalisationEngine — sync profile
+    pe = getattr(companion, "personalisation", None)
+    if pe is not None:
+        print("Syncing personalisation profile...")
+        try:
+            pe.sync()
+        except Exception:
+            pass
+        trained_anything = True
+
+    # 3. Optional CSV training via ModelManager
+    if args.csv and args.target:
+        csv_path = Path(args.csv).expanduser()
+        if csv_path.exists():
+            print(f"Training ModelManager on {csv_path} (target={args.target!r})...")
+            try:
+                from physml.model_manager import ModelManager
+                mgr = ModelManager()
+                result = mgr.train_from_csv(str(csv_path), target=args.target)
+                print(f"  accuracy: {result.get('accuracy', 'n/a')}")
+                print(f"  rows    : {result.get('n_samples', 'n/a')}")
+                trained_anything = True
+            except Exception as exc:
+                print(f"  CSV training failed: {exc}")
+        else:
+            print(f"CSV not found: {csv_path}")
+
+    # 4. VectorMemory — rebuild index from existing facts
+    vm = getattr(companion, "vector_memory", None)
+    if vm is not None and hasattr(vm, "rebuild_index"):
+        print("Rebuilding vector memory index...")
+        try:
+            vm.rebuild_index()
+            trained_anything = True
+        except Exception:
+            pass
+
+    # 5. Soul stats update
+    soul = getattr(companion, "soul", None)
+    if soul is not None:
+        soul._stats["total_training_rounds"] = soul._stats.get("total_training_rounds", 0) + 1
+        soul.record_event("training_run", details={"csv": args.csv, "epochs": args.epochs})
+        soul.save()
+
+    companion.stop()
+    if trained_anything:
+        print("\nTraining complete. Mycelium is ready.")
+    else:
+        print("\nNothing to train yet — interact with Myco first, then re-run `mycelium train`.")
 
 
 # ---------------------------------------------------------------------------

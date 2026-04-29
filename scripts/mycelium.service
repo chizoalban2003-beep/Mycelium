@@ -1,0 +1,27 @@
+[Unit]
+Description=Mycelium Local AI Companion
+Documentation=https://github.com/chizoalban2003-beep/Mycelium
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=/home/%i
+EnvironmentFile=-/home/%i/.mycelium/.env
+ExecStartPre=/bin/sh -c 'mycelium setup --no-tls 2>/dev/null || true'
+ExecStart=mycelium serve
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# Sandbox
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/home/%i/.mycelium /tmp
+
+[Install]
+WantedBy=multi-user.target

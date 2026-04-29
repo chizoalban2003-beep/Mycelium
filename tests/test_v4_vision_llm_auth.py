@@ -1,4 +1,4 @@
-"""Tests for v1.3.0: LocalLLM, VisionAgent, server auth hardening."""
+"""Tests for v1.4.0: LocalLLM, VisionAgent, server auth hardening."""
 
 from __future__ import annotations
 
@@ -333,9 +333,10 @@ class TestServerAuth:
         resp = client.get("/auth/verify", headers={"Authorization": "Bearer bad.token"})
         assert resp.status_code == 401
 
-    def test_no_token_returns_200_when_not_required(self):
+    def test_mobile_status_returns_200_with_valid_token(self):
         client = self._get_client()
-        resp = client.get("/mobile/status")
+        token = client.post("/auth/token", json={"user_id": "status_user", "password": ""}).json()["access_token"]
+        resp = client.get("/mobile/status", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
 
     def test_valid_token_accepted(self):
@@ -385,7 +386,7 @@ class TestServerAuth:
         resp = client.get("/mobile/status")
         assert resp.status_code == 200
         data = resp.json()
-        assert data.get("version") == "1.3.0"
+        assert data.get("version") == "1.4.0"
 
     def test_mobile_status_has_vision_agent_key(self):
         client = self._get_client()
@@ -405,7 +406,7 @@ class TestServerAuth:
 # ---------------------------------------------------------------------------
 class TestVersionBump130:
     def test_version_is_130(self):
-        assert physml.__version__ == "1.3.0"
+        assert physml.__version__ == "1.4.0"
 
     def test_vision_agent_in_all(self):
         assert "VisionAgent" in physml.__all__

@@ -269,9 +269,14 @@ class DigitalSoul:
     # Serialization
     # ------------------------------------------------------------------
 
+    _MAX_EVENTS = 500  # cap to prevent unbounded growth
+
     def save(self) -> None:
         """Persist the soul to disk."""
         self.soul_path.parent.mkdir(parents=True, exist_ok=True)
+        # Prune oldest events beyond cap
+        if len(self._events) > self._MAX_EVENTS:
+            self._events = self._events[-self._MAX_EVENTS:]
         data = {
             "name": self._name,
             "created_at": self._created_at,

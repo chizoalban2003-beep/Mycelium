@@ -5,6 +5,50 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.4.0] — 2026-04-29
+
+### Added — Production deployment, multi-user isolation, setup wizard, training CLI
+
+- **`mycelium setup`** — interactive wizard: generates persistent `MYCELIUM_SECRET`, TLS
+  self-signed cert via OpenSSL, and `~/.mycelium/.env` in one command
+- **`mycelium serve`** — production server launcher: reads `.env`, applies TLS if certs
+  exist, logs auth/TLS state on startup
+- **`mycelium train`** — bootstrap training command: syncs FeedbackLoop corrections,
+  PersonalisationEngine profile, optional CSV via ModelManager, rebuilds vector index
+- **`mycelium` entry-point** — `mycelium` alias registered alongside `physml` in scripts
+- **HTTPS/TLS** — uvicorn `ssl_certfile`/`ssl_keyfile` wired through `mycelium serve`;
+  Dockerfile exposes port 8443 alongside 8000
+- **`MYCELIUM_SECRET` auto-generation** — ephemeral secret generated on startup when env
+  var not set; logs a startup warning directing users to `mycelium setup`
+- **Auth-on-by-default** — `MYCO_REQUIRE_AUTH` defaults to `1`; set to `0` for pure
+  local single-user deployments
+- **Per-user companion isolation** — each authenticated `user_id` gets its own
+  `MyceliumCompanion` with a separate `~/.mycelium/users/<uid>` data directory;
+  thread-safe registry with lock
+- **Soul event pruning** — `DigitalSoul` caps events at 500 on every `save()`,
+  preventing unbounded growth during long-running deployments
+- **Dockerfile hardening** — `openssl` included in base image; CMD uses
+  `mycelium serve` so TLS and `.env` are automatically picked up
+- **`docker-compose.yml`** — `MYCELIUM_SECRET`, `MYCO_REQUIRE_AUTH`, `MYCO_PASSWORD`,
+  rate-limit and TLS env vars wired through; health check uses configurable port
+- **`scripts/mycelium.service`** — systemd unit (user-scoped via `%i` specifier):
+  loads `.env`, sandboxed with `ProtectSystem=strict` + `NoNewPrivileges`
+- **`.env.example`** — comprehensive template covering security, TLS, LLM, and rate
+  limiting; updated to reflect auth-on-by-default
+
+### Changed
+
+- `/chat` and all `/mobile/*` endpoints now pass `user_id` from JWT to per-user companion
+- `/companion/status` passes `user_id` to per-user companion
+- `MYCO_REQUIRE_AUTH` default flipped from `0` → `1`
+
+### Tests
+
+- `tests/test_v5_production.py`: 33 new tests covering setup CLI, TLS cert generation,
+  soul pruning, multi-user token isolation, Docker/systemd file assertions, training CLI
+
+---
+
 ## [1.3.0] — 2026-04-29
 
 ### Added — Local LLM fallback, VisionAgent (computer-use), server auth hardening

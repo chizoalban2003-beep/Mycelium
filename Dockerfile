@@ -18,7 +18,7 @@
 FROM python:3.12-slim AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential curl \
+        build-essential curl openssl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -29,32 +29,33 @@ COPY pyproject.toml README.md ./
 COPY physml/__init__.py physml/_log.py physml/py.typed ./physml/
 
 # Install the package with server + companion extras
-# (physml[companion] pulls anthropic, sentence-transformers, etc.)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -e ".[server,companion]" || \
-    pip install --no-cache-dir -e ".[server]"
+    pip install --no-cache-dir -e ".[server,companion,dotenv]" || \
+    pip install --no-cache-dir -e ".[server,dotenv]"
 
 # Now copy the rest of the source (invalidates cache only when code changes)
 COPY physml/ physml/
 
 # ---------------------------------------------------------------------------
-# api — REST API server
+# api — REST API server (production-hardened)
 # ---------------------------------------------------------------------------
 FROM base AS api
 
 EXPOSE 8000
+EXPOSE 8443
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -fk ${MYCO_HEALTH_URL:-http://localhost:8000/health} || exit 1
 
+# Defaults — override via docker-compose environment or .env
 ENV MYCO_DATA_DIR=/data/.mycelium
 ENV MYCO_HOST=0.0.0.0
 ENV MYCO_PORT=8000
+ENV MYCO_REQUIRE_AUTH=1
 
-CMD ["uvicorn", "physml.server:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "1"]
+# Entrypoint: use `mycelium serve` so .env and TLS are picked up automatically
+ENTRYPOINT ["python", "-m", "physml.cli"]
+CMD ["serve"]
 
 # ---------------------------------------------------------------------------
 # worker — background companion: goal loop + scheduled goals + file watcher

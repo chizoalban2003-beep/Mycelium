@@ -3,8 +3,11 @@ version: "3.9"
 # Mycelium — one-command local AI companion stack
 #
 # Quick start:
-#   cp .env.example .env          # add your ANTHROPIC_API_KEY
+#   cp .env.example .env          # fill in MYCELIUM_SECRET + optional API key
 #   docker compose up             # starts API + companion
+#
+# First-time setup (generates .env + TLS cert):
+#   docker compose run --rm api mycelium setup --data-dir /data/.mycelium
 #
 # Data persists in ./data/ on your host machine.
 
@@ -22,20 +25,28 @@ services:
     restart: unless-stopped
     ports:
       - "${MYCO_PORT:-8000}:8000"
+      - "${MYCO_TLS_PORT:-8443}:8443"
     volumes:
       - mycelium-data:/data/.mycelium
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      MYCO_NAME: ${MYCO_NAME:-Myco}
-      MYCO_DATA_DIR: /data/.mycelium
-      MYCO_VERBOSITY: ${MYCO_VERBOSITY:-normal}
-      MYCO_SECRET_KEY: ${MYCO_SECRET_KEY:-change-me}
+      ANTHROPIC_API_KEY:     ${ANTHROPIC_API_KEY:-}
+      MYCO_NAME:             ${MYCO_NAME:-Myco}
+      MYCO_DATA_DIR:         /data/.mycelium
+      MYCO_VERBOSITY:        ${MYCO_VERBOSITY:-normal}
+      MYCELIUM_SECRET:       ${MYCELIUM_SECRET:-}
+      MYCO_REQUIRE_AUTH:     ${MYCO_REQUIRE_AUTH:-1}
+      MYCO_PASSWORD:         ${MYCO_PASSWORD:-}
+      MYCO_RATE_LIMIT:       ${MYCO_RATE_LIMIT:-60}
+      MYCO_TLS_CERT:         ${MYCO_TLS_CERT:-}
+      MYCO_TLS_KEY:          ${MYCO_TLS_KEY:-}
+      MYCO_HOST:             ${MYCO_HOST:-0.0.0.0}
+      MYCO_PORT:             ${MYCO_PORT:-8000}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-fk", "http://localhost:${MYCO_PORT:-8000}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
   # -------------------------------------------------------------------------
   # Companion worker — runs the background goal loop + scheduled goals
@@ -52,12 +63,14 @@ services:
       - mycelium-data:/data/.mycelium
     environment:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      MYCO_NAME: ${MYCO_NAME:-Myco}
-      MYCO_DATA_DIR: /data/.mycelium
-      MYCO_VERBOSITY: ${MYCO_VERBOSITY:-normal}
-      MYCO_WATCH_DIRS: ${MYCO_WATCH_DIRS:-}
+      MYCO_NAME:         ${MYCO_NAME:-Myco}
+      MYCO_DATA_DIR:     /data/.mycelium
+      MYCO_VERBOSITY:    ${MYCO_VERBOSITY:-normal}
+      MYCO_WATCH_DIRS:   ${MYCO_WATCH_DIRS:-}
+      MYCELIUM_SECRET:   ${MYCELIUM_SECRET:-}
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   mycelium-data:
