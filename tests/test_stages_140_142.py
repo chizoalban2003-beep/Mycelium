@@ -20,7 +20,7 @@ except ImportError:
 pytestmark = pytest.mark.skipif(not _FASTAPI_OK, reason="fastapi/httpx not installed")
 
 _TEST_USER_ID = "test"
-_TEST_PASSWORD = ""
+_TEST_PASSWORD = "test-password"
 
 
 @pytest.fixture(scope="module")
