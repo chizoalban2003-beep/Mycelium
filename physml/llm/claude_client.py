@@ -156,6 +156,7 @@ class ClaudeClient:
         self.use_caching = use_caching
         self._api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self._client: Any = None
+        self._local_llm: Any = None
         self._available: bool = False
         self._call_count: int = 0
         self._cache_hits: int = 0
@@ -169,8 +170,9 @@ class ClaudeClient:
         if not self._api_key:
             _logger.info(
                 "ClaudeClient: no API key — running in fallback mode. "
-                "Set ANTHROPIC_API_KEY to enable Claude."
+                "Set ANTHROPIC_API_KEY to enable Claude, or use LocalLLM for offline operation."
             )
+            self._try_local_fallback()
             return
         try:
             import anthropic  # type: ignore
@@ -181,13 +183,40 @@ class ClaudeClient:
         except ImportError:
             _logger.info(
                 "ClaudeClient: anthropic SDK not installed — "
-                "pip install 'physml[llm]' to enable. Running in fallback mode."
+                "pip install 'physml[llm]' to enable. Trying local LLM fallback."
             )
+            self._try_local_fallback()
+
+    def _try_local_fallback(self) -> None:
+        """Attempt to initialise a LocalLLM backend as fallback."""
+        try:
+            from physml.llm.local_llm import LocalLLM
+            local = LocalLLM()
+            if local.available:
+                self._local_llm = local
+                self._available = True
+                _logger.info(
+                    "ClaudeClient: using LocalLLM fallback (%s / %s)",
+                    local.backend,
+                    local.model,
+                )
+        except Exception as exc:
+            _logger.debug("ClaudeClient: LocalLLM fallback failed: %s", exc)
 
     @property
     def available(self) -> bool:
         """``True`` when the SDK is installed and an API key is set."""
         return self._available
+
+    @property
+    def using_local_llm(self) -> bool:
+        """``True`` when routing through a local LLM backend instead of Claude."""
+        return self._available and self._client is None and self._local_llm is not None
+
+    @property
+    def local_llm(self) -> Any:
+        """The :class:`~physml.llm.local_llm.LocalLLM` instance, or ``None``."""
+        return self._local_llm
 
     # ------------------------------------------------------------------
     # System prompt builder
@@ -233,7 +262,20 @@ class ClaudeClient:
         -------
         ChatResult
         """
-        if not self._available or self._client is None:
+        if not self._available:
+            return ChatResult(available=False, error="Claude API not available")
+        # Route to local LLM when Claude client is unavailable but local is ready
+        if self._client is None and self._local_llm is not None:
+            result = self._local_llm.chat(user_message, history=history, system=system)
+            return ChatResult(
+                text=result.text,
+                available=result.available,
+                model=result.model,
+                error=result.error,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+            )
+        if self._client is None:
             return ChatResult(available=False, error="Claude API not available")
 
         try:

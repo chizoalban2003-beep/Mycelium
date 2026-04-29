@@ -127,6 +127,7 @@ class MyceliumCompanion:
         self.user_model: Any = None            # UserModel
         self.skill_library: Any = None         # SkillLibrary
         self.federation: Any = None            # SpecialistFederation
+        self.vision_agent: Any = None          # VisionAgent
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -468,8 +469,22 @@ class MyceliumCompanion:
         except Exception as _exc:
             _logger.debug("MyceliumCompanion: SpecialistFederation unavailable: %s", _exc)
 
+        # VisionAgent — screenshot analysis + computer-use
+        try:
+            from physml.vision_agent import VisionAgent as _VA
+            self.vision_agent = _VA(
+                claude_client=self.llm,
+                screen_agent=self.screen_agent,
+            )
+            _logger.debug(
+                "MyceliumCompanion: VisionAgent ready (backend=%s)",
+                self.vision_agent.backend,
+            )
+        except Exception as _exc:
+            _logger.debug("MyceliumCompanion: VisionAgent unavailable: %s", _exc)
+
         self._started = True
-        _logger.info("MyceliumCompanion %r started (v1.2.0)", self.name)
+        _logger.info("MyceliumCompanion %r started (v1.3.0)", self.name)
 
     def personalise(self, key: str, value: Any) -> str:
         """Set a personalisation preference and return confirmation.
@@ -1450,6 +1465,48 @@ class MyceliumCompanion:
         if self.imitation_learner is None:
             return []
         return self.imitation_learner.predict_next(context_app=context_app)
+
+    def analyse_screen(self, screenshot_path: Optional[str] = None) -> Any:
+        """Analyse the current screen (or a given screenshot) using VisionAgent.
+
+        Parameters
+        ----------
+        screenshot_path : str or None
+            Path to an existing screenshot.  Takes a fresh screenshot when None.
+
+        Returns
+        -------
+        VisionResult
+        """
+        if not self._started:
+            self.start()
+        if self.vision_agent is None:
+            return None
+        if screenshot_path:
+            return self.vision_agent.analyse(screenshot_path)
+        return self.vision_agent.analyse_current_screen()
+
+    def find_and_click(self, description: str) -> bool:
+        """Find a UI element by description and click it.
+
+        Uses VisionAgent to locate the element in a fresh screenshot,
+        then ScreenAgent to execute the click.
+
+        Parameters
+        ----------
+        description : str
+            Natural-language description of the element (e.g. "Save button").
+
+        Returns
+        -------
+        bool
+            True on success.
+        """
+        if not self._started:
+            self.start()
+        if self.vision_agent is None:
+            return False
+        return self.vision_agent.find_and_click(description)
 
     def start_voice_interface(
         self,

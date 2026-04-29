@@ -124,21 +124,37 @@ class Specialist:
         )
 
     def respond(self, query: str, context: dict, knowledge: str) -> str:
+        system = self._system_prompt()
+        if knowledge:
+            system += f"\n\nRelevant knowledge:\n{knowledge[:2000]}"
+
+        # Try injected LLM (Claude or LocalLLM via Companion)
         if self._llm is not None:
             try:
-                system = self._system_prompt()
-                if knowledge:
-                    system += f"\n\nRelevant knowledge:\n{knowledge[:2000]}"
-                return self._llm.complete(query, system_prompt=system)
+                result = self._llm.complete(query, system_prompt=system)
+                text = result.text if hasattr(result, "text") else str(result)
+                if text:
+                    return text
             except Exception as exc:
                 _logger.debug("LLM call failed for %s: %s", self.name, exc)
+
+        # Auto-detect LocalLLM when no injected LLM
+        try:
+            from physml.llm.local_llm import LocalLLM
+            local = LocalLLM()
+            if local.available:
+                result = local.complete(query, system=system)
+                if result.text:
+                    return result.text
+        except Exception:
+            pass
 
         parts = [f"[{self.name}]"]
         if knowledge:
             parts.append(f"Based on available knowledge:\n{knowledge[:500]}")
         parts.append(
             f"I'm the {self.name} specialist. To fully answer '{query[:80]}...', "
-            f"please ensure the LLM subsystem is configured (set ANTHROPIC_API_KEY)."
+            f"start ollama ('ollama serve') or set ANTHROPIC_API_KEY."
         )
         return "\n".join(parts)
 

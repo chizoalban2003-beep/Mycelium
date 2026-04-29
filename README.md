@@ -60,6 +60,52 @@ for s in suggestions:
 # type_text     18%
 ```
 
+### Run fully offline — no API key needed (v1.3)
+```bash
+# Install and start ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull llama3.2        # ~2GB text model
+ollama pull llava           # ~4GB vision model (optional)
+ollama serve                # start the local server
+```
+
+```python
+from physml.llm import LocalLLM
+
+llm = LocalLLM()            # auto-detects ollama
+print(llm.available)        # True when ollama is running
+result = llm.complete("Explain Python decorators")
+print(result.text)
+
+# Vision analysis (requires llava)
+result = llm.vision_chat(image_b64, "What UI elements do you see?")
+```
+
+Myco automatically uses your local ollama when `ANTHROPIC_API_KEY` is not set — no code changes needed.
+
+### Automate any UI task with vision (v1.3)
+```python
+from physml import VisionAgent
+
+va = VisionAgent()          # auto-detects Claude Vision or ollama/llava
+
+# Analyse what's on screen
+result = va.analyse_current_screen()
+print(result.description)
+print(result.elements)      # detected buttons, inputs, menus with coordinates
+
+# Find and click any element by description
+va.find_and_click("Save button")
+va.find_and_click("search box")
+
+# Wait until something appears
+va.watch_for("confirmation dialog", timeout=10.0)
+
+# Ask vision model how to perform a goal step
+step = va.describe_goal_step("send email", "compose message")
+print(step["action"], step["target_description"])
+```
+
 ### Ask specialist agents for domain-specific help (v1.2)
 ```python
 from physml import SpecialistFederation
@@ -564,6 +610,7 @@ python3 -m pytest tests/ -q --timeout=120
 | v1.0 | Active learning core, GoalEngine, voice interface, REST API, CLI |
 | v1.1 | Multi-modal ingestion, screen observer, macro recorder, imitation learner, user model, browser extension, mobile API |
 | v1.2 | Specialist federation (6 domain agents), mobile PWA, comprehensive docs, PyPI distribution packages |
+| v1.3 | Local LLM (ollama + llama.cpp), VisionAgent (computer-use), server auth hardening + rate limiting |
 
 ### Next steps
 

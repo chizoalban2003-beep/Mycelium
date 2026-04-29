@@ -1,4 +1,4 @@
-"""Tests for v1.2.0: SpecialistFederation, mobile PWA, CLI federation command."""
+"""Tests for v1.3.0: SpecialistFederation, mobile PWA, CLI federation command."""
 
 from __future__ import annotations
 
@@ -305,7 +305,7 @@ class TestServerPWARoute:
         assert resp.status_code == 200
         data = resp.json()
         assert "version" in data
-        assert data["version"] == "1.2.0"
+        assert data["version"] == "1.3.0"
 
 
 # ---------------------------------------------------------------------------
@@ -341,7 +341,7 @@ class TestCLIFederationCommand:
 # ---------------------------------------------------------------------------
 class TestVersionBump:
     def test_version_is_120(self):
-        assert physml.__version__ == "1.2.0"
+        assert physml.__version__ == "1.3.0"
 
     def test_specialist_federation_in_all(self):
         assert "SpecialistFederation" in physml.__all__

@@ -5,6 +5,61 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.3.0] — 2026-04-29
+
+### Added — Local LLM fallback, VisionAgent (computer-use), server auth hardening
+
+#### LocalLLM (`physml/llm/local_llm.py`)
+- Fully offline LLM backend; zero extra dependencies for ollama (pure `urllib`)
+- **Ollama** backend: auto-detects running `ollama serve`, picks best available model
+- **llama.cpp** backend: in-process GGUF inference via `llama-cpp-python`
+- `LocalLLM.chat()`, `.complete()`, `.vision_chat()` — same interface as `ClaudeClient`
+- `LocalLLM.list_models()`, `.pull_model()`, `.status()`
+- `LocalChatResult` dataclass with `.success` property
+- Vision support: `vision_chat(image_b64, prompt)` routes to ollama vision model (llava)
+- **Auto-wired into `ClaudeClient`**: when no `ANTHROPIC_API_KEY` + ollama running → LocalLLM used transparently
+- Exported from `physml.llm` and `physml` top-level
+- `pip install "physml[local]"` → installs `llama-cpp-python`
+- Env vars: `MYCO_OLLAMA_URL`, `MYCO_OLLAMA_MODEL`, `MYCO_GGUF_PATH`
+
+#### VisionAgent (`physml/vision_agent.py`)
+- Screenshot → structured UI understanding → computer-use actions
+- `VisionAgent.analyse(screenshot_path)` → `VisionResult` with elements, description, suggestions
+- `VisionAgent.analyse_current_screen()` — takes fresh screenshot then analyses
+- `VisionAgent.find_element(description, screenshot_path)` → `UIElement` with coordinates
+- `VisionAgent.find_and_click(description)` — vision-guided click automation
+- `VisionAgent.describe_goal_step(goal, step)` — tells GoalEngine what action to take
+- `VisionAgent.watch_for(condition, timeout)` — polls screen until visual condition detected
+- `UIElement` dataclass: label, type, x, y, width, height, text, confidence, `.center`
+- `VisionResult` dataclass: description, elements, suggested_actions, active_app, text_content
+- Backend priority: Claude Vision → ollama (llava) → OCR (pytesseract)
+- Wired into `MyceliumCompanion.start()` as `companion.vision_agent`
+- New `Companion.analyse_screen()` and `Companion.find_and_click()` methods
+- REST endpoints: `POST /vision/analyse`, `POST /vision/find`
+
+#### Server Auth Hardening (`physml/server.py`)
+- `MYCO_REQUIRE_AUTH=1` env flag — enforce bearer token on all protected endpoints
+- `MYCO_PASSWORD` env var — password gate for `/auth/token`
+- `GET /auth/verify` — always-enforced token validation endpoint (returns user_id)
+- `GET /auth/status` — expose auth config (require_auth, password_protected, rate_limit)
+- `/auth/token` now returns `expires_in` field
+- Rate limiting middleware (stdlib-only, no extra deps):
+  - `MYCO_RATE_LIMIT` (default 60 req/window) and `MYCO_RATE_WINDOW` (default 60s)
+  - Returns HTTP 429 on overrun
+- `/mobile/status` exposes `vision_agent` and `local_llm` status keys
+- `/mobile/status` version field bumped to `"1.3.0"`
+- Vision endpoints: `POST /vision/analyse` (screenshot → UI elements), `POST /vision/find` (element location)
+
+### Tests
+- `tests/test_v4_vision_llm_auth.py`: 58 new tests
+  - `TestLocalLLM` (20): init, backends, unavailable graceful degradation, env vars, `ChatResult` properties
+  - `TestVisionAgent` (22): backends, analyse, find_element, UIElement, VisionResult, JSON parsing
+  - `TestServerAuth` (16): token flow, 401 enforcement, rate limit, vision endpoints, status fields
+
+### Total: **286 non-slow tests passing** (58 + 47 + 100 + 81)
+
+---
+
 ## [1.2.0] — 2026-04-28
 
 ### Added — Specialist federation, mobile PWA, comprehensive docs, PyPI distribution

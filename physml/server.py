@@ -71,6 +71,34 @@ _SESSION_TTL = 3600  # seconds before an idle session is evicted
 _JWT_SECRET = os.environ.get("MYCELIUM_SECRET", "mycelium-dev-secret-change-me")
 _JWT_EXPIRY = 86400  # 24 hours
 
+# Auth gate: set MYCO_REQUIRE_AUTH=1 to require bearer token on mobile/ext endpoints
+_REQUIRE_AUTH = os.environ.get("MYCO_REQUIRE_AUTH", "0").strip() in ("1", "true", "yes")
+# Password for /auth/token: set MYCO_PASSWORD or leave empty (open by default)
+_MYCO_PASSWORD = os.environ.get("MYCO_PASSWORD", "")
+
+# ---------------------------------------------------------------------------
+# Rate limiting (in-memory, per-IP, stdlib-only)
+# ---------------------------------------------------------------------------
+_rate_windows: dict = {}  # ip -> (window_start, count)
+_RATE_LIMIT = int(os.environ.get("MYCO_RATE_LIMIT", "60"))   # reqs per window
+_RATE_WINDOW = int(os.environ.get("MYCO_RATE_WINDOW", "60"))  # seconds
+
+
+def _check_rate_limit(ip: str) -> bool:
+    """Return True if request is allowed, False if rate-limited."""
+    now = time.time()
+    if ip not in _rate_windows:
+        _rate_windows[ip] = (now, 1)
+        return True
+    start, count = _rate_windows[ip]
+    if now - start > _RATE_WINDOW:
+        _rate_windows[ip] = (now, 1)
+        return True
+    if count >= _RATE_LIMIT:
+        return False
+    _rate_windows[ip] = (start, count + 1)
+    return True
+
 
 def _b64_encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
@@ -223,13 +251,43 @@ def create_app() -> Any:
     def get_current_user(
         creds: HTTPAuthorizationCredentials = Depends(_bearer),
     ) -> str:
-        """Extract user_id from Bearer token, or return 'anonymous' if absent."""
+        """Extract user_id from Bearer token.
+
+        When ``MYCO_REQUIRE_AUTH=1``: missing/invalid tokens → 401.
+        Otherwise: missing token → 'anonymous', invalid → 401.
+        """
         if creds is None:
+            if _REQUIRE_AUTH:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Authentication required. POST /auth/token to get a bearer token.",
+                )
             return "anonymous"
         try:
             return _verify_token(creds.credentials)
         except ValueError:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Rate-limit middleware — applied to all requests
+    try:
+        from fastapi import Request
+        from fastapi.responses import JSONResponse
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        class _RateLimitMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+                ip = request.client.host if request.client else "unknown"
+                if not _check_rate_limit(ip):
+                    return JSONResponse(
+                        {"detail": "Rate limit exceeded. Try again shortly."},
+                        status_code=429,
+                    )
+                return await call_next(request)
+
+        app.add_middleware(_RateLimitMiddleware)
+        _logger.debug("server: rate-limit middleware active (%d req/%ds)", _RATE_LIMIT, _RATE_WINDOW)
+    except Exception as _mw_exc:
+        _logger.debug("server: rate-limit middleware unavailable: %s", _mw_exc)
 
     # -----------------------------------------------------------------------
     # Auth endpoints
@@ -239,12 +297,41 @@ def create_app() -> Any:
     def login(req: LoginRequest) -> dict:
         """Issue a JWT bearer token.
 
-        In production, replace the stub password check with real credentials.
+        Password check: if ``MYCO_PASSWORD`` env var is set, ``req.password``
+        must match it.  Otherwise any password (or empty) is accepted locally.
+        Set ``MYCELIUM_SECRET`` to make tokens non-forgeable.
         """
-        # Stub: any user_id with any (or empty) password is accepted locally.
-        # Set MYCELIUM_SECRET env var to make tokens non-forgeable.
+        if _MYCO_PASSWORD and req.password != _MYCO_PASSWORD:
+            raise HTTPException(status_code=401, detail="Invalid password")
         token = _create_token(req.user_id)
-        return {"access_token": token, "token_type": "bearer", "user_id": req.user_id}
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": req.user_id,
+            "expires_in": _JWT_EXPIRY,
+        }
+
+    @app.get("/auth/status")
+    def auth_status() -> dict:
+        """Return current auth configuration (safe to expose)."""
+        return {
+            "require_auth": _REQUIRE_AUTH,
+            "password_protected": bool(_MYCO_PASSWORD),
+            "token_expiry_seconds": _JWT_EXPIRY,
+            "rate_limit": _RATE_LIMIT,
+            "rate_window_seconds": _RATE_WINDOW,
+        }
+
+    @app.get("/auth/verify")
+    def auth_verify(
+        user_id: str = Depends(get_current_user),
+    ) -> dict:
+        """Verify a bearer token — always enforces token validation.
+
+        Returns ``{"valid": true, "user_id": "..."}`` on success, 401 on failure.
+        Use this endpoint to check if a token is still valid.
+        """
+        return {"valid": True, "user_id": user_id}
 
     # -----------------------------------------------------------------------
     # Companion chat endpoint
@@ -866,12 +953,112 @@ def create_app() -> Any:
         st = companion.status() if hasattr(companion, "status") else {}
         um = getattr(companion, "user_model", None)
         ing = getattr(companion, "ingester", None)
+        va = getattr(companion, "vision_agent", None)
+        llm_local = None
+        try:
+            from physml.llm.local_llm import LocalLLM as _LL
+            _tmp = _LL()
+            llm_local = _tmp.status()
+        except Exception:
+            pass
         return {
-            "version": "1.2.0",
+            "version": "1.3.0",
             "companion": st,
             "user_model": um.status() if um else None,
             "ingester": ing.summary() if ing else None,
+            "vision_agent": va.status() if va else None,
+            "local_llm": llm_local,
         }
+
+    # -----------------------------------------------------------------------
+    # Vision API endpoints
+    # -----------------------------------------------------------------------
+    try:
+        import tempfile as _tf
+        import base64 as _b64
+
+        class _VisionAnalyseRequest(BaseModel):
+            screenshot_b64: str = ""         # base64-encoded PNG (optional)
+            screenshot_path: str = ""        # server-local path (optional)
+
+        class _VisionFindRequest(BaseModel):
+            description: str
+            screenshot_b64: str = ""
+            screenshot_path: str = ""
+
+        @app.post("/vision/analyse")
+        def vision_analyse(req: _VisionAnalyseRequest) -> dict:
+            """Analyse a screenshot and return UI elements + description."""
+            companion = _get_companion()
+            va = getattr(companion, "vision_agent", None)
+            if va is None:
+                from physml.vision_agent import VisionAgent as _VA
+                va = _VA()
+
+            path = req.screenshot_path
+            if req.screenshot_b64 and not path:
+                tmp = _tf.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.write(_b64.b64decode(req.screenshot_b64))
+                tmp.close()
+                path = tmp.name
+
+            if path:
+                result = va.analyse(path)
+            else:
+                result = va.analyse_current_screen()
+
+            return {
+                "description": result.description,
+                "active_app": result.active_app,
+                "active_window": result.active_window,
+                "text_content": result.text_content[:500],
+                "elements": [
+                    {
+                        "label": e.label,
+                        "type": e.element_type,
+                        "x": e.x,
+                        "y": e.y,
+                        "text": e.text,
+                        "clickable": e.clickable,
+                    }
+                    for e in result.elements
+                ],
+                "suggested_actions": result.suggested_actions,
+                "backend": result.backend,
+                "elapsed": result.elapsed,
+                "success": result.success,
+            }
+
+        @app.post("/vision/find")
+        def vision_find(req: _VisionFindRequest) -> dict:
+            """Find a named UI element in the current (or provided) screenshot."""
+            companion = _get_companion()
+            va = getattr(companion, "vision_agent", None)
+            if va is None:
+                from physml.vision_agent import VisionAgent as _VA
+                va = _VA()
+
+            path = req.screenshot_path
+            if req.screenshot_b64 and not path:
+                tmp = _tf.NamedTemporaryFile(suffix=".png", delete=False)
+                tmp.write(_b64.b64decode(req.screenshot_b64))
+                tmp.close()
+                path = tmp.name
+
+            el = va.find_element(req.description, screenshot_path=path or None)
+            if el is None:
+                return {"found": False, "description": req.description}
+            return {
+                "found": True,
+                "label": el.label,
+                "x": el.x,
+                "y": el.y,
+                "confidence": el.confidence,
+            }
+
+        _logger.debug("server: vision endpoints mounted at /vision/")
+    except Exception as _vis_exc:
+        _logger.debug("server: vision endpoints unavailable: %s", _vis_exc)
 
     # -----------------------------------------------------------------------
     # Mobile PWA — serve the Progressive Web App

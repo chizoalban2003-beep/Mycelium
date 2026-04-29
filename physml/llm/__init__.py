@@ -26,6 +26,7 @@ from physml.llm.claude_client import ClaudeClient, ChatResult, ToolCallResult
 from physml.llm.prompt_system import PromptSystem, PromptAction
 from physml.llm.action_dispatcher import ActionDispatcher
 from physml.llm.memory_store import UserMemory
+from physml.llm.local_llm import LocalLLM, LocalChatResult
 
 __all__ = [
     "ClaudeClient",
@@ -35,4 +36,6 @@ __all__ = [
     "PromptAction",
     "ActionDispatcher",
     "UserMemory",
+    "LocalLLM",
+    "LocalChatResult",
 ]
