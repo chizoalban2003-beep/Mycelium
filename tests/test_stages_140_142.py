@@ -19,12 +19,20 @@ except ImportError:
 
 pytestmark = pytest.mark.skipif(not _FASTAPI_OK, reason="fastapi/httpx not installed")
 
+_TEST_USER_ID = "test"
+_TEST_PASSWORD = ""
+
 
 @pytest.fixture(scope="module")
 def client():
     app = create_app()
     client = TestClient(app)
-    token = client.post("/auth/token", json={"user_id": "test", "password": ""}).json()["access_token"]
+    token_response = client.post(
+        "/auth/token",
+        json={"user_id": _TEST_USER_ID, "password": _TEST_PASSWORD},
+    )
+    assert token_response.status_code == 200, token_response.text
+    token = token_response.json()["access_token"]
     client.headers.update({"Authorization": f"Bearer {token}"})
     return client
 
@@ -283,7 +291,7 @@ class TestGoalsChatInterface:
     def test_chat_goal_intent_queues_goal(self, client):
         r = client.post("/chat", json={
             "message": "add a goal to read my data file",
-            "user_id": "test",
+            "user_id": _TEST_USER_ID,
         })
         assert r.status_code == 200
         resp = r.json()["response"]
@@ -292,6 +300,6 @@ class TestGoalsChatInterface:
     def test_goals_status_via_chat(self, client):
         r = client.post("/chat", json={
             "message": "show me my goals",
-            "user_id": "test",
+            "user_id": _TEST_USER_ID,
         })
         assert r.status_code == 200
