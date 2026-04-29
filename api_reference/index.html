@@ -1,0 +1,1701 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Physics-inspired autonomous AI companion — local learning, screen observation, macro imitation, multi-agent federation.">
+      
+      
+      
+        <link rel="canonical" href="https://chizoalban2003-beep.github.io/Mycelium/api_reference/">
+      
+      
+        <link rel="prev" href="../physics/">
+      
+      
+        <link rel="next" href="../changelog/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>API Reference - PhysML / Mycelium</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="PhysML / Mycelium" class="md-header__button md-logo" aria-label="PhysML / Mycelium" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            PhysML / Mycelium
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              API Reference
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/chizoalban2003-beep/Mycelium" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    chizoalban2003-beep/Mycelium
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting_started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../companion/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Companion Guide
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../mobile/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Mobile & Browser Extension
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../federation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Specialist Federation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../physics/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  How the Physics Works
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+  
+    
+  
+  API Reference
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="PhysML / Mycelium" class="md-nav__button md-logo" aria-label="PhysML / Mycelium" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    PhysML / Mycelium
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/chizoalban2003-beep/Mycelium" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    chizoalban2003-beep/Mycelium
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting_started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../companion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Companion Guide
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../mobile/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mobile & Browser Extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../federation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specialist Federation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../physics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How the Physics Works
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-active-learning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Active Learning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Active Learning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#myco-flagship-agent-alias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        myco — flagship agent alias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#physicspredictor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PhysicsPredictor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark_agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        benchmark_agent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#federatedmyceliumagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FederatedMyceliumAgent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driftdetector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DriftDetector
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#digital-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Digital Companion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Digital Companion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multimodalingester" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MultiModalIngester
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#screenobserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScreenObserver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macrorecorder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MacroRecorder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#imitationlearner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ImitationLearner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usermodel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UserModel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#specialistfederation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SpecialistFederation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Infrastructure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Infrastructure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modelregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelRegistry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rest-api-physmlserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST API (physml.server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#health-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health Check
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#core-active-learning" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Core Active Learning
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Core Active Learning">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#myco-flagship-agent-alias" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        myco — flagship agent alias
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#physicspredictor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PhysicsPredictor
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmark_agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        benchmark_agent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#federatedmyceliumagent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        FederatedMyceliumAgent
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driftdetector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DriftDetector
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#digital-companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Digital Companion
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Digital Companion">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#companion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Companion
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multimodalingester" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MultiModalIngester
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#screenobserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScreenObserver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#macrorecorder" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MacroRecorder
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#imitationlearner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ImitationLearner
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usermodel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        UserModel
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#specialistfederation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SpecialistFederation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#infrastructure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Infrastructure
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Infrastructure">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#modelregistry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ModelRegistry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rest-api-physmlserver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        REST API (physml.server)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#health-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Health Check
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="api-reference">API Reference<a class="headerlink" href="#api-reference" title="Permanent link">&para;</a></h1>
+<h2 id="core-active-learning">Core Active Learning<a class="headerlink" href="#core-active-learning" title="Permanent link">&para;</a></h2>
+<h3 id="myco-flagship-agent-alias"><code>myco</code> — flagship agent alias<a class="headerlink" href="#myco-flagship-agent-alias" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">myco</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">myco</span><span class="p">(</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">uncertainty_threshold</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">query_strategy</span><span class="o">=</span><span class="s2">&quot;entropy&quot;</span><span class="p">,</span>   <span class="c1"># &quot;threshold&quot; | &quot;entropy&quot; | &quot;gp&quot;</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">policy</span><span class="o">=</span><span class="s2">&quot;adaptive&quot;</span><span class="p">,</span>          <span class="c1"># &quot;fixed&quot; | &quot;adaptive&quot; | &quot;bandit&quot; | &quot;ensemble&quot;</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">calibrate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">drift_detection</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">drift_algorithm</span><span class="o">=</span><span class="s2">&quot;page_hinkley&quot;</span><span class="p">,</span>  <span class="c1"># or &quot;adwin&quot;</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fit(X, y)</code></td>
+<td><code>self</code></td>
+<td>Seed fit on labelled data</td>
+</tr>
+<tr>
+<td><code>observe(x)</code></td>
+<td><code>AgentAction</code></td>
+<td>Predict; returns ask/tell/abstain</td>
+</tr>
+<tr>
+<td><code>reward(x, y, cost=1.0)</code></td>
+<td><code>self</code></td>
+<td>Provide true label (online update)</td>
+</tr>
+<tr>
+<td><code>partial_fit(X, y)</code></td>
+<td><code>self</code></td>
+<td>Mini-batch update</td>
+</tr>
+<tr>
+<td><code>select_informative(X_pool)</code></td>
+<td><code>int</code></td>
+<td>Index of most informative sample</td>
+</tr>
+<tr>
+<td><code>select_batch(X_pool, k)</code></td>
+<td><code>list[int]</code></td>
+<td>Coreset greedy batch selection</td>
+</tr>
+<tr>
+<td><code>save(path)</code></td>
+<td>—</td>
+<td>Pickle agent to disk</td>
+</tr>
+<tr>
+<td><code>load(path)</code></td>
+<td><code>myco</code></td>
+<td>Class method — restore from pickle</td>
+</tr>
+<tr>
+<td><code>report()</code></td>
+<td><code>dict</code></td>
+<td>Activity summary</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="physicspredictor"><code>PhysicsPredictor</code><a class="headerlink" href="#physicspredictor" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicsPredictor</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">p</span> <span class="o">=</span> <span class="n">PhysicsPredictor</span><span class="p">(</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">backend</span><span class="o">=</span><span class="s2">&quot;neural&quot;</span><span class="p">,</span>       <span class="c1"># &quot;neural&quot; | &quot;tree&quot;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">n_cycles</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">learning_rate</span><span class="o">=</span><span class="mf">0.12</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">quantile_transform</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">poly_degree</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">n_estimators</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">residual_model</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="p">)</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">p</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">result</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">test_accuracy</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h3 id="benchmark_agent"><code>benchmark_agent</code><a class="headerlink" href="#benchmark_agent" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">benchmark_agent</span><span class="p">,</span> <span class="n">BenchmarkResult</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">result</span><span class="p">:</span> <span class="n">BenchmarkResult</span> <span class="o">=</span> <span class="n">benchmark_agent</span><span class="p">(</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">agent</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">oracle_budget</span><span class="o">=</span><span class="mi">80</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">seed_size</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="n">n_trials</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="p">)</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="n">result</span><span class="o">.</span><span class="n">save_csv</span><span class="p">(</span><span class="s2">&quot;results.csv&quot;</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h3 id="federatedmyceliumagent"><code>FederatedMyceliumAgent</code><a class="headerlink" href="#federatedmyceliumagent" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">FederatedMyceliumAgent</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">fed</span> <span class="o">=</span> <span class="n">FederatedMyceliumAgent</span><span class="p">()</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">fed</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="s2">&quot;hospital_A&quot;</span><span class="p">,</span> <span class="n">X_A</span><span class="p">,</span> <span class="n">y_A</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">fed</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="s2">&quot;hospital_B&quot;</span><span class="p">,</span> <span class="n">X_B</span><span class="p">,</span> <span class="n">y_B</span><span class="p">)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">fed</span><span class="o">.</span><span class="n">aggregate</span><span class="p">()</span>          <span class="c1"># FedAvg over MLP weight deltas</span>
+</code></pre></div>
+<hr />
+<h3 id="driftdetector"><code>DriftDetector</code><a class="headerlink" href="#driftdetector" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">DriftDetector</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">dd</span> <span class="o">=</span> <span class="n">DriftDetector</span><span class="p">(</span><span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;adwin&quot;</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="k">for</span> <span class="n">residual</span> <span class="ow">in</span> <span class="n">residuals</span><span class="p">:</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">if</span> <span class="n">dd</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">residual</span><span class="p">):</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Drift detected!&quot;</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="digital-companion">Digital Companion<a class="headerlink" href="#digital-companion" title="Permanent link">&para;</a></h2>
+<h3 id="companion"><code>Companion</code><a class="headerlink" href="#companion" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">Companion</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">c</span> <span class="o">=</span> <span class="n">Companion</span><span class="p">(</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">persist_dir</span><span class="o">=</span><span class="s2">&quot;~/.mycelium&quot;</span><span class="p">,</span>   <span class="c1"># where state is saved</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">api_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                <span class="c1"># Claude API key (or set ANTHROPIC_API_KEY)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="p">)</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="n">c</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chat(message)</code></td>
+<td>Send a message and get a response</td>
+</tr>
+<tr>
+<td><code>ingest(source, topic)</code></td>
+<td>Ingest any file/URL/text into knowledge</td>
+</tr>
+<tr>
+<td><code>set_goal(description)</code></td>
+<td>Set and begin executing a multi-step goal</td>
+</tr>
+<tr>
+<td><code>start_screen_observer(interval, ...)</code></td>
+<td>Start background screen monitoring</td>
+</tr>
+<tr>
+<td><code>start_macro_recording(name)</code></td>
+<td>Begin recording a macro sequence</td>
+</tr>
+<tr>
+<td><code>stop_macro_recording()</code></td>
+<td>Stop and save the recording → <code>MacroSequence</code></td>
+</tr>
+<tr>
+<td><code>suggest_next_action(context_app)</code></td>
+<td>Get imitation-learned action suggestions</td>
+</tr>
+<tr>
+<td><code>start_voice_interface()</code></td>
+<td>Launch voice loop (STT → LLM → TTS)</td>
+</tr>
+<tr>
+<td><code>personalise(**kwargs)</code></td>
+<td>Set user preferences</td>
+</tr>
+<tr>
+<td><code>status()</code></td>
+<td>Dict of all subsystem states</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="multimodalingester"><code>MultiModalIngester</code><a class="headerlink" href="#multimodalingester" title="Permanent link">&para;</a></h3>
+<p>Unified ingestion pipeline — routes any content into knowledge graph + vector memory.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">MultiModalIngester</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">ingester</span> <span class="o">=</span> <span class="n">MultiModalIngester</span><span class="p">(</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>    <span class="n">vector_memory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>      <span class="c1"># auto-created if None</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="n">knowledge_graph</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>    <span class="c1"># auto-created if None</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>    <span class="n">knowledge_extractor</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="n">user_profile</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>    <span class="n">max_text_chars</span><span class="o">=</span><span class="mi">50_000</span><span class="p">,</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>    <span class="n">deduplicate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="p">)</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="n">result</span> <span class="o">=</span> <span class="n">ingester</span><span class="o">.</span><span class="n">ingest</span><span class="p">(</span><span class="s2">&quot;path/to/file.pdf&quot;</span><span class="p">,</span> <span class="n">topic</span><span class="o">=</span><span class="s2">&quot;research&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">facts</span><span class="p">)</span>       <span class="c1"># extracted facts</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">memory_id</span><span class="p">)</span>   <span class="c1"># stored in vector memory</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">elapsed</span><span class="p">)</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="c1"># Batch</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="n">results</span> <span class="o">=</span> <span class="n">ingester</span><span class="o">.</span><span class="n">ingest_many</span><span class="p">([</span><span class="s2">&quot;file1.txt&quot;</span><span class="p">,</span> <span class="s2">&quot;file2.md&quot;</span><span class="p">],</span> <span class="n">topic</span><span class="o">=</span><span class="s2">&quot;notes&quot;</span><span class="p">)</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="c1"># Directory</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="n">ingester</span><span class="o">.</span><span class="n">ingest_directory</span><span class="p">(</span><span class="s2">&quot;~/Documents/&quot;</span><span class="p">,</span> <span class="n">topic</span><span class="o">=</span><span class="s2">&quot;work&quot;</span><span class="p">,</span> <span class="n">recursive</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="nb">print</span><span class="p">(</span><span class="n">ingester</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>   <span class="c1"># {&quot;total&quot;: 23, &quot;success&quot;: 22, &quot;deduplicated&quot;: 1, ...}</span>
+</code></pre></div>
+<p><strong><code>IngestResult</code> fields:</strong> <code>source</code>, <code>text</code>, <code>facts</code>, <code>memory_id</code>, <code>metadata</code>, <code>elapsed</code>, <code>success</code>, <code>error</code></p>
+<hr />
+<h3 id="screenobserver"><code>ScreenObserver</code><a class="headerlink" href="#screenobserver" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">ScreenObserver</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">obs</span> <span class="o">=</span> <span class="n">ScreenObserver</span><span class="p">(</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">interval</span><span class="o">=</span><span class="mf">60.0</span><span class="p">,</span>           <span class="c1"># seconds between snapshots</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">save_screenshots</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="n">llm_describe</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>       <span class="c1"># use Claude Vision for descriptions</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="n">ingester</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>           <span class="c1"># auto-ingest snapshots</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>    <span class="n">vector_memory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>    <span class="n">on_snapshot</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>        <span class="c1"># callback(ScreenSnapshot)</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="p">)</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">obs</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>                  <span class="c1"># starts background daemon thread</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="n">obs</span><span class="o">.</span><span class="n">observe_once</span><span class="p">()</span>           <span class="c1"># take one snapshot immediately</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">obs</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
+<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">focus_summary</span><span class="p">())</span>   <span class="c1"># {&quot;VS Code&quot;: 145.2, &quot;Chrome&quot;: 80.1}</span>
+<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">top_apps</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>       <span class="c1"># top 5 apps by focus time</span>
+<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">recent_context</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span><span class="c1"># last 10 ScreenSnapshot objects</span>
+</code></pre></div>
+<p><strong><code>ScreenSnapshot</code> fields:</strong> <code>timestamp</code>, <code>app_name</code>, <code>window_title</code>, <code>description</code>, <code>screenshot_path</code></p>
+<hr />
+<h3 id="macrorecorder"><code>MacroRecorder</code><a class="headerlink" href="#macrorecorder" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">MacroRecorder</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">recorder</span> <span class="o">=</span> <span class="n">MacroRecorder</span><span class="p">(</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="n">skill_library</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>      <span class="c1"># auto-save completed sequences</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">save_dir</span><span class="o">=</span><span class="s2">&quot;~/.mycelium/macros&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="n">min_steps</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">merge_typing</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>       <span class="c1"># combine char-by-char keystrokes into TYPE_TEXT</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">)</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="n">recorder</span><span class="o">.</span><span class="n">start_recording</span><span class="p">(</span><span class="s2">&quot;my_workflow&quot;</span><span class="p">)</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="c1"># ... perform actions ...</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="n">seq</span> <span class="o">=</span> <span class="n">recorder</span><span class="o">.</span><span class="n">stop_recording</span><span class="p">()</span>   <span class="c1"># → MacroSequence</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="nb">print</span><span class="p">(</span><span class="n">seq</span><span class="o">.</span><span class="n">summarise</span><span class="p">())</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="n">recorder</span><span class="o">.</span><span class="n">save_sequence</span><span class="p">(</span><span class="n">seq</span><span class="p">)</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="n">recorder</span><span class="o">.</span><span class="n">save_to_skill_library</span><span class="p">(</span><span class="n">seq</span><span class="p">)</span>   <span class="c1"># registers as reusable skill</span>
+</code></pre></div>
+<p><strong><code>MacroSequence</code> fields:</strong> <code>name</code>, <code>steps</code>, <code>description</code>, <code>created_at</code>, <code>tags</code>, <code>duration</code>, <code>apps_used</code></p>
+<p><strong><code>ActionType</code> constants:</strong> <code>CLICK</code>, <code>DOUBLE_CLICK</code>, <code>RIGHT_CLICK</code>, <code>KEY_PRESS</code>, <code>KEY_RELEASE</code>, <code>TYPE_TEXT</code>, <code>SCROLL</code>, <code>DRAG</code>, <code>WINDOW_CHANGE</code>, <code>PAUSE</code></p>
+<hr />
+<h3 id="imitationlearner"><code>ImitationLearner</code><a class="headerlink" href="#imitationlearner" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">ImitationLearner</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">learner</span> <span class="o">=</span> <span class="n">ImitationLearner</span><span class="p">(</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="n">context_window</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>    <span class="c1"># how many past steps to use as context</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">min_sequences</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>     <span class="c1"># minimum sequences to fit</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="p">)</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="n">learner</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">sequences</span><span class="p">)</span>   <span class="c1"># list of MacroSequence</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="n">suggestions</span> <span class="o">=</span> <span class="n">learner</span><span class="o">.</span><span class="n">predict_next</span><span class="p">(</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>    <span class="n">context_steps</span><span class="o">=</span><span class="p">[</span><span class="n">step1</span><span class="p">,</span> <span class="n">step2</span><span class="p">],</span>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>    <span class="n">context_app</span><span class="o">=</span><span class="s2">&quot;VS Code&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="n">context_action</span><span class="o">=</span><span class="s2">&quot;KEY_PRESS&quot;</span><span class="p">,</span>
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>    <span class="n">top_k</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="p">)</span>
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">suggestions</span><span class="p">:</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">action_type</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">s</span><span class="o">.</span><span class="n">confidence</span><span class="si">:</span><span class="s2">.2%</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p><strong><code>ActionSuggestion</code> fields:</strong> <code>action_type</code>, <code>confidence</code>, <code>x</code>, <code>y</code>, <code>text</code>, <code>app_name</code></p>
+<hr />
+<h3 id="usermodel"><code>UserModel</code><a class="headerlink" href="#usermodel" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserModel</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">um</span> <span class="o">=</span> <span class="n">UserModel</span><span class="p">(</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>    <span class="n">user_profile</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>    <span class="n">digital_soul</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>    <span class="n">personalisation</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>    <span class="n">vector_memory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>    <span class="n">knowledge_graph</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>    <span class="n">screen_observer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>    <span class="n">macro_recorder</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="n">persist_dir</span><span class="o">=</span><span class="s2">&quot;~/.mycelium/user_model&quot;</span><span class="p">,</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="p">)</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="c1"># Fire any event</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="n">um</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;interaction&quot;</span><span class="p">,</span> <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;fix the bug&quot;</span><span class="p">})</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="n">um</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;screen&quot;</span><span class="p">,</span> <span class="s2">&quot;snapshot&quot;</span><span class="p">:</span> <span class="n">snapshot</span><span class="p">})</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="n">um</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;goal_completed&quot;</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="s2">&quot;deploy app&quot;</span><span class="p">,</span> <span class="s2">&quot;steps&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">})</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="n">ctx</span> <span class="o">=</span> <span class="n">um</span><span class="o">.</span><span class="n">current_context</span><span class="p">()</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="c1"># {&quot;app&quot;: &quot;VS Code&quot;, &quot;mood&quot;: &quot;focused&quot;, &quot;top_topics&quot;: [...], &quot;peak_hour&quot;: 14, ...}</span>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a><span class="n">prompt_snippet</span> <span class="o">=</span> <span class="n">um</span><span class="o">.</span><span class="n">inject_into_prompt</span><span class="p">()</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a><span class="n">patterns</span> <span class="o">=</span> <span class="n">um</span><span class="o">.</span><span class="n">behavioral_patterns</span><span class="p">()</span>
+</code></pre></div>
+<hr />
+<h3 id="specialistfederation"><code>SpecialistFederation</code><a class="headerlink" href="#specialistfederation" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml</span><span class="w"> </span><span class="kn">import</span> <span class="n">SpecialistFederation</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">fed</span> <span class="o">=</span> <span class="n">SpecialistFederation</span><span class="p">(</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>    <span class="n">specialists</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>         <span class="c1"># default: Coder, Browser, Data, Scheduler, NLP, System</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="n">knowledge_graph</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>    <span class="n">vector_memory</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>    <span class="n">comms</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>               <span class="c1"># AgentComms bus</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">persist_dir</span><span class="o">=</span><span class="s2">&quot;~/.mycelium/federation&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="p">)</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="n">fed</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="n">result</span> <span class="o">=</span> <span class="n">fed</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>    <span class="s2">&quot;How do I optimise this SQL query?&quot;</span><span class="p">,</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>    <span class="n">context</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;app&quot;</span><span class="p">:</span> <span class="s2">&quot;DBeaver&quot;</span><span class="p">,</span> <span class="s2">&quot;topic&quot;</span><span class="p">:</span> <span class="s2">&quot;data&quot;</span><span class="p">},</span>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="p">)</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;specialist&quot;</span><span class="p">])</span>   <span class="c1"># &quot;Data&quot;</span>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;response&quot;</span><span class="p">])</span>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="c1"># Broadcast knowledge to all specialists</span>
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a><span class="n">fed</span><span class="o">.</span><span class="n">broadcast_fact</span><span class="p">(</span><span class="s2">&quot;User prefers Python 3.12&quot;</span><span class="p">)</span>
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a><span class="c1"># Snapshot shared knowledge</span>
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a><span class="nb">print</span><span class="p">(</span><span class="n">fed</span><span class="o">.</span><span class="n">knowledge_snapshot</span><span class="p">())</span>
+<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>
+<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a><span class="c1"># Which specialists are active</span>
+<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="nb">print</span><span class="p">(</span><span class="n">fed</span><span class="o">.</span><span class="n">list_specialists</span><span class="p">())</span>
+</code></pre></div>
+<p><strong>Built-in specialists:</strong> <code>Coder</code> (code + debugging), <code>Browser</code> (web + research), <code>Data</code> (SQL + analysis), <code>Scheduler</code> (calendar + reminders), <code>NLP</code> (text + documents), <code>System</code> (OS + files + shell)</p>
+<hr />
+<h2 id="infrastructure">Infrastructure<a class="headerlink" href="#infrastructure" title="Permanent link">&para;</a></h2>
+<h3 id="modelregistry"><code>ModelRegistry</code><a class="headerlink" href="#modelregistry" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml.registry</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelRegistry</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">reg</span> <span class="o">=</span> <span class="n">ModelRegistry</span><span class="p">(</span><span class="s2">&quot;runs.jsonl&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">run_id</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">agent</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">tags</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;experiment&quot;</span><span class="p">:</span> <span class="s2">&quot;v1&quot;</span><span class="p">})</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="n">df</span> <span class="o">=</span> <span class="n">reg</span><span class="o">.</span><span class="n">list_runs</span><span class="p">()</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="n">reg</span><span class="o">.</span><span class="n">load_agent</span><span class="p">(</span><span class="n">run_id</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h3 id="rest-api-physmlserver">REST API (<code>physml.server</code>)<a class="headerlink" href="#rest-api-physmlserver" title="Permanent link">&para;</a></h3>
+<p>Start: <code>uvicorn physml.server:app --reload</code></p>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/train</code></td>
+<td>POST</td>
+<td>Train agent for a user</td>
+</tr>
+<tr>
+<td><code>/query</code></td>
+<td>POST</td>
+<td>Get prediction</td>
+</tr>
+<tr>
+<td><code>/feedback</code></td>
+<td>POST</td>
+<td>Provide true label</td>
+</tr>
+<tr>
+<td><code>/report</code></td>
+<td>GET</td>
+<td>Session summary</td>
+</tr>
+<tr>
+<td><code>/metrics</code></td>
+<td>GET</td>
+<td>Prometheus text metrics</td>
+</tr>
+<tr>
+<td><code>/chat</code></td>
+<td>POST</td>
+<td>LLM conversation</td>
+</tr>
+<tr>
+<td><code>/ingest</code></td>
+<td>POST</td>
+<td>Ingest document</td>
+</tr>
+<tr>
+<td><code>/mobile/chat</code></td>
+<td>POST</td>
+<td>Mobile chat endpoint</td>
+</tr>
+<tr>
+<td><code>/mobile/ingest</code></td>
+<td>POST</td>
+<td>Mobile ingest</td>
+</tr>
+<tr>
+<td><code>/mobile/context</code></td>
+<td>GET</td>
+<td>Current user context</td>
+</tr>
+<tr>
+<td><code>/mobile/patterns</code></td>
+<td>GET</td>
+<td>Behavioral patterns</td>
+</tr>
+<tr>
+<td><code>/mobile/status</code></td>
+<td>GET</td>
+<td>All subsystem status</td>
+</tr>
+<tr>
+<td><code>/ext/page-visit</code></td>
+<td>POST</td>
+<td>Browser ext page visit</td>
+</tr>
+<tr>
+<td><code>/ext/selection</code></td>
+<td>POST</td>
+<td>Browser ext selection</td>
+</tr>
+<tr>
+<td><code>/ext/bookmark</code></td>
+<td>POST</td>
+<td>Browser ext bookmark</td>
+</tr>
+<tr>
+<td><code>/ext/command</code></td>
+<td>POST</td>
+<td>Browser ext command</td>
+</tr>
+<tr>
+<td><code>/pwa/</code></td>
+<td>GET</td>
+<td>Mobile PWA app</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>physml fit       &lt;csv&gt;  --target &lt;col&gt; [--out agent.pkl]
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>physml query     &lt;pkl&gt;  --data &lt;csv&gt;
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>physml report    &lt;pkl&gt;
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>physml export    &lt;pkl&gt;  --out model.json
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>physml serve     [--host HOST] [--port PORT]
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>physml ingest    &lt;source&gt; [--topic TOPIC]
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>physml observe   [--interval SECS]
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>physml record    [--name NAME]
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>physml model     [--show]
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>physml federation [--query TEXT] [--context SPECIALIST]
+</code></pre></div>
+<hr />
+<h3 id="health-check">Health Check<a class="headerlink" href="#health-check" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">physml.health</span><span class="w"> </span><span class="kn">import</span> <span class="n">check</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">status</span> <span class="o">=</span> <span class="n">check</span><span class="p">()</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># {&quot;numpy&quot;: True, &quot;sklearn&quot;: True, &quot;anthropic&quot;: True, &quot;whisper&quot;: False, ...}</span>
+</code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "search.highlight", "content.code.copy"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
