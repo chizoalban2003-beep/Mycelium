@@ -26,15 +26,15 @@ _TEST_PASSWORD = "test-password"
 @pytest.fixture(scope="module")
 def client():
     app = create_app()
-    client = TestClient(app)
-    token_response = client.post(
+    bootstrap_client = TestClient(app)
+    token_response = bootstrap_client.post(
         "/auth/token",
         json={"user_id": _TEST_USER_ID, "password": _TEST_PASSWORD},
     )
     assert token_response.status_code == 200, token_response.text
     token = token_response.json()["access_token"]
-    client.headers.update({"Authorization": f"Bearer {token}"})
-    return client
+    bootstrap_client.close()
+    return TestClient(app, headers={"Authorization": f"Bearer {token}"})
 
 
 # ---------------------------------------------------------------------------
